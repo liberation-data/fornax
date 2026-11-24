@@ -61,6 +61,47 @@ project(':kiln-examples') {
     }
 }
 
+project(':kiln-cli') {
+    apply plugin: 'application'
+    dependencies {
+        implementation project(':kiln-llama')
+        implementation project(':kiln-sd')
+        implementation project(':kiln-acestep')
+        implementation project(':kiln-yue2')
+    }
+    // ./gradlew :kiln-cli:installDist  ->  kiln-cli/build/install/kiln-cli/bin/kiln
+    // The distribution carries the native libraries in lib/native/<os>-<arch>-<backend>/ and points the launcher at
+    // them; KILN_OPTS / JAVA_OPTS can override (for example -Dkiln.library.path=...).
+    application {
+        mainClass = 'org.liberationdata.kiln.cli.Main'
+        applicationName = 'kiln'
+        applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED',
+                                     "-Dkiln.library.path=__APP_HOME__/lib/native/${nativeDir.name}".toString()]
+    }
+    distributions {
+        main {
+            distributionBaseName = 'kiln-cli'
+            contents { from(nativeDir) { into "lib/native/${nativeDir.name}" } }
+        }
+    }
+    tasks.named('startScripts') {
+        doLast {
+            unixScript.text = unixScript.text.replace('__APP_HOME__', '\'"$APP_HOME"\'')
+            windowsScript.text = windowsScript.text.replace('__APP_HOME__', '%APP_HOME%')
+        }
+    }
+    tasks.named('jar') {
+        manifest { attributes 'Implementation-Title': 'Kiln', 'Implementation-Version': project.version }
+    }
+    // ./gradlew :kiln-cli:run --args='info'
+    tasks.named('run', JavaExec) {
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+        jvmArgs = ['--enable-native-access=ALL-UNNAMED']
+        systemProperty 'kiln.library.path', nativeDir.absolutePath
+        standardInput = System.in
+    }
+}
+
 project(':kiln-bench') {
     dependencies {
         implementation project(':kiln-acestep')

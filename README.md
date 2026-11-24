@@ -94,10 +94,37 @@ On a power-limited GPU (for example a laptop on battery), a single long GPU disp
 compute timeout and lose the device. Kiln decodes ACE-Step audio in 512-frame tiles to avoid that; tune it with
 `KILN_ACESTEP_VAE_CHUNK`.
 
+## Command line
+
+`kiln` fetches models and tries them without writing any code:
+
+```sh
+./gradlew :kiln-cli:installDist                 # -> kiln-cli/build/install/kiln-cli/bin/kiln
+kiln=kiln-cli/build/install/kiln-cli/bin/kiln
+
+$kiln info                                      # native libraries and backend found, Java, cache location
+$kiln pull qwen3-4b                             # an alias: every file the model needs
+$kiln pull unsloth/Qwen3-4B-Instruct-2507-GGUF  # lists the repo's GGUF models and asks which
+$kiln pull bartowski/google_gemma-3-4b-it-GGUF:Q4_K_M
+$kiln list                                      # what's in the cache that Kiln can run, with sizes
+$kiln chat qwen3-4b "Write a haiku about a kiln"
+$kiln chat qwen3-4b                             # interactive; /reset, /exit
+$kiln test qwen3-4b                             # load time, time to first token, tokens/s
+$kiln test ace-step                             # a 10 s song (image aliases: one 256x256 image)
+```
+
+A model is an alias (`kiln` with no arguments lists them: `qwen3-0.6b`, `qwen3-4b`, `ace-step`, `ace-step-xl`,
+`yue2`, `flux2-klein`, `qwen-image`, `qwen-image-edit`), `org/name:TAG` or `org/name:file.gguf`, or a `.gguf` path.
+`kiln pull` talks to the Hugging Face HTTP API directly and writes the same cache layout as `hf download`, so
+each sees the other's files. It skips complete files, resumes interrupted ones, checks LFS files' sha256, and
+uses `HF_TOKEN` (or the token `hf auth login` saved) for gated repos. The distribution carries the native
+libraries from `build/native/` and its launcher passes `--enable-native-access` and `kiln.library.path`.
+
 ## Models
 
-Kiln doesn't download anything. Fetch weights with the Hugging Face CLI, and `HfCache` finds them in the cache
-(`HF_HUB_CACHE`, `HF_HOME/hub` or `~/.cache/huggingface/hub`), or pass file paths directly.
+Fetch weights with `kiln pull` or the Hugging Face CLI, and `HfCache` finds them in the cache
+(`HF_HUB_CACHE`, `HF_HOME/hub` or `~/.cache/huggingface/hub`), or pass file paths directly. The library
+itself never downloads anything.
 
 ```sh
 hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf

@@ -5,5 +5,6 @@ include 'kiln-llama'    // llama.cpp: GGUF language models
 include 'kiln-sd'       // stable-diffusion.cpp: FLUX, Qwen-Image, SD, Wan, LTX
 include 'kiln-acestep'  // acestep.cpp: ACE-Step 1.5 songs
 include 'kiln-yue2'     // yue2.cpp: YuE2 songs
+include 'kiln-cli'      // the kiln command: pull, list, chat, test, info
 include 'kiln-examples' // runnable demos (not published)
 include 'kiln-bench'    // A/B against ComfyUI's HTTP API (not published)
