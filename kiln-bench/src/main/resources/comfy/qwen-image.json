@@ -1,0 +1,209 @@
+{
+ "studio.245": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+   "type": "qwen_image",
+   "device": "default"
+  }
+ },
+ "studio.246": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "qwen_image_vae.safetensors"
+  }
+ },
+ "studio.247": {
+  "class_type": "ModelSamplingAuraFlow",
+  "inputs": {
+   "shift": 3.1000000000000005,
+   "model": [
+    "studio.260",
+    0
+   ]
+  }
+ },
+ "studio.248": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "qwen_image_2512_fp8_e4m3fn.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "studio.249": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "",
+   "clip": [
+    "studio.245",
+    0
+   ]
+  }
+ },
+ "studio.250": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "\u4f4e\u5206\u8fa8\u7387\uff0c\u4f4e\u753b\u8d28\uff0c\u80a2\u4f53\u7578\u5f62\uff0c\u624b\u6307\u7578\u5f62\uff0c\u753b\u9762\u8fc7\u9971\u548c\uff0c\u8721\u50cf\u611f\uff0c\u4eba\u8138\u65e0\u7ec6\u8282\uff0c\u8fc7\u5ea6\u5149\u6ed1\uff0c\u753b\u9762\u5177\u6709AI\u611f\u3002\u6784\u56fe\u6df7\u4e71\u3002\u6587\u5b57\u6a21\u7cca\uff0c\u626d\u66f2",
+   "clip": [
+    "studio.245",
+    0
+   ]
+  }
+ },
+ "studio.251": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "studio.253",
+    0
+   ],
+   "vae": [
+    "studio.246",
+    0
+   ]
+  }
+ },
+ "studio.252": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1328,
+   "height": 1328,
+   "batch_size": 1
+  }
+ },
+ "studio.253": {
+  "class_type": "KSampler",
+  "inputs": {
+   "seed": 464857551335368,
+   "steps": [
+    "studio.261",
+    0
+   ],
+   "cfg": [
+    "studio.262",
+    0
+   ],
+   "sampler_name": "euler",
+   "scheduler": "simple",
+   "denoise": 1,
+   "model": [
+    "studio.247",
+    0
+   ],
+   "positive": [
+    "studio.249",
+    0
+   ],
+   "negative": [
+    "studio.250",
+    0
+   ],
+   "latent_image": [
+    "studio.252",
+    0
+   ]
+  }
+ },
+ "studio.254": {
+  "class_type": "PrimitiveInt",
+  "inputs": {
+   "value": 50
+  }
+ },
+ "studio.255": {
+  "class_type": "PrimitiveFloat",
+  "inputs": {
+   "value": 4
+  }
+ },
+ "studio.256": {
+  "class_type": "PrimitiveBoolean",
+  "inputs": {
+   "value": false
+  }
+ },
+ "studio.257": {
+  "class_type": "PrimitiveInt",
+  "inputs": {
+   "value": 4
+  }
+ },
+ "studio.258": {
+  "class_type": "PrimitiveFloat",
+  "inputs": {
+   "value": 1
+  }
+ },
+ "studio.259": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "lora_name": "Qwen-Image-2512-Lightning-4steps-V1.0-fp32.safetensors",
+   "strength_model": 1,
+   "model": [
+    "studio.248",
+    0
+   ]
+  }
+ },
+ "studio.260": {
+  "class_type": "ComfySwitchNode",
+  "inputs": {
+   "switch": [
+    "studio.256",
+    0
+   ],
+   "on_false": [
+    "studio.248",
+    0
+   ],
+   "on_true": [
+    "studio.259",
+    0
+   ]
+  }
+ },
+ "studio.261": {
+  "class_type": "ComfySwitchNode",
+  "inputs": {
+   "switch": [
+    "studio.256",
+    0
+   ],
+   "on_false": [
+    "studio.254",
+    0
+   ],
+   "on_true": [
+    "studio.257",
+    0
+   ]
+  }
+ },
+ "studio.262": {
+  "class_type": "ComfySwitchNode",
+  "inputs": {
+   "switch": [
+    "studio.256",
+    0
+   ],
+   "on_false": [
+    "studio.255",
+    0
+   ],
+   "on_true": [
+    "studio.258",
+    0
+   ]
+  }
+ },
+ "save0": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "studio.251",
+    0
+   ],
+   "filename_prefix": "hello/out"
+  }
+ }
+}

@@ -1,0 +1,15 @@
+{
+  "caption": "modern country rock, contemporary Nashville, radio-ready, male baritone lead vocal with a southern twang, gritty and confident, overdriven electric guitars, twangy telecaster lead, punchy kick and snare, driving drum kit, electric bass, acoustic guitar strums underneath, big singalong chorus with harmonies, polished modern production, wry humorous storytelling, mid-tempo stomp",
+  "lyrics": "[Verse 1]\nRusty rolled in on a Tuesday night\nChrome on his knuckles and his eyes burned bright\nDarlene poured a whiskey that he never asked for\nSaid the last tin cowboy left a dent in my door\n\n[Chorus]\nOh, he's a machine with a honky-tonk heart\nRuns on diesel and a broken old part\nHe can't undo what he did in the dark\nHe's a machine with a honky-tonk heart\n",
+  "bpm": 96,
+  "duration": 60,
+  "keyscale": "G major",
+  "timesignature": "4",
+  "vocal_language": "en",
+  "seed": 11,
+  "lm_seed": 11,
+  "inference_steps": 8,
+  "guidance_scale": 1.0,
+  "shift": 3.0,
+  "output_format": "wav16"
+}

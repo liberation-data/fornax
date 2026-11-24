@@ -60,3 +60,25 @@ project(':kiln-examples') {
         }
     }
 }
+
+project(':kiln-bench') {
+    dependencies {
+        implementation project(':kiln-acestep')
+        implementation project(':kiln-sd')
+        implementation project(':kiln-yue2')
+        implementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0'
+    }
+    // ./gradlew bench --args='out/bench acestep yue2 qwen-image'
+    tasks.register('bench', JavaExec) {
+        group = 'kiln examples'
+        description = 'A/B: the same jobs through ComfyUI and through Kiln'
+        classpath = sourceSets.main.runtimeClasspath
+        mainClass = 'org.liberationdata.kiln.bench.Bench'
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+        systemProperty 'kiln.library.path', nativeDir.absolutePath
+        workingDir = rootProject.projectDir
+        def cli = gradle.startParameter.projectProperties
+        ['size', 'steps'].each { p -> if (cli.containsKey(p)) systemProperty p, cli[p] }
+    }
+}

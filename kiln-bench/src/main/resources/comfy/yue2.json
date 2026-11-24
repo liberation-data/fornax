@@ -1,0 +1,204 @@
+{
+ "studio.15": {
+  "class_type": "CheckpointLoaderSimple",
+  "inputs": {
+   "ckpt_name": "yue2_3b_int8_convrot.safetensors"
+  }
+ },
+ "studio.24": {
+  "class_type": "YuE2GenerateABC",
+  "inputs": {
+   "style": [
+    "studio.36",
+    0
+   ],
+   "lyrics": [
+    "studio.37",
+    0
+   ],
+   "seed": [
+    "studio.34",
+    0
+   ],
+   "mode": "full",
+   "max_abc_tokens": 8192,
+   "temperature": 0.7,
+   "top_p": 0.9,
+   "top_k": 30,
+   "repetition_penalty": 1.005,
+   "penalty_window": 100,
+   "clip": [
+    "studio.15",
+    1
+   ]
+  }
+ },
+ "studio.14": {
+  "class_type": "PreviewAny",
+  "inputs": {
+   "source": [
+    "studio.30",
+    0
+   ]
+  }
+ },
+ "studio.30": {
+  "class_type": "ComfySwitchNode",
+  "inputs": {
+   "switch": [
+    "studio.31",
+    0
+   ],
+   "on_false": [
+    "studio.32",
+    0
+   ],
+   "on_true": [
+    "studio.24",
+    0
+   ]
+  }
+ },
+ "studio.32": {
+  "class_type": "PrimitiveString",
+  "inputs": {
+   "value": ""
+  }
+ },
+ "studio.25": {
+  "class_type": "YuE2GenerateMusic",
+  "inputs": {
+   "style": [
+    "studio.36",
+    0
+   ],
+   "lyrics": [
+    "studio.37",
+    0
+   ],
+   "abc": [
+    "studio.14",
+    0
+   ],
+   "seed": [
+    "studio.34",
+    0
+   ],
+   "mode": "full",
+   "max_duration": 360,
+   "temperature": 1,
+   "top_p": 0.95,
+   "top_k": 100,
+   "repetition_penalty": 1.2,
+   "clip": [
+    "studio.15",
+    1
+   ]
+  }
+ },
+ "studio.31": {
+  "class_type": "PrimitiveBoolean",
+  "inputs": {
+   "value": false
+  }
+ },
+ "studio.18": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "studio.25",
+    0
+   ]
+  }
+ },
+ "studio.23": {
+  "class_type": "PreviewAny",
+  "inputs": {
+   "source": [
+    "studio.25",
+    1
+   ]
+  }
+ },
+ "studio.8": {
+  "class_type": "KSampler",
+  "inputs": {
+   "seed": [
+    "studio.34",
+    0
+   ],
+   "steps": 32,
+   "cfg": 1,
+   "sampler_name": "dpm_2",
+   "scheduler": "sgm_uniform",
+   "denoise": 1,
+   "model": [
+    "studio.15",
+    0
+   ],
+   "positive": [
+    "studio.25",
+    0
+   ],
+   "negative": [
+    "studio.18",
+    0
+   ],
+   "latent_image": [
+    "studio.5",
+    0
+   ]
+  }
+ },
+ "studio.5": {
+  "class_type": "EmptyYuE2LatentAudio",
+  "inputs": {
+   "seconds": [
+    "studio.25",
+    1
+   ],
+   "batch_size": 1
+  }
+ },
+ "studio.9": {
+  "class_type": "VAEDecodeAudio",
+  "inputs": {
+   "samples": [
+    "studio.8",
+    0
+   ],
+   "vae": [
+    "studio.15",
+    2
+   ]
+  }
+ },
+ "studio.34": {
+  "class_type": "SeedNode",
+  "inputs": {
+   "seed": 0
+  }
+ },
+ "studio.36": {
+  "class_type": "PrimitiveStringMultiline",
+  "inputs": {
+   "value": ""
+  }
+ },
+ "studio.37": {
+  "class_type": "PrimitiveStringMultiline",
+  "inputs": {
+   "value": ""
+  }
+ },
+ "save0": {
+  "class_type": "SaveAudio",
+  "inputs": {
+   "audio": [
+    "studio.9",
+    0
+   ],
+   "filename_prefix": "hello/out"
+  }
+ }
+}
