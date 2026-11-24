@@ -131,7 +131,8 @@ second argument. The request formats are the engines' own (see
 - Test and document the HIP, CUDA and Metal builds; prebuilt native libraries per platform.
 - Video through stable-diffusion.cpp (`sd_generate_video`: Wan, LTX).
 - Model pool: keep models resident, evict by memory budget and idle time (as ComfyUI does).
-- Spring AI `ChatModel`/`ImageModel` adapters, then an optional OpenAI-compatible server.
+- `kiln-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `kiln-llama`).
+- An optional OpenAI-compatible server.
 - Vision-language models through llama.cpp's `mtmd` (document parsing, image Q&A).
 - An MLX module for Apple silicon, through `mlx-c`.
 - Speech: whisper.cpp.
