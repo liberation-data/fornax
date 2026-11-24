@@ -126,6 +126,18 @@ The song examples use the requests in `kiln-examples/src/main/resources/requests
 second argument. The request formats are the engines' own (see
 [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) and [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp)).
 
+## Kiln Studio
+
+`kiln-studio-server` is the backend of [Kiln Studio](../kiln-studio), a desktop app for trying models: a JDK-only HTTP
+server on localhost (`com.sun.net.httpserver`, replies streamed as server-sent events) that lists what in the Hugging
+Face cache Kiln can run, keeps models in a `ModelPool`, and serves chat (with a tool-calling demo through `chatJson`),
+images and songs. The app starts it; to run it on its own:
+
+```sh
+./gradlew studioServer                    # http://127.0.0.1:5191; -Pport=, -Pbudget=<GB>, -Pstub=image,song
+./gradlew :kiln-studio-server:studioJar   # one runnable jar, which the app ships
+```
+
 ## Roadmap
 
 - Test and document the HIP, CUDA and Metal builds; prebuilt native libraries per platform.
