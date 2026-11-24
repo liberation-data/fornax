@@ -58,7 +58,8 @@ final class Studio implements AutoCloseable {
 
     /** Borrows the model, loading it first if it isn't loaded. Close the lease to give it back; it stays loaded. */
     <M extends AutoCloseable> ModelPool.Lease<M> lease(Catalog.Model m, Class<M> type) {
-        return pool.acquire(m.id(), m.sizeBytes(), () -> type.cast(load(m)));
+        // A stub loads nothing, so it holds nothing of the budget.
+        return pool.acquire(m.id(), stubbed(m.kind()) ? 0 : m.sizeBytes(), () -> type.cast(load(m)));
     }
 
     /** Seconds the model's last load took, or null if this run hasn't loaded it. */

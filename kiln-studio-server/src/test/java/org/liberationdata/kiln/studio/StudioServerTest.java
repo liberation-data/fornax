@@ -85,7 +85,8 @@ class StudioServerTest {
         String id = "chat:Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf";
         assertEquals(200, call("POST", "/api/models/load", "{\"id\": \"" + id + "\"}").statusCode());
         assertEquals(true, model(id).get("loaded"));
-        assertEquals(100L, Json.object(call("GET", "/api/models", null).body()).get("loadedBytes"));
+        // A stub loads nothing, so it holds nothing of the budget.
+        assertEquals(0L, Json.object(call("GET", "/api/models", null).body()).get("loadedBytes"));
         assertEquals(true, Json.object(call("POST", "/api/models/unload", "{\"id\": \"" + id + "\"}").body()).get("unloaded"));
         assertEquals(false, model(id).get("loaded"));
     }
