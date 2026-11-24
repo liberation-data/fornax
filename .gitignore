@@ -1,0 +1,9 @@
+build/
+.gradle/
+engines-src/
+*.so
+*.dylib
+.idea/
+*.iml
+hs_err_pid*.log
+/out/

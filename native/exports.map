@@ -1,0 +1,4 @@
+{
+  global: kiln_*;
+  local: *;
+};

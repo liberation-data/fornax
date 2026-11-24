@@ -1,0 +1,62 @@
+// Kiln: in-process generative models for the JVM via Java's Foreign Function & Memory API.
+
+def os = System.getProperty('os.name').toLowerCase().contains('mac') ? 'macos' : 'linux'
+def arch = System.getProperty('os.arch').replace('amd64', 'x86_64').replace('aarch64', 'arm64')
+def nativeDir = file("build/native/${os}-${arch}-${findProperty('kiln.backend')}")
+
+subprojects {
+    apply plugin: 'java-library'
+
+    repositories { mavenCentral() }
+
+    java {
+        toolchain { languageVersion = JavaLanguageVersion.of(25) }
+        withSourcesJar()
+        withJavadocJar()
+    }
+
+    tasks.withType(JavaCompile).configureEach { options.compilerArgs += ['-Xlint:all,-restricted'] }
+    tasks.withType(Javadoc).configureEach { options.addBooleanOption('Xdoclint:none', true) }
+
+    dependencies {
+        testImplementation platform('org.junit:junit-bom:5.13.4')
+        testImplementation 'org.junit.jupiter:junit-jupiter'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+        systemProperty 'kiln.library.path', nativeDir.absolutePath
+        testLogging { events 'passed', 'skipped', 'failed'; showStandardStreams = true }
+    }
+
+    if (name != 'kiln-core') dependencies { api project(':kiln-core') }
+}
+
+project(':kiln-examples') {
+    dependencies {
+        implementation project(':kiln-llama')
+        implementation project(':kiln-sd')
+        implementation project(':kiln-acestep')
+        implementation project(':kiln-yue2')
+    }
+    // ./gradlew chat --args='"your prompt"'   image --args='klein out.png "a prompt"'   song   yue2
+    [chat: 'Chat', image: 'Image', song: 'Song', yue2: 'Yue2Song', single: 'Single'].each { task, cls ->
+        tasks.register(task, JavaExec) {
+            group = 'kiln examples'
+            description = "Runs org.liberationdata.kiln.examples.${cls}"
+            classpath = sourceSets.main.runtimeClasspath
+            mainClass = "org.liberationdata.kiln.examples.${cls}"
+            javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+            jvmArgs '--enable-native-access=ALL-UNNAMED'
+            systemProperty 'kiln.library.path', nativeDir.absolutePath
+            workingDir = rootProject.projectDir
+            // -Pmodel=... -Psteps=... etc. become system properties (only ones given on the command line)
+            def cli = gradle.startParameter.projectProperties
+            ['model', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant'].each { p ->
+                if (cli.containsKey(p)) systemProperty p, cli[p]
+            }
+        }
+    }
+}

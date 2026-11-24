@@ -1,0 +1,14 @@
+Kiln
+Copyright 2026 Liberation Data
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Native libraries built by native/build.sh statically include the following MIT-licensed software, fetched
+at build time and not stored in this repository:
+
+- llama.cpp and ggml, Copyright (c) 2023-2026 The ggml authors (https://github.com/ggml-org/llama.cpp)
+- stable-diffusion.cpp, Copyright (c) 2023 leejet (https://github.com/leejet/stable-diffusion.cpp)
+- acestep.cpp, Copyright (c) 2023-2026 The acestep.cpp authors (https://github.com/ServeurpersoCom/acestep.cpp)
+- yue2.cpp, Copyright (c) 2023-2026 The yue2.cpp authors (https://github.com/ServeurpersoCom/yue2.cpp)
+
+Model weights are not part of Kiln and carry their own licenses.
