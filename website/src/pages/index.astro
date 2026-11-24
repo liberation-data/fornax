@@ -40,6 +40,20 @@ try (var llm = new LlamaModel("Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {
     llm.chat(List.of(Message.user("Name a country song about a robot.")),
              Options.DEFAULT, System.out::print);
 }`,
+    tools: `// OpenAI-style messages and tools in, an OpenAI-style message out
+String res = llm.chatJson("""
+    {"messages": [{"role": "user",
+                   "content": "What's the weather in Nashville right now?"}],
+     "tools": [{"type": "function", "function": {
+         "name": "get_weather", "description": "Current weather for a city",
+         "parameters": {"type": "object",
+                        "properties": {"city": {"type": "string"}},
+                        "required": ["city"]}}}],
+     "temperature": 0, "max_tokens": 128, "seed": 1}""",
+    null);   // or a callback, to stream
+
+// res has content, reasoning_content and tool_calls:
+// here, finish_reason "tool_calls" and get_weather for Nashville`,
     songs: `try (var songs = new AceStepModel(lm, textEncoder, dit, vae, true)) {
     songs.generate(requestJson).audio().writeWav(new File("song.wav"));
 }`,
@@ -374,6 +388,7 @@ const theme = 'vitesse-dark';
                         <ul class="dashes">
                             <li><span>Every model class is <code>AutoCloseable</code>: weights are freed on <code>close()</code>.</span></li>
                             <li><span>Text streams token by token to any callback, such as <code>System.out::print</code>.</span></li>
+                            <li><span>Tool calling with <code>chatJson</code>: OpenAI-style messages and tools in, <code>tool_calls</code> out.</span></li>
                             <li><span>Songs come back as PCM audio; images as a <code>BufferedImage</code>.</span></li>
                             <li><span>Java 22+, built and tested on 25. Instances aren’t thread-safe.</span></li>
                         </ul>
@@ -381,10 +396,12 @@ const theme = 'vitesse-dark';
                     <div class="panel">
                         <div class="tabs" role="group" aria-label="Example">
                             <button type="button" aria-pressed="true" data-tab="text">Text</button>
+                            <button type="button" aria-pressed="false" data-tab="tools">Tools</button>
                             <button type="button" aria-pressed="false" data-tab="songs">Songs</button>
                             <button type="button" aria-pressed="false" data-tab="images">Images</button>
                         </div>
                         <div data-pane="text"><Code code={samples.text} lang="java" theme={theme} /></div>
+                        <div data-pane="tools" hidden><Code code={samples.tools} lang="java" theme={theme} /></div>
                         <div data-pane="songs" hidden><Code code={samples.songs} lang="java" theme={theme} /></div>
                         <div data-pane="images" hidden><Code code={samples.images} lang="java" theme={theme} /></div>
                         <p class="note">Kiln doesn’t download anything: <code>HfCache</code> finds weights in your Hugging Face cache, or pass file paths.</p>
@@ -556,6 +573,8 @@ const theme = 'vitesse-dark';
                         <article class="feature"><h3>stable-diffusion.cpp</h3><p>Has a key/value C API, so <code>kiln-sd</code> binds it directly.</p></article>
                         <article class="feature"><h3>llama.cpp</h3><p>Its C API passes structs by value and is mid-migration to a new batch API, so <code>kiln-llama</code> binds a small, stable C layer instead.</p></article>
                         <article class="feature"><h3>acestep.cpp and yue2.cpp</h3><p>C++ only, so each gets a C layer of about a hundred lines: a JSON request in, PCM audio out.</p></article>
+                        <article class="feature"><h3>Tool calling</h3><p><code>LlamaModel.chatJson</code> takes messages and tools in OpenAI’s format and returns a message with <code>content</code>, <code>reasoning_content</code> and <code>tool_calls</code>. It uses the model’s own chat template and tool-call format, with the same templates and parsers as llama-server.</p></article>
+                        <article class="feature"><h3>ModelPool</h3><p>Keeps models resident between uses, the way ComfyUI does. It unloads idle models least recently used first to stay within a memory budget, can unload after an idle timeout, and gives each model one user at a time.</p></article>
                         <article class="feature"><h3>Pick a backend at build time</h3><p>The Java is the same for every backend. <code>native/build.sh</code> builds the libraries for the one you name.</p></article>
                         <article class="feature"><h3>Long jobs on small power budgets</h3><p>A long GPU dispatch can trip a laptop driver’s compute timeout, so ACE-Step audio is decoded in 512-frame tiles. Tune it with <code>KILN_ACESTEP_VAE_CHUNK</code>.</p></article>
                         <article class="feature"><h3>The engines’ own logs</h3><p>Set <code>KILN_VERBOSE=1</code> to see what llama.cpp, stable-diffusion.cpp and friends print.</p></article>
@@ -603,8 +622,7 @@ const theme = 'vitesse-dark';
                     <ul>
                         <li><span>Test and document the HIP, CUDA and Metal builds; prebuilt native libraries per platform.</span></li>
                         <li><span>Video through stable-diffusion.cpp: Wan and LTX.</span></li>
-                        <li><span>A model pool: keep models resident, evict by memory budget and idle time.</span></li>
-                        <li><span><code>kiln-embabel</code>: Kiln models for Embabel agents.</span></li>
+                                                <li><span><code>kiln-embabel</code>: an Embabel Agent <code>LlmService</code> and <code>LocalModelSource</code>.</span></li>
                         <li><span>An optional OpenAI-compatible server.</span></li>
                         <li><span>Vision-language models through llama.cpp’s <code>mtmd</code>.</span></li>
                         <li><span>An MLX module for Apple silicon, through <code>mlx-c</code>.</span></li>
