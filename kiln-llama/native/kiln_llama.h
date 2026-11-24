@@ -28,6 +28,16 @@ int kiln_llama_complete(kiln_llama * h, const char * prompt, int max_tokens, flo
                         float min_p, uint32_t seed, kiln_llama_token_cb cb, void * user, char ** out_text,
                         int * out_n_prompt, int * out_n_generated);
 
+// OpenAI-style chat with tool calling, through llama.cpp's chat templates and parsers (as llama-server does).
+// request_json: {"messages": [...], "tools": [...], "tool_choice": "auto|required|none", "parallel_tool_calls": bool,
+//                "max_tokens": n, "temperature": t, "top_p": p, "min_p": p, "seed": s, "enable_thinking": bool}
+// messages and tools use OpenAI's chat completions format.
+// *out_response_json: {"message": {"role", "content", "reasoning_content", "tool_calls": [...]},
+//                      "finish_reason": "stop|length|tool_calls", "usage": {"prompt_tokens", "completion_tokens"}}
+// cb (optional) receives each new piece of the message's content as it's parsed. Free the response with kiln_llama_free.
+int kiln_llama_chat_json(kiln_llama * h, const char * request_json, kiln_llama_token_cb cb, void * user,
+                         char ** out_response_json);
+
 void kiln_llama_free(void * p);
 void kiln_llama_destroy(kiln_llama * h);
 

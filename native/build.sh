@@ -71,10 +71,12 @@ build_llama() {
     fetch llama.cpp
     local s=$SRC/llama.cpp b=$SRC/llama.cpp/build-$BACKEND
     mkdir -p "$b"
-    cmake_build "$s" "$b" llama $GGML -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF \
+    cmake_build "$s" "$b" "llama llama-common" $GGML -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF \
         -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF
     $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_llama.$EXT" "$ROOT/kiln-llama/native/kiln_llama.cpp" \
-        -I"$s/include" -I"$s/ggml/include" $(whole "$(find "$b" -name libllama.a)") $(ggml_archives "$b") \
+        -I"$s/include" -I"$s/ggml/include" -I"$s/common" -I"$s/vendor" \
+        $(group "$(find "$b" -name libllama-common.a)" "$(find "$b" -name libllama-common-base.a)" \
+                $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(find "$b" -name libllama.a)") $(ggml_archives "$b") \
         $PRIVATE $OMP $LIBS -lpthread
 }
 

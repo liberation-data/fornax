@@ -30,6 +30,8 @@ public final class LlamaModel implements AutoCloseable {
     private static final MethodHandle COMPLETE = LIB.function("kiln_llama_complete", FunctionDescriptor.of(JAVA_INT,
             ADDRESS, ADDRESS, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT,
             ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
+    private static final MethodHandle CHAT_JSON = LIB.function("kiln_llama_chat_json", FunctionDescriptor.of(JAVA_INT,
+            ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
     private static final MethodHandle FREE = LIB.function("kiln_llama_free", FunctionDescriptor.ofVoid(ADDRESS));
     private static final MethodHandle DESTROY = LIB.function("kiln_llama_destroy", FunctionDescriptor.ofVoid(ADDRESS));
 
@@ -93,6 +95,30 @@ public final class LlamaModel implements AutoCloseable {
             int rc = (int) CHAT.invokeExact(handle, roles, contents, n, o.maxTokens(), o.temperature(), o.topP(),
                     o.minP(), o.seed(), cb, MemorySegment.NULL, out.text, out.nPrompt, out.nGen);
             return out.result(rc);
+        } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+        finally { SINK.remove(); }
+    }
+
+    /**
+     * OpenAI-style chat with tool calling, using the model's own chat template and tool-call format
+     * (the same templates and parsers as llama-server). Request and response are JSON:
+     * <pre>
+     * request:  {"messages": [...], "tools": [...], "tool_choice": "auto", "max_tokens": 512, "temperature": 0.7, "seed": 1}
+     * response: {"message": {"role": "assistant", "content": "...", "reasoning_content": "...", "tool_calls": [...]},
+     *            "finish_reason": "stop|length|tool_calls", "usage": {"prompt_tokens": n, "completion_tokens": n}}
+     * </pre>
+     * Messages and tools use OpenAI's chat completions format. onContent (optional) streams the message content.
+     */
+    public String chatJson(String requestJson, Consumer<String> onContent) {
+        try (Arena a = Arena.ofConfined()) {
+            MemorySegment out = a.allocate(ADDRESS);
+            MemorySegment cb = callback(a, onContent);
+            int rc = (int) CHAT_JSON.invokeExact(handle, a.allocateFrom(requestJson), cb, MemorySegment.NULL, out);
+            MemorySegment r = out.get(ADDRESS, 0);
+            String json = NativeLibrary.string(r);
+            if (!r.equals(MemorySegment.NULL)) FREE.invokeExact(r);
+            if (rc != 0) throw new IllegalStateException("llama chat failed (rc=" + rc + "): " + error());
+            return json;
         } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
     }

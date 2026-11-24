@@ -1,5 +1,9 @@
 #include "kiln_llama.h"
 #include "llama.h"
+#include "chat.h"
+#include "common.h"
+#include "json.h"
+#include "sampling.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -18,6 +22,7 @@ char * dup(const std::string & s) {
 }  // namespace
 
 struct kiln_llama {
+    common_chat_templates_ptr tmpls;
     llama_model *   model = nullptr;
     llama_context * ctx   = nullptr;
     const llama_vocab * vocab = nullptr;
@@ -53,6 +58,13 @@ kiln_llama * kiln_llama_create(const char * model_path, int n_gpu_layers, int n_
     h->ctx = llama_init_from_model(h->model, cp);
     if (!h->ctx) { g_err = "failed to create llama_context"; kiln_llama_destroy(h); return nullptr; }
     h->batch = llama_batch_ext_init(h->ctx);
+    try {
+        h->tmpls = common_chat_templates_init(h->model, "");
+    } catch (const std::exception & e) {
+        g_err = std::string("chat template: ") + e.what();
+        kiln_llama_destroy(h);
+        return nullptr;
+    }
     return h;
 }
 
@@ -132,10 +144,117 @@ int kiln_llama_chat(kiln_llama * h, const char ** roles, const char ** contents,
                                out_n_prompt, out_n_generated);
 }
 
+int kiln_llama_chat_json(kiln_llama * h, const char * request_json, kiln_llama_token_cb cb, void * user,
+                         char ** out_response_json) {
+    *out_response_json = nullptr;
+    common_sampler * smpl = nullptr;
+    try {
+        common_json req = common_json::parse(request_json);
+
+        common_chat_templates_inputs in;
+        in.messages = common_chat_msgs_parse_oaicompat(req.at("messages"));
+        if (req.contains("tools") && !req.at("tools").is_null()) in.tools = common_chat_tools_parse_oaicompat(req.at("tools"));
+        if (req.contains("tool_choice") && req.at("tool_choice").is_string())
+            in.tool_choice = common_chat_tool_choice_parse_oaicompat(req.at("tool_choice").get<std::string>());
+        in.parallel_tool_calls = req.value("parallel_tool_calls", true);
+        in.enable_thinking     = req.value("enable_thinking", true);
+        in.reasoning_format    = COMMON_REASONING_FORMAT_DEEPSEEK;  // thinking goes to reasoning_content
+        if (req.contains("json_schema") && !req.at("json_schema").is_null()) in.json_schema = req.at("json_schema").dump();
+
+        common_chat_session session(h->tmpls.get(), h->vocab, in);
+
+        // Template text may carry special tokens; user-supplied text must not be parsed for them.
+        std::vector<llama_token> prompt;
+        bool first = true;
+        for (const auto & part : session.prompt().parts) {
+            auto t = common_tokenize(h->vocab, part.text, first, !part.is_input);
+            prompt.insert(prompt.end(), t.begin(), t.end());
+            first = false;
+        }
+        const int n_ctx = (int) llama_n_ctx(h->ctx);
+        if ((int) prompt.size() >= n_ctx)
+            return fail("prompt (" + std::to_string(prompt.size()) + " tokens) exceeds context " + std::to_string(n_ctx), 2);
+
+        common_params_sampling sp;
+        sp.temp  = (float) req.value("temperature", 0.7);
+        sp.top_p = (float) req.value("top_p", 0.95);
+        sp.min_p = (float) req.value("min_p", 0.05);
+        sp.top_k = req.value("top_k", 40);
+        int64_t seed = req.value("seed", (int64_t) -1);
+        sp.seed = seed < 0 ? LLAMA_DEFAULT_SEED : (uint32_t) seed;
+        session.apply_sampling(sp);
+        smpl = common_sampler_init(h->model, sp);
+        if (!smpl) return fail("failed to initialise the sampler (bad grammar?)", 6);
+
+        const int max_tokens = req.value("max_tokens", -1);
+        llama_memory_clear(llama_get_memory(h->ctx), true);
+        std::string finish = "stop", raw, sent_content;
+        int pos = 0, generated = 0;
+        std::vector<llama_token> cur = prompt;
+        while (true) {
+            if (max_tokens > 0 && generated >= max_tokens) { finish = "length"; break; }
+            if (pos + (int) cur.size() > n_ctx) { finish = "length"; break; }
+            llama_batch_ext_clear(h->batch);
+            for (size_t i = 0; i < cur.size(); i++) {
+                int idx = llama_batch_ext_add_token(h->batch, 0, cur[i]);
+                llama_pos p = pos + (int) i;
+                llama_batch_ext_set_pos(h->batch, idx, &p);
+            }
+            llama_batch_ext_set_output_logits(h->batch, (int) cur.size() - 1, true);
+            if (int r = llama_process(h->ctx, LLAMA_PROCESS_TYPE_DECODE, h->batch); r != 0) {
+                common_sampler_free(smpl);
+                return fail("llama_process failed: " + std::to_string(r), 3);
+            }
+            pos += (int) cur.size();
+            llama_token tok = common_sampler_sample(smpl, h->ctx, -1);
+            common_sampler_accept(smpl, tok, true);
+            if (llama_vocab_is_eog(h->vocab, tok)) break;
+            generated++;
+            std::string piece = common_token_to_piece(h->vocab, tok, true);
+            raw += piece;
+            common_chat_input chunk;
+            chunk.append(piece, tok);
+            const common_chat_msg & m = session.feed(chunk);
+            if (cb && m.content.size() > sent_content.size() && m.content.compare(0, sent_content.size(), sent_content) == 0) {
+                std::string delta = m.content.substr(sent_content.size());
+                sent_content = m.content;
+                if (cb(delta.c_str(), user) != 0) break;
+            }
+            bool stop = false;
+            for (const auto & s : session.additional_stops())
+                if (!s.empty() && raw.size() >= s.size() && raw.compare(raw.size() - s.size(), s.size(), s) == 0) stop = true;
+            if (stop) break;
+            cur.assign(1, tok);
+        }
+        common_sampler_free(smpl);
+        smpl = nullptr;
+
+        common_chat_msg msg = session.finish();
+        msg.role = "assistant";
+        for (size_t i = 0; i < msg.tool_calls.size(); i++)
+            if (msg.tool_calls[i].id.empty()) msg.tool_calls[i].id = "call_" + std::to_string(i);
+        if (!msg.tool_calls.empty() && finish == "stop") finish = "tool_calls";
+
+        common_json res = common_json::object();
+        res["message"] = msg.to_json_oaicompat();
+        res["finish_reason"] = finish;
+        common_json usage = common_json::object();
+        usage["prompt_tokens"] = (int64_t) prompt.size();
+        usage["completion_tokens"] = (int64_t) generated;
+        res["usage"] = usage;
+        *out_response_json = dup(res.dump());
+        return 0;
+    } catch (const std::exception & e) {
+        if (smpl) common_sampler_free(smpl);
+        return fail(std::string("chat: ") + e.what(), 7);
+    }
+}
+
 void kiln_llama_free(void * p) { free(p); }
 
 void kiln_llama_destroy(kiln_llama * h) {
     if (!h) return;
+    h->tmpls.reset();
     if (h->batch) llama_batch_ext_free(h->batch);
     if (h->ctx) llama_free(h->ctx);
     if (h->model) llama_model_free(h->model);
