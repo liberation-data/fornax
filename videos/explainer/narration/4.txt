@@ -1,0 +1,2 @@
+aura-2-hyperion-en
+In Kiln Studio, chat with a model and watch the tokens per second, paint an image, write a song, or render a clip. On our test laptop, Kiln made a one-minute song up to twice as fast as Comfy U.I., on the same GPU.

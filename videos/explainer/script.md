@@ -8,6 +8,7 @@ publishing, check every claim against the README.
 
 voice: aura-2-hyperion-en
 pace: 1.05
+duck: on
 
 ## 1. The what
 
@@ -37,7 +38,9 @@ Cards: code, models @"Weights load once"
 
 ## 4. Show me
 
-Cards: studio (the two-window screenshot), numbers @"twice as fast"
+Cards: studio, numbers @"twice as fast"
+
+(studio is the two-window screenshot.)
 
 > In Kiln Studio, chat with a model and watch the tokens per second, paint an image, write a song, or render a clip.
 > On our test laptop, Kiln made a one-minute song up to twice as fast as ComfyUI, on the same GPU.
@@ -54,7 +57,7 @@ Cards: pull, embabel @"Embabel Agent"
 
 ## 6. An example
 
-Cards: endless-country 4s
+Cards: endless-country
 
 > Here's what these open models can make. This is Endless Country, episode two, made with ComfyUI. Every local step in
 > it can now run in Kiln, and episode three will.

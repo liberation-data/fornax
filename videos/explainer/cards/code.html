@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="../../shared/cards/card.css">
+<body class="dark" style="padding: 80px 150px; gap: 30px">
+    <p class="eyebrow">Java's Foreign Function &amp; Memory API</p>
+    <h2>The call into the engine is a plain native call.</h2>
+    <div class="code">
+<pre style="font-size: 44px"><span class="k">try</span> <span class="p">(</span><span class="k">var</span> <span class="v">llm</span> <span class="p">=</span> <span class="k">new</span> <span class="t">LlamaModel</span><span class="p">(</span>
+        <span class="s">"Qwen3-4B-Instruct-2507-Q4_K_M.gguf"</span><span class="p">)) {</span>
+    <span class="v">llm</span><span class="p">.</span><span class="f">chat</span><span class="p">(</span><span class="t">List</span><span class="p">.</span><span class="f">of</span><span class="p">(</span><span class="t">Message</span><span class="p">.</span><span class="f">user</span><span class="p">(</span>
+                 <span class="s">"Name a country song about a robot."</span><span class="p">)),</span>
+             <span class="t">Options</span><span class="p">.</span><span class="v">DEFAULT</span><span class="p">,</span> <span class="t">System</span><span class="p">.</span><span class="v">out</span><span class="p">::</span><span class="f">print</span><span class="p">);</span>
+<span class="p">}</span></pre>
+    </div>
+</body>
