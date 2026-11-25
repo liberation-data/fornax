@@ -76,6 +76,7 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 | Qwen3 4B Instruct (Q4_K_M) | ~60 tokens/s, streamed through a Java callback |
 | Qwen3-VL 4B Instruct (Q4_K_M) | a 1000×1300 invoice to schema-checked JSON (vendor, date, 4 line items, totals) in ~6 s; images read in 0.4 to 1.6 s, then ~60 tokens/s |
 | PaddleOCR-VL 1.6 (0.9B) | the same invoice's text (prompt "OCR:") in ~1.5 s, ~200 tokens/s |
+| MedGemma 1.5 4B (Q4_K_M) | the same invoice to JSON in ~6 s (Gemma 3 vision: 256 tokens an image, read in ~0.8 s) |
 | ACE-Step 1.5 XL turbo | a 3 min 20 s song in 57 s |
 | ACE-Step 1.5 turbo | a 60 s song in ~15 s |
 | YuE2 3B (Q8_0) | a 60 s song in ~60 s |
