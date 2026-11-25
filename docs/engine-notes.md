@@ -28,6 +28,15 @@ surprises you.
   submission. One big decode (LTX's audio VAE at full size) can exceed the kernel's timeout and lose the device.
   `GGML_VK_MAX_NODES_PER_SUBMIT=8` fixed it. ComfyUI never hit this, because PyTorch on ROCm launches many small
   kernels.
+- **Long video on Vulkan hits the timeout even at 8 nodes per submission.** A 13 s LTX clip (313 frames) refined at
+  1344×896 lost the device on the first refine step: a single attention dispatch over ~47k tokens outlasts the
+  amdgpu compute ring timeout, and no submission size can split one node. Use the HIP backend for long clips: ROCm
+  work goes through KFD user queues, which have no such timeout (that is why ComfyUI never hit it). HIP was also
+  about 2.7× faster per LTX step than Vulkan on the 8060S (44 s against 119 s at 672×448×313, after a slower first step).
+- **HIP graphs overflow a JVM thread's stack.** ggml's HIP backend captures the graph as a HIP graph, and ROCm's
+  `hip::Graph::ScheduleOneNode` recurses once per node. On a JVM thread (smaller stack than a CLI's 8 MB main
+  thread) LTX segfaults in libamdhip64 during text encoding. `GGML_CUDA_DISABLE_GRAPHS=1` fixes it, and Kiln sets it by default (`-Dkiln.gpu.graphs=true` turns graphs back on).
+- **Fedora's ROCm lives in `/usr`**, not `/opt/rocm`; `native/build.sh hip` falls back to `/usr/lib64`.
 - **LTX audio is part of the model.** LTX-2.5 generates sound and picture together. Leaving out
   `audio_vae_path` removes the audio stream; that didn't cause the ghosting, but it isn't how the model was trained.
 
@@ -46,3 +55,37 @@ surprises you.
 | `LTXVLatentUpsampler` with the x2 model | `hires.upscaler=model` plus `hires.model_path` |
 | Stage 2: sigmas 0.85, 0.725, 0.4219, 0, first frame at 1.0 | `hires.sigmas`; sd.cpp holds the first frame fully in the refine |
 | Tiled VAE decode | `vae_tiling.enabled` |
+
+## llama.cpp text to speech (kiln-tts)
+
+- **Call `postprocess_cpu_params` before `common_init_from_params`.** The parser fills in the thread counts after
+  the arguments; without it the threadpool is sized from -1 and ggml tries to allocate 2^64 bytes. See
+  [tts-notes.md](tts-notes.md) for the rest (models, voices, licences).
+
+## llama.cpp vision (kiln-llama with an mmproj)
+
+- **One path for every chat with images.** The shim converts image parts to media markers, renders the chat with the
+  model's own Jinja template (`common_chat_session`, as llama-server does), splits the rendered prompt on the
+  markers, and tokenizes text and images together with `mtmd_tokenize_from_parts`. Template text is parsed for
+  special tokens and user text isn't, as in the text-only path. `mtmd_helper_eval_chunks` then runs the vision encoder
+  and decodes everything; after that, generation is the usual loop. So `json_schema` grammars and tool calls work with
+  images for free.
+- **The marker is private.** The shim uses a random marker per process rather than `mtmd_default_marker()`
+  (`<__media__>`), so user text that happens to contain `<__media__>` can't claim an image. Raw `complete` with images
+  does use the default marker, since the caller writes the whole prompt.
+- **Text tokens after an image need only one position.** Qwen3-VL uses M-RoPE; `mtmd_helper_eval_chunks` returns the
+  next position (fewer positions than tokens for an image), and text tokens after it take a single position each
+  through `llama_batch_ext_set_pos`.
+- **Non-causal image attention needs the whole image in one ubatch.** Gemma 3 (MedGemma) attends over an image
+  non-causally. Like `llama-mtmd-cli`, `kiln_llama_create_mm` caps the image's tokens at `n_ubatch` (512 by default)
+  for such models, using `mtmd_get_memory_usage` (an unstable mtmd API that may move).
+- **PaddleOCR-VL takes task prompts, not instructions.** It answers "OCR:", "Table Recognition:", "Chart
+  Recognition:" and so on, and ignores a request to fill a schema: a grammar-constrained reply comes back as
+  well-formed JSON with the wrong values. Read the text with PaddleOCR-VL, then extract with a text model
+  (`./gradlew invoice -Pmodel=paddleocr-vl`). Its OCR of a 1000×1300 invoice took ~1.5 s at ~200 tokens/s on the
+  8060S.
+- **Qwen3-VL 4B grounds what is there, not what is missing.** Asked for defects on a tray of parts, it boxed a dented
+  part accurately (with a schema that asks for a short description before each box) but never found an empty slot
+  in the grid, with or without a schema. Its boxes are on a 0 to 1000 grid over the image.
+- **Images are cheap on the GPU.** A 1000×1300 invoice is ~1200 Qwen3-VL tokens and is read (encoded and prefilled)
+  in ~1.6 s; a 720×480 picture in ~0.4 s.

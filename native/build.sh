@@ -5,12 +5,12 @@
 #
 #   native/build.sh [vulkan|hip|cuda|metal|cpu] [engine...]
 #
-# Engines: llama sd acestep yue2 (default: all). Output: build/native/<os>-<arch>-<backend>/.
+# Engines: llama tts sd acestep yue2 (default: all). Output: build/native/<os>-<arch>-<backend>/.
 # Env: JOBS, HIP_ARCH (default gfx1151), CMAKE_EXTRA (extra cmake args for every engine).
 set -euo pipefail
 
 BACKEND=${1:-vulkan}; shift || true
-ENGINES=${*:-llama sd acestep yue2}
+ENGINES=${*:-llama tts sd acestep yue2}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=$ROOT/engines-src
 OS=$(uname -s | tr A-Z a-z); ARCH=$(uname -m)
@@ -42,7 +42,9 @@ fetch() {  # fetch <dir-name>
 case $BACKEND in
     vulkan) GGML="-DGGML_VULKAN=ON"; SD="-DSD_VULKAN=ON"; LIBS="-lvulkan" ;;
     hip)    GGML="-DGGML_HIP=ON -DGPU_TARGETS=${HIP_ARCH:-gfx1151}"; SD="-DSD_HIPBLAS=ON -DGPU_TARGETS=${HIP_ARCH:-gfx1151}"
-            LIBS="-L${ROCM_PATH:-/opt/rocm}/lib -lhipblas -lrocblas -lamdhip64" ;;
+            # /opt/rocm from AMD's packages; Fedora's own ROCm lives in /usr (libraries in /usr/lib64).
+            ROCM_LIB=${ROCM_PATH:-/opt/rocm}/lib; [ -d "$ROCM_LIB" ] || ROCM_LIB=/usr/lib64
+            LIBS="-L$ROCM_LIB -lhipblas -lrocblas -lamdhip64" ;;
     cuda)   GGML="-DGGML_CUDA=ON"; SD="-DSD_CUDA=ON"; LIBS="-L${CUDA_PATH:-/usr/local/cuda}/lib64 -lcudart -lcublas -lcublasLt -lcuda" ;;
     metal)  GGML="-DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON"; SD="-DSD_METAL=ON"
             LIBS="-framework Metal -framework Foundation -framework MetalKit -framework Accelerate" ;;
@@ -73,15 +75,28 @@ cmake_build() {  # cmake_build <src> <build> <targets> <args...>
     cmake --build "$bld" -j "$JOBS" --target $targets > "$bld.build.log" 2>&1 || { tail -30 "$bld.build.log"; exit 1; }
 }
 
-build_llama() {
+build_llama() {  # text and vision: links libmtmd (images in, through an mmproj) the way build_tts does
     fetch llama.cpp
     local s=$SRC/llama.cpp b=$SRC/llama.cpp/build-$BACKEND
     mkdir -p "$b"
-    cmake_build "$s" "$b" "llama llama-common" $GGML -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF \
-        -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF
+    cmake_build "$s" "$b" "llama llama-common mtmd" $GGML -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF \
+        -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_MTMD=ON
     $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_llama.$EXT" "$ROOT/kiln-llama/native/kiln_llama.cpp" \
-        -I"$s/include" -I"$s/ggml/include" -I"$s/common" -I"$s/vendor" \
-        $(group "$(find "$b" -name libllama-common.a)" "$(find "$b" -name libllama-common-base.a)" \
+        -I"$s/include" -I"$s/ggml/include" -I"$s/common" -I"$s/vendor" -I"$s/tools/mtmd" \
+        $(group "$(find "$b" -name libmtmd.a)" "$(find "$b" -name libllama-common.a)" "$(find "$b" -name libllama-common-base.a)" \
+                $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(find "$b" -name libllama.a)") $(ggml_archives "$b") \
+        $PRIVATE $OMP $LIBS -lpthread
+}
+
+build_tts() {  # llama.cpp's text to speech (libmtmd's audio generation), in the same build tree as llama
+    fetch llama.cpp
+    local s=$SRC/llama.cpp b=$SRC/llama.cpp/build-$BACKEND
+    mkdir -p "$b"
+    cmake_build "$s" "$b" "llama llama-common mtmd" $GGML -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF \
+        -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_MTMD=ON
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_tts.$EXT" "$ROOT/kiln-tts/native/kiln_tts.cpp" \
+        -I"$s/include" -I"$s/ggml/include" -I"$s/common" -I"$s/vendor" -I"$s/tools/mtmd" \
+        $(group "$(find "$b" -name libmtmd.a)" "$(find "$b" -name libllama-common.a)" "$(find "$b" -name libllama-common-base.a)" \
                 $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(find "$b" -name libllama.a)") $(ggml_archives "$b") \
         $PRIVATE $OMP $LIBS -lpthread
 }

@@ -21,6 +21,16 @@ import java.util.List;
  *   <li>each directory in env {@code KILN_LIBRARY_PATH}</li>
  *   <li>the platform loader (LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, system dirs)</li>
  * </ol>
+ *
+ * <p>Before the first library loads, Kiln sets the engines' tunables that it gives a default to, as environment
+ * variables the engines read (an existing environment variable always wins):
+ * <ul>
+ *   <li>{@code kiln.gpu.graphs} (default {@code false}): ggml's CUDA/HIP graph capture. ROCm schedules a HIP graph
+ *   recursively, one stack frame per node, which overflows a JVM thread's stack on large models (LTX), so it is off.
+ *   Sets {@code GGML_CUDA_DISABLE_GRAPHS}.</li>
+ *   <li>{@code kiln.vulkan.maxNodesPerSubmit} (no default): graph nodes per Vulkan submission. Lower it (8) when long
+ *   submissions hit the GPU driver's timeout. Sets {@code GGML_VK_MAX_NODES_PER_SUBMIT}.</li>
+ * </ul>
  */
 public final class NativeLibrary {
     private static final Linker LINKER = Linker.nativeLinker();
@@ -34,6 +44,7 @@ public final class NativeLibrary {
     }
 
     public static NativeLibrary load(String name) {
+        Tunables.apply();
         String file = System.mapLibraryName(name);
         String exact = System.getProperty("kiln." + name + ".lib");
         if (exact != null) return new NativeLibrary(name, SymbolLookup.libraryLookup(Path.of(exact), Arena.global()));
@@ -49,6 +60,44 @@ public final class NativeLibrary {
         } catch (IllegalArgumentException e) {
             throw new UnsatisfiedLinkError("Kiln could not find " + file + " (searched " + dirs
                     + " and the platform loader). Set -Dkiln.library.path=<dir> or -Dkiln." + name + ".lib=<file>.");
+        }
+    }
+
+    /** Engine settings passed as environment variables, set once, before any engine reads them. */
+    static final class Tunables {
+        private static boolean applied;
+
+        static synchronized void apply() {
+            if (applied) return;
+            applied = true;
+            if (!Boolean.parseBoolean(System.getProperty("kiln.gpu.graphs", "false"))) setDefault("GGML_CUDA_DISABLE_GRAPHS", "1");
+            String nodes = System.getProperty("kiln.vulkan.maxNodesPerSubmit");
+            if (nodes != null) setDefault("GGML_VK_MAX_NODES_PER_SUBMIT", nodes);
+        }
+
+        /** setenv(name, value, 0): the process environment native code sees, unless it is already set. */
+        static void setDefault(String name, String value) {
+            if (System.getenv(name) != null) return;
+            try (Arena arena = Arena.ofConfined()) {
+                MethodHandle setenv = LINKER.downcallHandle(LINKER.defaultLookup().find("setenv").orElseThrow(),
+                        FunctionDescriptor.of(java.lang.foreign.ValueLayout.JAVA_INT, java.lang.foreign.ValueLayout.ADDRESS,
+                                java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.JAVA_INT));
+                int rc = (int) setenv.invokeExact(arena.allocateFrom(name), arena.allocateFrom(value), 0);
+                if (rc != 0) throw new IllegalStateException("setenv " + name + " failed");
+            } catch (Throwable t) {
+                throw new IllegalStateException("could not set " + name, t);
+            }
+        }
+
+        /** getenv(name) as native code sees it (System.getenv is a snapshot taken at JVM start). */
+        static String nativeEnv(String name) {
+            try (Arena arena = Arena.ofConfined()) {
+                MethodHandle getenv = LINKER.downcallHandle(LINKER.defaultLookup().find("getenv").orElseThrow(),
+                        FunctionDescriptor.of(java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.ADDRESS));
+                return string((MemorySegment) getenv.invokeExact(arena.allocateFrom(name)));
+            } catch (Throwable t) {
+                throw new IllegalStateException(t);
+            }
         }
     }
 

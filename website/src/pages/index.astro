@@ -1,0 +1,984 @@
+---
+/**
+ * The landing page: the splash, then what Kiln is, the code, the engines, what it measured, the all-in-one demo, Kiln
+ * Studio and its downloads, and how to build it. Every number here comes from the repository's README, from
+ * out/bench/results.md, or (the Studio's) from its screenshot.
+ */
+import '@fontsource/ubuntu/latin-400.css';
+import '@fontsource/ubuntu/latin-500.css';
+import '@fontsource/ubuntu/latin-700.css';
+import '@fontsource/noto-serif/latin-400-italic.css';
+import '@fontsource/jetbrains-mono/latin-400.css';
+import '@fontsource/jetbrains-mono/latin-500.css';
+import { Code } from 'astro:components';
+import { getImage, Image } from 'astro:assets';
+import splash from '../assets/splash.jpg';
+import lines from '../assets/lines-light.png';
+import logo from '../assets/logo.png';
+import studioDesktop from '../assets/studio-desktop.png';
+import { existsSync, readFileSync } from 'node:fs';
+import { STUDIO, studioRelease, studioRepoPublic, studioUrl } from '../lib/github';
+import Share from '../components/Share.astro';
+
+const REPO = 'https://github.com/liberation-data/kiln';
+
+// Kiln Studio's latest release and the installers it attached, for the download buttons in the Studio section. None
+// (the repository still private, no release yet, or GitHub out of reach): the section says they are on their way.
+const [studio, studioPublic] = await Promise.all([studioRelease(), studioRepoPublic()]);
+const DESCRIPTION = 'Call open-weight models (text, images, songs) as plain Java methods, running on your GPU, inside your JVM.';
+
+// The link preview: the splash as a 1200-wide JPEG, at an absolute URL on the site's domain.
+const preview = await getImage({ src: splash, format: 'jpeg', width: 1200, quality: 80 });
+const previewUrl = new URL(preview.src, Astro.site).href;
+const pageUrl = new URL('/', Astro.site).href;
+
+// The splash as AVIF, WebP and JPEG, smaller for phones; the large AVIF is preloaded, as it is the largest paint.
+const photo = async (width: number) => {
+    const [avif, webp, jpeg] = await Promise.all(
+        (['avif', 'webp', 'jpeg'] as const).map((format) => getImage({ src: splash, format, width, quality: format === 'avif' ? 55 : 72 }))
+    );
+    return { avif: avif.src, css: `image-set(url('${avif.src}') type('image/avif'), url('${webp.src}') type('image/webp'), url('${jpeg.src}') type('image/jpeg'))` };
+};
+const [photoLarge, photoSmall] = await Promise.all([photo(1920), photo(960)]);
+// The explainer, from scripts/video.sh. public/video/ is gitignored (the video isn't cleared to publish yet), so the
+// section and the hero's pill to it show only where the video has been made. Its HLS segments, end frame and captions
+// are each used where they are there. Its length is the playlist's (the sum of its segments), so it follows the video
+// when it is cut again; without one, it is what video.sh last printed.
+const hasExplainer = existsSync('public/video/explainer.mp4');
+const PLAYLIST = 'public/video/hls/index.m3u8';
+const seconds = existsSync(PLAYLIST)
+    ? Math.round([...readFileSync(PLAYLIST, 'utf8').matchAll(/#EXTINF:([\d.]+)/g)].reduce((sum, [, it]) => sum + Number(it), 0))
+    : 128;
+const VIDEO = {
+    title: 'Kiln in two minutes',
+    length: `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`,
+    spoken: `${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds`,
+    hls: existsSync(PLAYLIST) ? '/video/hls/index.m3u8' : undefined,
+    end: existsSync('public/video/explainer-end.jpg') ? '/video/explainer-end.jpg' : undefined,
+    captions: existsSync('public/video/explainer.vtt') ? '/video/explainer.vtt' : undefined,
+    share: 'https://kiln4j.org/#video',
+    shareText: 'Kiln: open generative models inside your JVM.',
+};
+const photoVars = `--photo: ${photoLarge.css}; --photo-small: ${photoSmall.css}; --lines: url('${lines.src}');`;
+const logoSmall = await getImage({ src: logo, width: 144, format: 'png' });
+
+
+const samples = {
+    text: `// The weights load onto the GPU once, and stay there until close()
+try (var llm = new LlamaModel("Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {
+    // Tokens stream to your callback as they are produced
+    llm.chat(List.of(Message.user("Name a country song about a robot.")),
+             Options.DEFAULT, System.out::print);
+}`,
+    tools: `// OpenAI-style messages and tools in, an OpenAI-style message out
+String res = llm.chatJson("""
+    {"messages": [{"role": "user",
+                   "content": "What's the weather in Nashville right now?"}],
+     "tools": [{"type": "function", "function": {
+         "name": "get_weather", "description": "Current weather for a city",
+         "parameters": {"type": "object",
+                        "properties": {"city": {"type": "string"}},
+                        "required": ["city"]}}}],
+     "temperature": 0, "max_tokens": 128, "seed": 1}""",
+    null);   // or a callback, to stream
+
+// res has content, reasoning_content and tool_calls:
+// here, finish_reason "tool_calls" and get_weather for Nashville`,
+    songs: `try (var songs = new AceStepModel(lm, textEncoder, dit, vae, true)) {
+    songs.generate(requestJson).audio().writeWav(new File("song.wav"));
+}`,
+    images: `try (var images = new DiffusionModel(DiffusionModel.Config.builder()
+        .diffusionModel(flux).vae(vae).llm(textEncoder).build())) {
+    BufferedImage img = images.generate(
+        new DiffusionModel.Request("a neon sign", 1024, 1024, 20, 4.0, 7)).get(0);
+}`
+};
+
+const build = `native/build.sh vulkan     # or hip | cuda | metal | cpu; optionally list engines: llama sd acestep yue2
+./gradlew build`;
+
+const download = `hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Embedding-0.6B-Q8_0.gguf \\
+    acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
+hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors
+hf download Comfy-Org/flux2-dev split_files/vae/flux2-vae.safetensors
+hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetensors`;
+
+const examples = `./gradlew single    # an LLM writes a song, ACE-Step sings it, FLUX.2 klein paints the cover
+./gradlew chat --args='"Write a haiku about a kiln"'
+./gradlew song --args='song.wav'                         # -Pdit=xl-turbo for the larger model
+./gradlew yue2 --args='yue2-song.wav'
+./gradlew image --args='klein out.png "a neon sign that says KILN"' -Psteps=12 -Pwidth=768 -Pheight=768`;
+
+const run = `java -Dkiln.library.path=build/native/linux-x86_64-vulkan \\
+     --enable-native-access=ALL-UNNAMED -jar your-app.jar`;
+
+const installs = ['native/build.sh vulkan', './gradlew build', './gradlew single'];
+const theme = 'vitesse-dark';
+---
+
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>kiln4j: open models, in your JVM</title>
+        <meta name="description" content={DESCRIPTION} />
+        <meta name="theme-color" content="#1a0e08" />
+        <link rel="icon" href="/favicon.ico" sizes="32x32" />
+        <link rel="icon" type="image/png" href="/favicon-64.png" sizes="64x64" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta property="og:title" content="kiln4j: open models, in your JVM" />
+        <meta property="og:description" content={DESCRIPTION} />
+        <meta property="og:url" content={pageUrl} />
+        <meta property="og:type" content="website" />
+        <meta property="og:image" content={previewUrl} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <link rel="canonical" href={pageUrl} />
+        <link rel="preload" as="image" href={photoLarge.avif} type="image/avif" media="(min-width: 801px)" />
+        <link rel="preload" as="image" href={photoSmall.avif} type="image/avif" media="(max-width: 800px)" />
+        <style is:global>
+            :root {
+                --abyss: #170d08;
+                --char: #22140d;
+                --ink: #2a1a12;
+                --muted: #6a5146;
+                --paper: #fbf7f2;
+                --card: #ffffff;
+                --line: #ecdfd3;
+                --tint: #f6ebe0;
+                --ember: #b4410f;
+                --accent: #f39a3d;
+                --glow: #ffcf7a;
+            }
+            * { box-sizing: border-box; }
+            html { scroll-behavior: smooth; }
+            body { margin: 0; font-family: Ubuntu, 'Segoe UI', sans-serif; color: var(--ink); background: var(--paper); -webkit-text-size-adjust: 100%; }
+            a { color: var(--ember); }
+            a:hover { color: #8a300a; }
+            code, pre { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-ligatures: none; }
+            :not(pre) > code { font-size: 0.9em; padding: 1px 5px; border-radius: 5px; background: var(--tint); }
+            .wrap { max-width: 1200px; margin: 0 auto; }
+            .eyebrow { margin: 0; font-weight: 700; font-size: 14px; letter-spacing: 0.22em; color: var(--ember); text-transform: uppercase; }
+            h2 { margin: 0; font-weight: 700; font-size: clamp(30px, 3.4vw, 44px); line-height: 1.15; }
+            section { scroll-margin-top: 16px; }
+
+            /* Firelight: the splash photo, darkened, under a faint line texture. */
+            .fire { position: relative; overflow: hidden; color: #fff; background: var(--abyss); }
+            .fire::before, .fire::after { content: ''; position: absolute; inset: 0; }
+            .fire::before { background: linear-gradient(rgba(23, 10, 4, 0.42), rgba(23, 10, 4, 0.62)), var(--photo) center 45% / cover; }
+            .fire::after { background: var(--lines); opacity: 0.3; }
+            .fire > * { position: relative; z-index: 1; }
+            @media (max-width: 800px) { .fire::before { background-image: linear-gradient(rgba(23, 10, 4, 0.5), rgba(23, 10, 4, 0.68)), var(--photo-small); } }
+
+            .hero { min-height: 760px; display: flex; flex-direction: column; }
+            .nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; width: 100%; padding: 24px 32px; }
+            .nav a { color: #f6e9dc; text-decoration: none; }
+            .nav a:hover { color: #fff; text-decoration: underline; }
+            .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: 0.03em; font-size: 20px; }
+            .brand .j, .splash h1 .j { color: var(--accent); }
+            .nav-links { display: flex; flex-wrap: wrap; align-items: center; gap: 28px; font-size: 16px; }
+            @media (max-width: 760px) { .nav { padding: 20px 16px; } .nav-links { gap: 18px; font-size: 15px; } .nav-links .wide { display: none; } }
+
+            .splash { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px 16px 96px; }
+            .emblem { width: 132px; height: 132px; border: 3px solid #fff; border-radius: 50%; display: grid; place-items: center; background: rgba(20, 8, 3, 0.35); }
+            .emblem > div { width: 112px; height: 112px; border: 2px dotted rgba(255, 255, 255, 0.85); border-radius: 50%; display: grid; place-items: center; }
+            .emblem img { width: 66px; height: 66px; filter: drop-shadow(0 0 14px rgba(255, 150, 40, 0.55)); }
+            .rule { height: 2px; background: rgba(255, 255, 255, 0.9); }
+            .splash h1 { margin: 14px 0 10px; font-weight: 700; font-size: clamp(64px, 10vw, 128px); line-height: 1; letter-spacing: 0.02em; text-shadow: 0 2px 22px rgba(60, 20, 0, 0.6); }
+            .subtitle { margin: 22px 0 10px; font-weight: 500; font-size: clamp(19px, 2.5vw, 32px); letter-spacing: 0.06em; text-transform: uppercase; text-shadow: 0 2px 12px rgba(40, 10, 0, 0.6); }
+            .tagline { margin: 0; max-width: 880px; font-family: 'Noto Serif', Georgia, serif; font-style: italic; font-size: clamp(18px, 2vw, 25px); line-height: 1.4; color: #fbeee2; text-shadow: 0 1px 10px rgba(40, 10, 0, 0.6); }
+            .tagline em { font-style: italic; color: var(--glow); }
+            .pill { display: inline-flex; align-items: center; gap: 10px; margin-top: 28px; padding: 6px 16px 6px 6px; border-radius: 999px; background: rgba(20, 8, 3, 0.55); border: 1px solid rgba(255, 255, 255, 0.22); color: #fff; font-size: 16px; font-weight: 500; text-decoration: none; }
+            .pill:hover { color: #fff; background: rgba(20, 8, 3, 0.75); }
+            .pill .new { padding: 4px 10px; border-radius: 999px; background: var(--accent); color: var(--abyss); font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+            .installs { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 28px; font-size: 14px; }
+            .copy { position: relative; display: inline-flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.28); background: rgba(20, 8, 3, 0.6); color: #fff; font: inherit; cursor: pointer; }
+            .copy:hover { border-color: var(--accent); }
+            .copy code { font-size: 14px; padding: 0; background: none; color: #fff; }
+            .copy.done::after { content: 'Copied'; position: absolute; inset: 0; display: grid; place-items: center; border-radius: 7px; background: var(--accent); color: var(--abyss); font-weight: 700; }
+            .status { margin: 18px 0 0; font-size: 14px; color: #f0dccb; text-shadow: 0 1px 8px rgba(40, 10, 0, 0.6); }
+            .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+            .intro { padding: 96px 32px 40px; text-align: center; }
+            .intro .wrap { max-width: 860px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+            .intro p.accent { margin: -6px 0 0; font-family: 'Noto Serif', Georgia, serif; font-style: italic; font-size: 22px; line-height: 1.4; color: var(--ember); }
+            .intro p:not(.eyebrow, .accent) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
+            .backing { padding: 24px 32px 88px; }
+            .explainer { padding: 0 32px 88px; scroll-margin-top: 24px; }
+            .explainer .wrap { max-width: 960px; display: flex; flex-direction: column; gap: 18px; }
+            .explainer .player { position: relative; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: var(--abyss); box-shadow: 0 18px 40px rgba(42, 20, 8, 0.18); }
+            .explainer .player img, .explainer .player video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; object-fit: cover; }
+            /* Letterboxed, not cropped, in fullscreen on a screen that isn't 16:9: the player itself is 16:9. */
+            .explainer .player video { object-fit: contain; }
+            .explainer .play { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: flex-start; padding: 24px; border: 0; cursor: pointer; background: transparent; }
+            .explainer .play > span { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 22px 0 16px; border-radius: 999px; background: var(--accent); color: var(--abyss); font: 700 17px Ubuntu, sans-serif; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35); transition: transform 0.15s ease; }
+            .explainer .play:hover > span, .explainer .play:focus-visible > span { transform: scale(1.05); }
+            .explainer .play:focus-visible { outline: 3px solid #fff; outline-offset: -6px; }
+            /* Loading, while the video comes in under the poster. */
+            .explainer .play[aria-disabled='true'] { cursor: progress; }
+            .explainer .play[aria-disabled='true'] > span { transform: none; }
+            /* At the end, over the logo the video holds: Watch again low on the left, clear of the controls once they
+               show; Share in the top corner, clear of the logo. */
+            .explainer .play.again { inset: auto auto 0 0; }
+            .explainer .player .ending-share { position: absolute; top: 16px; right: 16px; }
+            .explainer .player .unplayable { position: absolute; left: 24px; bottom: 24px; margin: 0; padding: 12px 18px; border-radius: 14px; max-width: calc(100% - 48px); background: rgba(23, 13, 8, 0.85); color: #fff; font: 500 17px/1.5 Ubuntu, sans-serif; }
+            .explainer .watch-share { display: flex; justify-content: center; }
+            .explainer p { margin: 0; text-align: center; font-size: 16px; color: var(--muted); }
+            .pill svg { flex: none; }
+            .backing p { text-align: center; color: var(--ink); background: var(--tint); border-radius: 14px; max-width: 880px; margin: 0 auto; padding: 26px 32px; font-size: 19px; line-height: 1.6; }
+            .why { padding: 0 32px 96px; }
+            .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 28px; }
+            .card { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 36px; display: flex; flex-direction: column; gap: 14px; }
+            .card .eyebrow { letter-spacing: 0.14em; font-size: 13px; }
+            .card h3 { margin: 0; font-size: 26px; font-weight: 700; }
+            .card p { margin: 0; font-size: 17px; line-height: 1.6; color: var(--muted); }
+
+            .dark { background: var(--abyss); color: #f2e4d8; padding: 96px 32px; }
+            .dark .eyebrow { color: var(--accent); }
+            .dark h2 { color: #fff; }
+            .dark a { color: var(--glow); }
+            .split { display: flex; flex-wrap: wrap; gap: 56px; align-items: flex-start; }
+            .split .text { flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+            .split .text > p:not(.eyebrow) { margin: 0; font-size: 18px; line-height: 1.65; color: #d9c4b4; }
+            .dashes { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; font-size: 17px; line-height: 1.5; }
+            .dashes li { display: flex; gap: 12px; }
+            .dashes li::before { content: '—'; color: var(--accent); font-weight: 700; }
+            .dark .dashes { color: #ecdccf; }
+            .dark :not(pre) > code { background: rgba(255, 255, 255, 0.09); color: #fff; }
+            .panel { flex: 1.4 1 540px; min-width: 0; background: #120a06; border: 1px solid #3a2519; border-radius: 16px; overflow: hidden; }
+            .tabs { display: flex; gap: 4px; padding: 10px 12px; border-bottom: 1px solid #3a2519; background: #1d110a; }
+            .tabs button { padding: 8px 14px; border: 0; border-radius: 8px; background: transparent; color: #cdb6a5; font: 500 15px Ubuntu, sans-serif; cursor: pointer; }
+            .tabs button[aria-pressed='true'] { background: #3a2519; color: #fff; }
+            .panel pre.astro-code { margin: 0; padding: 22px 24px; font-size: 14px; line-height: 1.65; overflow-x: auto; background: transparent !important; }
+            .panel .note { margin: 0; padding: 12px 24px 16px; font-size: 14px; color: #b39c8c; border-top: 1px solid #2a1a10; }
+
+            .engines { padding: 96px 32px; }
+            .engines header { max-width: 820px; display: flex; flex-direction: column; gap: 16px; margin-bottom: 40px; }
+            .engines header p:not(.eyebrow) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
+            .engines .row { grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); gap: 24px; }
+            .engines .card { padding: 30px 26px; }
+            .engine h3 { font-family: 'JetBrains Mono', monospace; font-size: 22px; }
+            .engine .via { font-size: 15px; color: var(--muted); }
+            .engine .models { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px; }
+            .engine .models li { padding: 4px 10px; border-radius: 999px; background: var(--tint); color: #5a3420; font-size: 14px; font-weight: 500; }
+            .callout { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; text-align: center; margin-top: 28px; padding: 22px 28px; border-radius: 14px; background: var(--tint); color: #4a2a18; font-size: 17px; line-height: 1.5; }
+
+            .results { padding: 96px 32px; background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+            .results .text > p:not(.eyebrow) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
+            .results .split .text { gap: 18px; }
+            table { width: 100%; border-collapse: collapse; font-size: 16px; }
+            th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+            th { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+            td.num { font-weight: 700; white-space: nowrap; }
+            .table-card { flex: 1.3 1 520px; min-width: 0; overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; padding: 8px 12px 12px; background: var(--paper); }
+            .table-card caption { caption-side: bottom; text-align: left; padding: 12px 14px 4px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+            .vs { margin-top: 56px; display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start; }
+            .vs .text { flex: 1 1 320px; display: flex; flex-direction: column; gap: 14px; }
+            .vs h3 { margin: 0; font-size: 26px; }
+            .vs p.eyebrow { color: var(--ember); font-size: 14px; font-weight: 700; }
+            .vs p { margin: 0; font-size: 17px; line-height: 1.6; color: var(--muted); }
+            .bars { flex: 1.3 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+            .bar-group h4 { margin: 0 0 8px; font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+            .bar { display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 12px; margin-bottom: 6px; font-size: 15px; }
+            .bar .track { position: relative; height: 30px; }
+            .bar .fill { height: 100%; border-radius: 6px; display: flex; align-items: center; justify-content: flex-end; padding-right: 10px; font-weight: 700; font-size: 14px; min-width: 64px; }
+            .bar .fill.kiln { background: linear-gradient(90deg, #f6b25a, var(--accent)); color: var(--abyss); }
+            .bar .fill.other { background: #e2d5c9; color: var(--ink); }
+            .backends { display: flex; flex-wrap: wrap; gap: 10px; }
+            .backends span { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); font-size: 15px; font-weight: 500; }
+            .backends .ok { border-color: #e8a26a; background: #fff1e3; }
+            .backends small { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+            .backends .ok small { color: var(--ember); }
+
+            .steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 16px; }
+            .steps li { counter-increment: step; display: grid; grid-template-columns: 40px 1fr; gap: 14px; align-items: start; font-size: 17px; line-height: 1.5; color: #ecdccf; }
+            .steps li::before { content: counter(step); width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--abyss); font-weight: 700; }
+            .steps strong { color: #fff; }
+            .cmd { display: inline-block; padding: 12px 16px; border-radius: 10px; background: #120a06; border: 1px solid #3a2519; color: #fff; font-size: 15px; }
+            .cmd::before { content: '$ '; color: var(--accent); }
+
+            .how { padding: 96px 32px; }
+            .how header { max-width: 820px; display: flex; flex-direction: column; gap: 16px; margin-bottom: 40px; }
+            .how header p:not(.eyebrow) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
+            .feature { display: flex; flex-direction: column; gap: 12px; }
+            .feature::before { content: ''; width: 32px; height: 4px; border-radius: 2px; background: var(--accent); }
+            .feature h3 { margin: 0; font-size: 21px; font-weight: 700; }
+            .feature p { margin: 0; font-size: 16px; line-height: 1.6; color: var(--muted); }
+            .how .row { gap: 40px 48px; }
+
+            .studio { padding: 96px 32px; }
+            .studio .wrap { display: flex; flex-direction: column; gap: 36px; }
+            .studio header { max-width: 820px; display: flex; flex-direction: column; gap: 16px; }
+            .studio header p:not(.eyebrow) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
+            .studio figure { margin: 0; display: flex; flex-direction: column; gap: 12px; }
+            .studio img { width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 18px 40px rgba(42, 20, 8, 0.14); }
+            .studio figcaption { font-size: 15px; line-height: 1.5; color: var(--muted); }
+            .studio .note { margin: 0; font-size: 16px; line-height: 1.6; color: var(--muted); }
+            .get-studio { display: flex; flex-direction: column; gap: 22px; }
+            .get-studio-head { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+            .get-studio-head strong { font-size: 20px; color: var(--ink); }
+            .get-studio-sub { font-size: 15px; line-height: 1.55; color: var(--muted); }
+            .downloads { display: flex; flex-wrap: wrap; gap: 28px 56px; }
+            .platform { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+            .platform h3 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ember); }
+            .platform .arch { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); }
+            .dl-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+            .dl-button {
+                display: inline-flex; align-items: baseline; gap: 8px; padding: 11px 18px; border-radius: 10px;
+                border: 1.5px solid var(--line); background: #fff; color: var(--ink);
+                font-weight: 700; font-size: 16px; text-decoration: none; white-space: nowrap;
+            }
+            .dl-button:hover { border-color: var(--ember); color: var(--ink); }
+            .dl-button.primary { background: var(--accent); border-color: var(--accent); color: var(--abyss); }
+            .dl-button.primary:hover { border-color: var(--accent); color: var(--abyss); filter: brightness(1.07); }
+            .dl-meta { font-weight: 500; font-size: 13px; color: var(--muted); }
+            .dl-button.primary .dl-meta { color: #5a2a0e; }
+            .install-hint { margin: 0; max-width: 560px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+            .install-hint code { overflow-wrap: anywhere; }
+
+            .start-section { padding: 96px 32px; background: #fff; border-top: 1px solid var(--line); }
+            .start-section header { max-width: 820px; display: flex; flex-direction: column; gap: 16px; margin-bottom: 40px; }
+            .start-section header p:not(.eyebrow) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
+            .stepper { display: flex; flex-direction: column; gap: 36px; }
+            .stepper > div { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 32px; }
+            @media (max-width: 860px) { .stepper > div { grid-template-columns: minmax(0, 1fr); gap: 14px; } }
+            .stepper h3 { margin: 0 0 8px; font-size: 21px; }
+            .stepper p { margin: 0; font-size: 16px; line-height: 1.6; color: var(--muted); }
+            .shell { align-self: start; min-width: 0; border-radius: 12px; overflow: hidden; border: 1px solid #3a2519; background: #120a06; }
+            .shell pre.astro-code { margin: 0; padding: 16px 18px; font-size: 13.5px; line-height: 1.65; overflow-x: auto; background: transparent !important; }
+
+            .roadmap { padding: 0 32px 96px; background: #fff; }
+            .roadmap .wrap { border-top: 1px solid var(--line); padding-top: 56px; display: flex; flex-wrap: wrap; gap: 40px; }
+            .roadmap .text { flex: 1 1 280px; display: flex; flex-direction: column; gap: 14px; }
+            .roadmap ul { flex: 2 1 480px; margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 12px 32px; font-size: 16px; line-height: 1.5; color: var(--muted); }
+            .roadmap li { display: flex; gap: 10px; }
+            .roadmap li::before { content: '—'; color: var(--accent); font-weight: 700; }
+
+            .cta { padding: 110px 16px; text-align: center; }
+            .cta .wrap { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+            .cta h2 { font-size: clamp(32px, 4vw, 52px); text-shadow: 0 2px 18px rgba(40, 10, 0, 0.6); }
+            .cta p { margin: 0; font-size: 18px; color: #f6e5d6; max-width: 620px; line-height: 1.6; text-shadow: 0 1px 10px rgba(40, 10, 0, 0.6); }
+            .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; margin-top: 10px; }
+            .button { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 26px; border-radius: 10px; font-weight: 700; font-size: 17px; text-decoration: none; }
+            .button.primary { background: var(--accent); color: var(--abyss); }
+            .button.primary:hover { color: var(--abyss); filter: brightness(1.07); }
+            .button.ghost { border: 2px solid #fff; color: #fff; }
+            .button.ghost:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
+
+            footer { background: var(--abyss); color: #cdb6a5; padding: 56px 32px; }
+            footer .wrap { display: flex; flex-wrap: wrap; gap: 32px 56px; justify-content: space-between; align-items: flex-start; }
+            footer .about { flex: 1 1 360px; display: flex; gap: 16px; align-items: flex-start; font-size: 15px; line-height: 1.6; }
+            footer .about p { margin: 0; }
+            footer nav { display: flex; flex-wrap: wrap; gap: 20px 48px; font-size: 15px; }
+            footer nav div { display: flex; flex-direction: column; gap: 8px; }
+            footer nav span { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #8e7464; }
+            footer a { color: #f2e4d8; text-decoration: none; }
+            footer a:hover { color: #fff; text-decoration: underline; }
+
+            @media (max-width: 600px) {
+                .intro, .backing, .explainer, .why, .dark, .engines, .results, .studio, .how, .start-section, .roadmap, footer { padding-left: 16px; padding-right: 16px; }
+                .intro { padding-top: 64px; }
+                .dark, .engines, .results, .studio, .how, .start-section { padding-top: 64px; padding-bottom: 64px; }
+                .card { padding: 26px 22px; }
+                .panel, .table-card, .bars { flex-basis: 100%; }
+                .split { gap: 36px; }
+                .hero { min-height: 680px; }
+                .copy code { font-size: 13px; }
+                .table-card thead { display: none; }
+                .table-card tr { display: flex; flex-direction: column; gap: 4px; padding: 12px 6px; border-bottom: 1px solid var(--line); }
+                .table-card td { padding: 0; border: 0; }
+                .table-card td.num { white-space: normal; color: var(--ember); }
+                .explainer { padding-bottom: 64px; }
+                .explainer .play { padding: 10px; }
+                .explainer .play > span { min-height: 36px; padding: 0 14px 0 10px; gap: 6px; font-size: 13px; }
+                .explainer .play svg { width: 16px; height: 16px; }
+                /* On a phone the logo fills the frame, and the row under the video is in sight anyway; Watch again, small,
+                   goes up to the free corner, off the logo's name. */
+                .explainer .player .ending-share { display: none; }
+                .explainer .play.again { inset: 0 auto auto 0; align-items: flex-start; }
+                .explainer .play.again > span { min-height: 30px; font-size: 12px; }
+                .explainer .player .unplayable { left: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 5px 10px; border-radius: 10px; font-size: 13px; }
+            }
+        </style>
+    </head>
+    <body style={photoVars}>
+        <header class="fire hero">
+            <nav class="nav wrap" aria-label="Main">
+                <a href="/" class="brand"><img src={logoSmall.src} alt="" width="34" height="34" /><span>kiln<span class="j">4j</span></span></a>
+                <div class="nav-links">
+                    <a href="#code" class="wide">Code</a>
+                    <a href="#engines">Models</a>
+                    <a href="#results">Results</a>
+                    <a href="#studio">Studio</a>
+                    <a href="#start">Get started</a>
+                    <a href={REPO}>GitHub</a>
+                </div>
+            </nav>
+            <div class="splash">
+                <div class="emblem"><div><img src={logoSmall.src} alt="The Kiln logo: a flame in a kiln's arched door" width="66" height="66" /></div></div>
+                <div class="rule" style="width: min(620px, 80%); margin-top: 32px" aria-hidden="true"></div>
+                <h1>kiln<span class="j">4j</span></h1>
+                <div class="rule" style="width: min(820px, 94%)" aria-hidden="true"></div>
+                <p class="subtitle">Open generative models for the JVM</p>
+                <p class="tagline">Call models as plain Java methods, <em>on your GPU, inside your JVM</em>.</p>
+                {hasExplainer ? (
+                    <a href="#video" class="pill video-tip" aria-label={`Watch · ${VIDEO.length}: ${VIDEO.title} (${VIDEO.spoken})`}>
+                        <span class="new">New</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>
+                        <span>Watch · {VIDEO.length}: {VIDEO.title}</span>
+                    </a>
+                ) : (
+                    <a href="#studio" class="pill"><span class="new">New</span><span>Kiln Studio: try the models without writing code</span></a>
+                )}
+                <div class="installs">
+                    {installs.map((line) => (
+                        <button type="button" class="copy" data-copy={line} aria-label={`Copy ${line}`}>
+                            <code>{line}</code>
+                            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9z" fill="currentColor" /></svg>
+                        </button>
+                    ))}
+                    <span class="sr" role="status"></span>
+                </div>
+                <p class="status">Early · Apache 2.0 · a Liberation Data project</p>
+            </div>
+        </header>
+
+        <main>
+            <section class="intro">
+                <div class="wrap">
+                    <p class="eyebrow">Zero overhead</p>
+                    <h2>Native inference. No middleman.</h2>
+                    <p class="accent">Straight from the JVM to the GPU.</p>
+                    <p>
+                        Kiln runs open-weight models for text, images and songs in-process, through Java’s Foreign Function &amp;
+                        Memory API. A model is an object, a generation is a method call, and the weights stay on your GPU between
+                        calls. There is no Python, no model server, no HTTP, no JSON round trip and no second process.
+                    </p>
+                </div>
+            </section>
+
+            {hasExplainer && (
+                <section class="explainer" id="video">
+                    <div class="wrap">
+                        <div class="player" data-video="/video/explainer.mp4" data-hls={VIDEO.hls} data-captions={VIDEO.captions} data-title={VIDEO.title}>
+                            <img src="/video/explainer-poster.jpg" alt="" width="1920" height="1080" decoding="async" />
+                            <button type="button" class="play" aria-label={`Watch · ${VIDEO.length}, the video: ${VIDEO.title} (${VIDEO.spoken})`}>
+                                <span><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>Watch · {VIDEO.length}</span>
+                            </button>
+                        </div>
+                        {/* The logo the video ends on, put over it when it ends: a video that has ended shows its last
+                            frame, which here is the fade to black. */}
+                        {VIDEO.end && <template id="video-end"><img src={VIDEO.end} alt="" width="1920" height="1080" decoding="async" /></template>}
+                        <p>{VIDEO.title}: open generative models inside your JVM.{VIDEO.captions && ' With captions.'}</p>
+                        <div class="watch-share"><Share label="Share the video" url={VIDEO.share} text={VIDEO.shareText} /></div>
+                        {/* The same, for the ending: moved into the player when the video ends, beside Watch again. */}
+                        <div hidden><Share tone="dark" label="Share" url={VIDEO.share} text={VIDEO.shareText} class="ending-share" /></div>
+                    </div>
+                </section>
+            )}
+
+            <section class="why">
+                <div class="wrap row">
+                    <article class="card">
+                        <p class="eyebrow">Same engines</p>
+                        <h3>The native runners themselves</h3>
+                        <p>Kiln calls llama.cpp, stable-diffusion.cpp, acestep.cpp and yue2.cpp directly: the same C/C++ engines the CLIs and servers use, so you get their speed and their model support.</p>
+                    </article>
+                    <article class="card">
+                        <p class="eyebrow">Vulkan today</p>
+                        <h3>On the GPU</h3>
+                        <p>Vulkan on AMD, Intel and NVIDIA. The same build script knows ROCm, CUDA and Metal, and your Java code doesn’t change when you switch.</p>
+                    </article>
+                    <article class="card">
+                        <p class="eyebrow">One process</p>
+                        <h3>Nothing in between</h3>
+                        <p>A Kiln call is a native function call. Weights stay resident between calls, and tokens stream back to a Java callback as they are produced.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="dark" id="code">
+                <div class="wrap split">
+                    <div class="text">
+                        <p class="eyebrow">Plain Java</p>
+                        <h2>Models are objects. Generating is a method call.</h2>
+                        <p>Open a model in a try-with-resources block, call it as often as you like, and close it to give the memory back.</p>
+                        <ul class="dashes">
+                            <li><span>Every model class is <code>AutoCloseable</code>: weights are freed on <code>close()</code>.</span></li>
+                            <li><span>Text streams token by token to any callback, such as <code>System.out::print</code>.</span></li>
+                            <li><span>Tool calling with <code>chatJson</code>: OpenAI-style messages and tools in, <code>tool_calls</code> out.</span></li>
+                            <li><span>Audio comes back as PCM; images as a <code>BufferedImage</code>.</span></li>
+                            <li><span>Java 22+, built and tested on 25. Instances aren’t thread-safe.</span></li>
+                        </ul>
+                    </div>
+                    <div class="panel">
+                        <div class="tabs" role="group" aria-label="Example">
+                            <button type="button" aria-pressed="true" data-tab="text">Text</button>
+                            <button type="button" aria-pressed="false" data-tab="tools">Tools</button>
+                            <button type="button" aria-pressed="false" data-tab="songs">Songs</button>
+                            <button type="button" aria-pressed="false" data-tab="images">Images</button>
+                        </div>
+                        <div data-pane="text"><Code code={samples.text} lang="java" theme={theme} /></div>
+                        <div data-pane="tools" hidden><Code code={samples.tools} lang="java" theme={theme} /></div>
+                        <div data-pane="songs" hidden><Code code={samples.songs} lang="java" theme={theme} /></div>
+                        <div data-pane="images" hidden><Code code={samples.images} lang="java" theme={theme} /></div>
+                        <p class="note">Kiln doesn’t download anything: <code>HfCache</code> finds weights in your Hugging Face cache, or pass file paths.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="engines" id="engines">
+                <div class="wrap">
+                    <header>
+                        <p class="eyebrow">Engines and models</p>
+                        <h2>Four engines, one module each.</h2>
+                        <p>Each module binds one engine. Use one, or put several in the same JVM.</p>
+                    </header>
+                    <div class="row">
+                        <article class="card engine">
+                            <p class="eyebrow">Text</p>
+                            <h3>kiln-llama</h3>
+                            <p class="via">on <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a></p>
+                            <p>Any GGUF language model.</p>
+                            <ul class="models"><li>Qwen</li><li>Llama</li><li>Gemma</li><li>Mistral</li><li>…</li></ul>
+                        </article>
+                        <article class="card engine">
+                            <p class="eyebrow">Images</p>
+                            <h3>kiln-sd</h3>
+                            <p class="via">on <a href="https://github.com/leejet/stable-diffusion.cpp">stable-diffusion.cpp</a></p>
+                            <p>Diffusion models, including image editing.</p>
+                            <ul class="models"><li>FLUX.1</li><li>FLUX.2</li><li>Qwen-Image</li><li>Qwen-Image-Edit</li><li>SD 1.x/2.x/XL/3</li><li>Wan</li><li>LTX</li></ul>
+                        </article>
+                        <article class="card engine">
+                            <p class="eyebrow">Songs</p>
+                            <h3>kiln-acestep</h3>
+                            <p class="via">on <a href="https://github.com/ServeurpersoCom/acestep.cpp">acestep.cpp</a></p>
+                            <p>Songs with vocals and lyrics, up to several minutes long.</p>
+                            <ul class="models"><li>ACE-Step 1.5</li></ul>
+                        </article>
+                        <article class="card engine">
+                            <p class="eyebrow">Songs</p>
+                            <h3>kiln-yue2</h3>
+                            <p class="via">on <a href="https://github.com/ServeurpersoCom/yue2.cpp">yue2.cpp</a></p>
+                            <p>Songs, from the engine’s own JSON request.</p>
+                            <ul class="models"><li>YuE2</li></ul>
+                        </article>
+                    </div>
+                    <p class="callout">Check each model’s license before you use what it makes. Some are non-commercial: YuE2’s weights are CC BY-NC 4.0, for example.</p>
+                </div>
+            </section>
+
+            <section class="results" id="results">
+                <div class="wrap">
+                    <div class="split">
+                        <div class="text">
+                            <p class="eyebrow">Measured</p>
+                            <h2>What it does on one machine today.</h2>
+                            <p>
+                                Everything here ran from Java on Linux, on an AMD Radeon 8060S (Ryzen AI Max+ 395 “Strix Halo”, 128 GB
+                                unified memory) with the Vulkan backend.
+                            </p>
+                            <p>Backends:</p>
+                            <div class="backends">
+                                <span class="ok">Vulkan <small>tested</small></span>
+                                <span>ROCm (HIP) <small>untested</small></span>
+                                <span>CUDA <small>untested</small></span>
+                                <span>Metal <small>untested</small></span>
+                            </div>
+                            <p style="font-size: 16px">
+                                The build script knows the ROCm, CUDA and Metal backends of the underlying engines, but those Kiln builds
+                                haven’t been tested yet. Reports and fixes welcome.
+                            </p>
+                        </div>
+                        <div class="table-card">
+                            <table>
+                                <thead><tr><th scope="col">Model</th><th scope="col">Result</th></tr></thead>
+                                <tbody>
+                                    <tr><td>Qwen3 4B Instruct (Q4_K_M)</td><td class="num">~60 tokens/s</td></tr>
+                                    <tr><td>ACE-Step 1.5 XL turbo</td><td class="num">3 min 20 s song in 57 s</td></tr>
+                                    <tr><td>ACE-Step 1.5 turbo</td><td class="num">60 s song in ~15 s</td></tr>
+                                    <tr><td>YuE2 3B (Q8_0)</td><td class="num">60 s song in ~60 s</td></tr>
+                                    <tr><td>FLUX.2 [klein] base 4B (fp8)</td><td class="num">768×768, 12 steps in ~130 s</td></tr>
+                                    <tr><td>Qwen-Image 2512 (fp8)</td><td class="num">1024×1024, 20 steps in ~13 min</td></tr>
+                                </tbody>
+                                <caption>Qwen3’s tokens are streamed through a Java callback. One Strix Halo laptop, Vulkan.</caption>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="vs">
+                        <div class="text">
+                            <p class="eyebrow">Against ComfyUI</p>
+                            <h3>The same song job, side by side.</h3>
+                            <p>
+                                ACE-Step 1.5 turbo with its 4B LM, writing a 60 s song, on the same machine. Cold is the first run with
+                                nothing loaded, weights included. Warm is the second run with the weights resident (seed + 1, so ComfyUI
+                                doesn’t return its cached result).
+                            </p>
+                            <p style="font-size: 15px">
+                                Not quite like for like: ComfyUI ran the bf16 safetensors DiT, Kiln the GGUF Q8_0 weights. One run each,
+                                from <code>kiln-bench</code>.
+                            </p>
+                        </div>
+                        <div class="bars" role="img" aria-label="Cold: ComfyUI 38.2 s, Kiln 17.3 s. Warm: ComfyUI 23.0 s, Kiln 14.7 s.">
+                            <div class="bar-group">
+                                <h4>Cold</h4>
+                                <div class="bar"><span>Kiln</span><div class="track"><div class="fill kiln" style={`width: ${(17.3 / 38.2) * 100}%`}>17.3 s</div></div></div>
+                                <div class="bar"><span>ComfyUI</span><div class="track"><div class="fill other" style="width: 100%">38.2 s</div></div></div>
+                            </div>
+                            <div class="bar-group">
+                                <h4>Warm</h4>
+                                <div class="bar"><span>Kiln</span><div class="track"><div class="fill kiln" style={`width: ${(14.7 / 38.2) * 100}%`}>14.7 s</div></div></div>
+                                <div class="bar"><span>ComfyUI</span><div class="track"><div class="fill other" style={`width: ${(23.0 / 38.2) * 100}%`}>23.0 s</div></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="studio" id="studio">
+                <div class="wrap">
+                    <header>
+                        <p class="eyebrow">{STUDIO.name}</p>
+                        <h2>Try the models without writing code.</h2>
+                        <p>
+                            Kiln Studio is a desktop app around Kiln: chat with a GGUF model and watch the tokens per second,
+                            watch it call tools, make an image or a song, and see what is loaded and how much memory it holds.
+                            It runs Kiln in a JVM of its own, with its own Java, and finds the models in your Hugging Face cache.
+                        </p>
+                    </header>
+                    <figure>
+                        <Image src={studioDesktop} widths={[800, 1600]} sizes="(max-width: 1264px) 100vw, 1200px" loading="lazy" alt="Kiln Studio in its dark theme with two windows on its desktop. Behind, the Chat window: Qwen3 4B Instruct answering a request for a haiku about a kiln and one sentence on what a kiln is for, at 68.7 tokens a second, with its time to the first token and token counts. In front, overlapping it, the Image window: FLUX.2 [klein] with its prompt, size and steps, and the image it made, a kiln's orange fire beside shelves of stoneware jars, generated in 2 minutes 17 seconds over 12 steps" />
+                        <figcaption>Chat with Qwen3 4B Instruct at 68.7 tokens a second, and an image from FLUX.2 [klein].</figcaption>
+                    </figure>
+                    {studio ? (
+                        <div class="get-studio" id="get-studio">
+                            <p class="get-studio-head">
+                                <strong>Download Kiln Studio.</strong>
+                                <span class="get-studio-sub">Alpha {studio.version}. Models are not included: fetch them with the Hugging Face CLI, as in Getting started.{(studio.mac.appleSilicon || studio.mac.intel) && ' The macOS builds are signed and notarized, so they open without a Gatekeeper prompt.'}</span>
+                            </p>
+                            <div class="downloads">
+                                {(studio.mac.appleSilicon || studio.mac.intel) && (
+                                    <div class="platform">
+                                        <h3>macOS <span class="arch">(Metal)</span></h3>
+                                        <div class="dl-buttons">
+                                            {studio.mac.appleSilicon && (
+                                                <a class="dl-button primary" href={studio.mac.appleSilicon.url}>
+                                                    Apple&nbsp;Silicon <span class="dl-meta">.dmg · {studio.mac.appleSilicon.size}</span>
+                                                </a>
+                                            )}
+                                            {studio.mac.intel && (
+                                                <a class="dl-button" href={studio.mac.intel.url}>
+                                                    Intel <span class="dl-meta">.dmg · {studio.mac.intel.size}</span>
+                                                </a>
+                                            )}
+                                        </div>
+                                        <p class="install-hint">Open the <code>.dmg</code> and drag Kiln Studio to Applications.</p>
+                                    </div>
+                                )}
+                                {studio.linux.length > 0 && (
+                                    <div class="platform">
+                                        <h3>Linux <span class="arch">(x64, Vulkan)</span></h3>
+                                        <div class="dl-buttons">
+                                            {studio.linux.map((d) => (
+                                                <a class="dl-button" href={d.url}>{d.label} <span class="dl-meta">{d.size}</span></a>
+                                            ))}
+                                        </div>
+                                        <p class="install-hint">Needs your GPU's Vulkan driver. A software-centre double-click can't open a local package, so install from a terminal where you downloaded it: <code>sudo dnf&nbsp;install&nbsp;./kiln-studio-linux-x86_64.rpm</code> (Fedora/RHEL) or <code>sudo apt&nbsp;install&nbsp;./kiln-studio-linux-amd64.deb</code> (Debian/Ubuntu).</p>
+                                    </div>
+                                )}
+                            </div>
+                            <p class="note">Every release, and its notes, are on <a href={studio.url}>GitHub</a>.</p>
+                        </div>
+                    ) : (
+                        <p class="note">
+                            Builds for macOS (Apple silicon and Intel, signed and notarized) and Linux are on their way with the first release.
+                            {studioPublic && <Fragment> Until then, <a href={`${studioUrl}#running-it`}>build it from source</a>.</Fragment>}
+                        </p>
+                    )}
+                </div>
+            </section>
+
+            <section class="how" id="how">
+                <div class="wrap">
+                    <header>
+                        <p class="eyebrow">How it works</p>
+                        <h2>One self-contained library per engine.</h2>
+                        <p>
+                            Each engine is built into a single shared library with its own ggml linked in statically and kept private.
+                            The engines pin different ggml versions, and this is what lets several of them share one process.
+                        </p>
+                    </header>
+                    <div class="row">
+                        <article class="feature"><h3>stable-diffusion.cpp</h3><p>Has a key/value C API, so <code>kiln-sd</code> binds it directly.</p></article>
+                        <article class="feature"><h3>llama.cpp</h3><p>Its C API passes structs by value and is mid-migration to a new batch API, so <code>kiln-llama</code> binds a small, stable C layer instead.</p></article>
+                        <article class="feature"><h3>acestep.cpp and yue2.cpp</h3><p>C++ only, so each gets a C layer of about a hundred lines: a JSON request in, PCM audio out.</p></article>
+                        <article class="feature"><h3>Tool calling</h3><p><code>LlamaModel.chatJson</code> takes messages and tools in OpenAI’s format and returns a message with <code>content</code>, <code>reasoning_content</code> and <code>tool_calls</code>. It uses the model’s own chat template and tool-call format, with the same templates and parsers as llama-server.</p></article>
+                        <article class="feature"><h3>ModelPool</h3><p>Keeps models resident between uses, the way ComfyUI does. It unloads idle models least recently used first to stay within a memory budget, can unload after an idle timeout, and gives each model one user at a time.</p></article>
+                        <article class="feature"><h3>Pick a backend at build time</h3><p>The Java is the same for every backend. <code>native/build.sh</code> builds the libraries for the one you name.</p></article>
+                        <article class="feature"><h3>Long jobs on small power budgets</h3><p>A long GPU dispatch can trip a laptop driver’s compute timeout, so ACE-Step audio is decoded in 512-frame tiles. Tune it with <code>KILN_ACESTEP_VAE_CHUNK</code>.</p></article>
+                        <article class="feature"><h3>The engines’ own logs</h3><p>Set <code>KILN_VERBOSE=1</code> to see what llama.cpp, stable-diffusion.cpp and friends print.</p></article>
+                    </div>
+                </div>
+            </section>
+
+            <section class="start-section" id="start">
+                <div class="wrap">
+                    <header>
+                        <p class="eyebrow">Getting started</p>
+                        <h2>Build the engines, fetch some weights, run.</h2>
+                        <p>
+                            You need JDK 25, CMake, Ninja, a C++17 compiler and the SDK for your GPU backend. For Vulkan on Fedora:
+                            <code>dnf install vulkan-headers vulkan-loader-devel glslc spirv-headers-devel</code>.
+                        </p>
+                    </header>
+                    <div class="stepper">
+                        <div>
+                            <div><h3>1. Build</h3><p><code>native/build.sh</code> clones the engines at their pinned commits and writes the libraries to <code>build/native/&lt;os&gt;-&lt;arch&gt;-&lt;backend&gt;/</code>. Pick another backend for Gradle with <code>-Pkiln.backend=hip</code>.</p></div>
+                            <div class="shell"><Code code={build} lang="sh" theme={theme} /></div>
+                        </div>
+                        <div>
+                            <div><h3>2. Fetch weights</h3><p>With the Hugging Face CLI. <code>HfCache</code> finds them in <code>HF_HUB_CACHE</code>, <code>HF_HOME/hub</code> or <code>~/.cache/huggingface/hub</code>.</p></div>
+                            <div class="shell"><Code code={download} lang="sh" theme={theme} /></div>
+                        </div>
+                        <div>
+                            <div><h3>3. Try the examples</h3><p>The song examples take the engines’ own JSON requests; pass your own as a second argument.</p></div>
+                            <div class="shell"><Code code={examples} lang="sh" theme={theme} /></div>
+                        </div>
+                        <div>
+                            <div><h3>4. In your own app</h3><p>Put the libraries on <code>-Dkiln.library.path</code> (or <code>KILN_LIBRARY_PATH</code>, or the platform loader path) and allow native access.</p></div>
+                            <div class="shell"><Code code={run} lang="sh" theme={theme} /></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="roadmap">
+                <div class="wrap">
+                    <div class="text">
+                        <p class="eyebrow">Roadmap</p>
+                        <h2 style="font-size: 30px">Next in the kiln.</h2>
+                    </div>
+                    <ul>
+                        <li><span>Test and document the HIP, CUDA and Metal builds; prebuilt native libraries per platform.</span></li>
+                        <li><span>Video through stable-diffusion.cpp: Wan and LTX.</span></li>
+                                                <li><span><code>kiln-embabel</code>: an Embabel Agent <code>LlmService</code> and <code>LocalModelSource</code>.</span></li>
+                        <li><span>An optional OpenAI-compatible server.</span></li>
+                        <li><span>Vision-language models through llama.cpp’s <code>mtmd</code>.</span></li>
+                        <li><span>An MLX module for Apple silicon, through <code>mlx-c</code>.</span></li>
+                        <li><span>Speech through whisper.cpp, and a Kotlin layer with coroutine <code>Flow</code> streaming.</span></li>
+                    </ul>
+                </div>
+            </section>
+
+            <section class="backing">
+                <div class="wrap">
+                    <p>
+                        <strong>Founded by Jasper Blues</strong>, creator of <a href="https://github.com/appsquickly/typhoon">Typhoon</a>. <strong>Sponsored by Rod Johnson</strong>, creator of the Spring Framework and of <a href="https://hub.embabel.com">Embabel</a>, the AI agent framework for the JVM.
+                    </p>
+                </div>
+            </section>
+
+            <section class="fire cta">
+                <div class="wrap">
+                    <h2>Fire up your JVM.</h2>
+                    <p>Open models as Java objects, on your own GPU. Kiln is early: try it, and tell us what breaks.</p>
+                    <div class="actions">
+                        <a href={REPO} class="button primary">Kiln on GitHub</a>
+                        <a href="#start" class="button ghost">Getting started</a>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <div class="wrap">
+                <div class="about">
+                    <img src={logoSmall.src} alt="" width="40" height="40" />
+                    <p>
+                        Kiln is a community project by Liberation Data, the home of <a href="https://drivine.org">Drivine</a>.
+                        Founded by Jasper Blues, creator of Typhoon. Sponsored by Rod Johnson, creator of the Spring Framework and Embabel.
+                        Apache 2.0. The engines it builds against are MIT-licensed.
+                    </p>
+                </div>
+                <nav aria-label="Footer">
+                    <div><span>Kiln</span><a href={REPO}>GitHub</a><a href={`${REPO}/blob/main/LICENSE`}>Apache 2.0</a></div>
+                    <div><span>Engines</span><a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a><a href="https://github.com/leejet/stable-diffusion.cpp">stable-diffusion.cpp</a><a href="https://github.com/ServeurpersoCom/acestep.cpp">acestep.cpp</a><a href="https://github.com/ServeurpersoCom/yue2.cpp">yue2.cpp</a></div>
+                    <div><span>Liberation Data</span><a href="https://github.com/liberation-data">GitHub</a><a href="https://drivine.org">Drivine</a></div>
+                </nav>
+            </div>
+        </footer>
+
+        <script>
+            const status = document.querySelector<HTMLElement>('.installs .sr');
+            for (const button of document.querySelectorAll<HTMLButtonElement>('.copy')) {
+                button.addEventListener('click', async () => {
+                    try {
+                        await navigator.clipboard.writeText(button.dataset.copy ?? '');
+                        button.classList.add('done');
+                        if (status) status.textContent = 'Copied';
+                        setTimeout(() => button.classList.remove('done'), 1200);
+                    } catch {
+                        /* No clipboard (an insecure context): the command is on screen to select. */
+                    }
+                });
+            }
+            const tabs = document.querySelectorAll<HTMLButtonElement>('.tabs button');
+            for (const tab of tabs) {
+                tab.addEventListener('click', () => {
+                    for (const other of tabs) other.setAttribute('aria-pressed', String(other === tab));
+                    for (const pane of document.querySelectorAll<HTMLElement>('[data-pane]')) pane.hidden = pane.dataset.pane !== tab.dataset.tab;
+                });
+            }
+        </script>
+
+        <script>
+            // The explainer's player, as on drivine.org and the Embabel Worlds page. The video loads only when asked for, and
+            // plays with its controls and its captions, on from the start (the CC button turns them off). It plays from its
+            // HLS segments where there are some: Safari plays the playlist itself, other browsers through hls.js (its light
+            // build, fetched once the page has loaded, so a press doesn't wait for it). Where neither can, or hls.js fails,
+            // the whole mp4 plays; where that fails too, the poster says so. At the end the logo the video holds goes back
+            // over it, with Watch again and Share.
+            let hlsJs: Promise<typeof import('hls.js/light').default | undefined> | undefined;
+            const loadHls = () => (hlsJs ??= import('hls.js/light').then((it) => (it.default.isSupported() ? it.default : undefined), () => undefined));
+            const nativeHls = (video: HTMLVideoElement) => video.canPlayType('application/vnd.apple.mpegurl') !== '';
+            const unplayable = (player: HTMLElement) => {
+                const note = document.createElement('p');
+                note.className = 'unplayable';
+                note.setAttribute('role', 'status');
+                note.textContent = "This browser can't play the video.";
+                player.querySelector('video')?.remove();
+                player.querySelector('.play')?.remove();
+                player.append(note);
+            };
+            const source = (video: HTMLVideoElement, player: HTMLElement) => {
+                const { hls, video: mp4 } = player.dataset;
+                // hls.js, while it has the video.
+                let through: { destroy(): void } | undefined;
+                let fellBack = false;
+                // The mp4, once: after it, nothing is left to try.
+                const fallback = () => {
+                    through?.destroy();
+                    through = undefined;
+                    if (fellBack || !mp4) return unplayable(player);
+                    fellBack = true;
+                    video.src = mp4;
+                    void video.play().catch(() => {});
+                };
+                // Added before the poster's own listeners, it keeps each error from them, so the poster waits for a frame
+                // that plays, or says nothing would.
+                video.addEventListener('error', (event) => {
+                    event.stopImmediatePropagation();
+                    if (video.error) fallback();
+                });
+                if (!hls) return fallback();
+                if (nativeHls(video)) {
+                    video.src = hls;
+                    return;
+                }
+                void loadHls().then((Hls) => {
+                    if (!Hls) return fallback();
+                    const it = new Hls();
+                    through = it;
+                    it.on(Hls.Events.ERROR, (_, data) => data.fatal && through === it && fallback());
+                    it.loadSource(hls);
+                    it.attachMedia(video);
+                    void video.play().catch(() => {});
+                });
+            };
+            const playVideo = () => {
+                const player = document.querySelector<HTMLElement>('.explainer .player');
+                if (!player) return;
+                // Started by the hero's pill, the poster's own listener is still waiting.
+                player.removeEventListener('click', playVideo);
+                const video = document.createElement('video');
+                source(video, player);
+                video.controls = true;
+                video.autoplay = true;
+                video.playsInline = true;
+                video.preload = 'auto';
+                video.setAttribute('aria-label', player.dataset.title!);
+                if (player.dataset.captions) {
+                    const captions = document.createElement('track');
+                    captions.kind = 'captions';
+                    captions.src = player.dataset.captions;
+                    captions.srclang = 'en';
+                    captions.label = 'English';
+                    captions.default = true;
+                    video.append(captions);
+                }
+                const endFrame = document.querySelector<HTMLTemplateElement>('#video-end')?.content.firstElementChild;
+                const end = endFrame ? (document.importNode(endFrame, true) as HTMLElement) : undefined;
+                const ending = document.querySelector<HTMLElement>('.ending-share');
+                const endingHome = ending?.parentElement;
+                const again = document.createElement('button');
+                again.type = 'button';
+                again.className = 'play again';
+                again.setAttribute('aria-label', `Watch again: ${player.dataset.title}`);
+                again.innerHTML = '<span><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>Watch again</span>';
+                again.addEventListener('click', () => {
+                    video.currentTime = 0;
+                    void video.play();
+                    video.focus({ preventScroll: true });
+                });
+                video.addEventListener('ended', () => {
+                    // The focus, if it was on the video, goes to the button rather than staying on a finished video.
+                    const focused = document.activeElement === video;
+                    if (end) player.append(end);
+                    player.append(again);
+                    if (ending) player.append(ending);
+                    if (focused) again.focus({ preventScroll: true });
+                });
+                video.addEventListener('play', () => {
+                    end?.remove();
+                    again.remove();
+                    if (ending && endingHome) endingHome.append(ending);
+                });
+                // Until its first frame is in, the poster stays and its button says Loading: started cold, a browser shows
+                // only a grey box. aria-disabled rather than disabled, so the focus stays on it and a screen reader hears it.
+                const button = player.querySelector<HTMLButtonElement>('.play');
+                const label = button?.querySelector('span');
+                if (button && label) {
+                    button.setAttribute('aria-disabled', 'true');
+                    button.removeAttribute('aria-label');
+                    label.replaceChildren(label.querySelector('svg')!, 'Loading…');
+                }
+                let shown = false;
+                const show = () => {
+                    if (shown) return;
+                    shown = true;
+                    player.replaceChildren(video);
+                    video.focus({ preventScroll: true });
+                };
+                for (const event of ['loadeddata', 'playing']) video.addEventListener(event, show, { once: true });
+                player.prepend(video);
+                // Played from the press itself, which Safari asks of a video with sound. Through hls.js the video has no
+                // source yet, so this play is interrupted (AbortError) and played again once it has one; a source that
+                // fails (NotSupportedError) has the mp4 tried. Anything else (autoplay blocked): its own controls show.
+                video.play().catch((error) => !['AbortError', 'NotSupportedError'].includes(error.name) && show());
+            };
+            document.querySelector('.explainer .player')?.addEventListener('click', playVideo, { once: true });
+            // The hero's pill takes the visitor down to the video and plays it from the start.
+            document.querySelector<HTMLAnchorElement>('.video-tip')?.addEventListener('click', (event) => {
+                if (!document.querySelector('.explainer .player')) return;
+                event.preventDefault();
+                const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+                document.getElementById('video')?.scrollIntoView({ behavior: still ? 'auto' : 'smooth' });
+                history.replaceState(null, '', '#video');
+                const video = document.querySelector<HTMLVideoElement>('.explainer video');
+                if (!video) return playVideo();
+                video.currentTime = 0;
+                void video.play();
+            });
+            // Once the page has loaded: the playlist and its header (a few hundred bytes each), and hls.js where it will
+            // play, so a press doesn't wait for them. The segments are left until then.
+            addEventListener('load', () => {
+                const hls = document.querySelector<HTMLElement>('.explainer .player')?.dataset.hls;
+                if (!hls) return;
+                for (const file of ['index.m3u8', 'init.mp4']) void fetch(new URL(file, new URL(hls, location.href))).catch(() => {});
+                if (!nativeHls(document.createElement('video'))) void loadHls();
+            });
+        </script>
+    </body>
+</html>
