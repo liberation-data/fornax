@@ -19,6 +19,11 @@ import lyricsText from '../lyrics.txt?raw';
 const REPO = 'https://github.com/liberation-data/kiln';
 const DESCRIPTION = 'Call open-weight models (text, images, songs) as plain Java methods, running on your GPU, inside your JVM.';
 
+// The link preview: the splash as a 1200-wide JPEG, at an absolute URL on the site's domain.
+const preview = await getImage({ src: splash, format: 'jpeg', width: 1200, quality: 80 });
+const previewUrl = new URL(preview.src, Astro.site).href;
+const pageUrl = new URL('/', Astro.site).href;
+
 // The splash as AVIF, WebP and JPEG, smaller for phones; the large AVIF is preloaded, as it is the largest paint.
 const photo = async (width: number) => {
     const [avif, webp, jpeg] = await Promise.all(
@@ -100,6 +105,11 @@ const theme = 'vitesse-dark';
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta property="og:title" content="Kiln: open models, in your JVM" />
         <meta property="og:description" content={DESCRIPTION} />
+        <meta property="og:url" content={pageUrl} />
+        <meta property="og:type" content="website" />
+        <meta property="og:image" content={previewUrl} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <link rel="canonical" href={pageUrl} />
         <link rel="preload" as="image" href={photoLarge.avif} type="image/avif" media="(min-width: 801px)" />
         <link rel="preload" as="image" href={photoSmall.avif} type="image/avif" media="(max-width: 800px)" />
         <style is:global>
