@@ -70,5 +70,5 @@ Clip: endless-country-ep2-titled (8 s from 2:15: "…what will the dog think?", 
 
 Cards: end
 
-> Kiln! Open models, inside your JVM! [pause 0.5] Sponsored by Rod Johnson, and created by Jasper Blues. [pause 0.8]
+> Kiln! Open models, inside your JVM! [pause 0.5] Sponsored by Rod Johnson, and created by Jasper Blues! [pause 0.8]
 > kiln4j.org!
