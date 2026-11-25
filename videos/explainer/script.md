@@ -69,4 +69,4 @@ Clip: endless-country-ep2-titled (8 s from 2:15: "…what will the dog think?", 
 
 Cards: end
 
-> Kiln. Open models, inside your JVM. kiln4j.org.
+> Kiln! Open models, inside your JVM! kiln4j.org!
