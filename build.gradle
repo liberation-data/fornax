@@ -54,7 +54,7 @@ project(':kiln-examples') {
             workingDir = rootProject.projectDir
             // -Pmodel=... -Psteps=... etc. become system properties (only ones given on the command line)
             def cli = gradle.startParameter.projectProperties
-            ['model', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio'].each { p ->
+            ['model', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio', 'preprocess', 'hires', 'upscaler', 'refine'].each { p ->
                 if (cli.containsKey(p)) systemProperty p, cli[p]
             }
         }

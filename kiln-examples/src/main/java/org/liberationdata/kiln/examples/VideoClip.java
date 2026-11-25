@@ -54,15 +54,26 @@ public class VideoClip {
             extra.put("sample.method", "euler_a");
             extra.put("sample.sigmas", new float[] {1.0f, 0.99375f, 0.9875f, 0.98125f, 0.975f, 0.909375f, 0.725f, 0.421875f, 0.0f});
             extra.put("strength", 0.7);
-            extra.put("hires.enabled", true);
-            extra.put("hires.model_path", file(dir, "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"));
-            extra.put("hires.sigmas", new float[] {0.85f, 0.725f, 0.4219f, 0.0f});
+            // -Dhires=false renders the draft stage alone, to tell its artifacts from the refine's.
+            extra.put("hires.enabled", Boolean.parseBoolean(System.getProperty("hires", "true")));
+            // -Dupscaler=interpolate swaps the learned x2 latent upscaler for plain interpolation (a diagnostic).
+            if (!"interpolate".equals(System.getProperty("upscaler")))
+                extra.put("hires.model_path", file(dir, "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"));
+            // -Drefine=scheduler lets sd.cpp's scheduler pick 3 refine steps at strength 0.85 instead of the manual sigmas.
+            if ("scheduler".equals(System.getProperty("refine"))) {
+                extra.put("hires.steps", 3);
+                extra.put("hires.denoising_strength", 0.85);
+            } else {
+                extra.put("hires.sigmas", new float[] {0.85f, 0.725f, 0.4219f, 0.0f});
+            }
             // Tiled decode, as the ComfyUI workflow does: short GPU dispatches stay under the driver's compute timeout.
             extra.put("vae_tiling.enabled", true);
             req = req.withExtra(extra);
         }
-        if (args.length > 2) req = req.withInitImage(ImageIO.read(new File(args[2])));
-        if (args.length > 3) req = req.withEndImage(ImageIO.read(new File(args[3])));
+        // LTX was trained on compressed frames; ComfyUI's LTXVPreprocess round-trips each keyframe through H.264.
+        int crf = Integer.getInteger("preprocess", "two-stage".equals(System.getProperty("recipe")) ? 18 : 0);
+        if (args.length > 2) req = req.withInitImage(keyframe(Path.of(args[2]), crf));
+        if (args.length > 3) req = req.withEndImage(keyframe(Path.of(args[3]), crf));
 
         DiffusionModel.onProgress((s, n, t) -> System.out.printf("  step %d/%d (%.2fs/it)%n", s, n, t));
         long t0 = System.nanoTime();
@@ -74,6 +85,21 @@ public class VideoClip {
                     video.seconds(), video.audio() != null ? " with audio" : "", (System.nanoTime() - g0) / 1e9);
             write(video, out);
         }
+    }
+
+    /** The keyframe, optionally through one H.264 frame at the given CRF (0 = as is), as LTXVPreprocess does. */
+    static java.awt.image.BufferedImage keyframe(Path image, int crf) throws Exception {
+        if (crf <= 0) return ImageIO.read(image.toFile());
+        Path tmp = Files.createTempDirectory("kiln-ltx-preprocess");
+        Path mp4 = tmp.resolve("frame.mp4"), png = tmp.resolve("frame.png");
+        run("ffmpeg", "-y", "-loglevel", "error", "-i", image.toString(), "-vf", "crop=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", String.valueOf(crf), "-pix_fmt", "yuv420p", mp4.toString());
+        run("ffmpeg", "-y", "-loglevel", "error", "-i", mp4.toString(), "-frames:v", "1", png.toString());
+        return ImageIO.read(png.toFile());
+    }
+
+    private static void run(String... cmd) throws Exception {
+        if (new ProcessBuilder(cmd).inheritIO().start().waitFor() != 0) throw new IllegalStateException("failed: " + String.join(" ", cmd));
     }
 
     static void write(DiffusionModel.Video video, Path out) throws Exception {
