@@ -9,7 +9,7 @@ publishing, check every claim against the README.
 voice: aura-2-hyperion-en
 pace: 1.05
 duck: on
-outro: stinger/out/stinger-1344x768-dub.mp4 | stinger/out/stinger-1344x768-hold.mp4 | stinger/out/stinger-1344x768.mp4 | stinger/out/stinger-352x192.mp4
+outro: stinger/out/stinger-1344x768-hold.mp4 | stinger/out/stinger-1344x768.mp4 | stinger/out/stinger-352x192.mp4
 
 ## 1. The what
 
@@ -62,7 +62,7 @@ Cards: endless-country
 
 > Here's what open models can make, running in Kiln. This is Endless Country, episode two.
 
-Clip: endless-country-ep2 (8 s from 2:15: "…what will the dog think?", the tear, the dog's stare; with its own sound; the violin bed ducks under it)
+Clip: endless-country-ep2-titled (8 s from 2:15: "…what will the dog think?", the tear, the dog's stare; with its own sound; the violin bed ducks under it)
 
 ## 7. Close
 

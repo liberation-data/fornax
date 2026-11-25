@@ -127,17 +127,21 @@ async function voiceScenes({ voice, scenes }) {
         for (let k = 0; k < pieces.length; k += 2) {
             if (k > 0) parts.push(Number(pieces[k - 1] ?? 0.65) || 0.65);
             if (!pieces[k].trim()) continue;
-            const response = await fetch(`https://api.deepgram.com/v1/speak?model=${voice}`, {
+            // Deepgram clips the last sound it is given (the "U" of "GPU"), so each stretch is voiced with a throwaway
+            // word after it and cut at the silence before that word: the real last word keeps its release.
+            const response = await fetch(`https://api.deepgram.com/v1/speak?model=${voice}&encoding=linear16&container=wav&sample_rate=24000`, {
                 method: 'POST',
                 headers: { Authorization: `Token ${key}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: pieces[k] }),
+                body: JSON.stringify({ text: `${pieces[k].trim()} ${SENTINEL}` }),
             });
             if (!response.ok) throw new Error(`Deepgram refused scene ${scene.n}: ${response.status} ${await response.text()}`);
-            const part = join(OUT, `voice-${scene.n}-${k}.mp3`);
-            writeFileSync(part, Buffer.from(await response.arrayBuffer()));
+            const raw = join(OUT, `voice-${scene.n}-${k}-raw.wav`);
+            writeFileSync(raw, Buffer.from(await response.arrayBuffer()));
+            const part = join(OUT, `voice-${scene.n}-${k}.wav`);
+            withoutSentinel(raw, part, scene.n);
             parts.push(part);
         }
-        if (parts.length === 1) copyFileSync(parts[0], mp3);
+        if (parts.length === 1) ffmpeg('-i', parts[0], '-c:a', 'libmp3lame', '-q:a', '2', mp3);
         else {
             const inputs = [];
             const labels = [];
@@ -293,6 +297,17 @@ function silencesOf(mp3) {
     const starts = [...report.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
     const ends = [...report.matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
     return starts.map((from, k) => [from, ends[k] ?? length]).filter(([from, to]) => from > 0.05 && to < length - 0.05);
+}
+
+/* The throwaway word voiced after each stretch (see voicing), and the cut that removes it. */
+const SENTINEL = 'Okay.';
+function withoutSentinel(raw, out, n) {
+    const report = spawnSync('ffmpeg', ['-nostdin', '-nostats', '-i', raw, '-af', 'silencedetect=n=-45dB:d=0.25', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 1 << 28 }).stderr;
+    const gaps = [...report.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
+    const length = duration(raw);
+    const cut = gaps.filter((t) => t < length - 0.2).pop();
+    if (cut === undefined || length - cut > 1.6) throw new Error(`scene ${n}: no gap before the throwaway word in ${raw}; voice it again`);
+    ffmpeg('-i', raw, '-af', `atrim=end=${(cut + 0.12).toFixed(3)},afade=t=out:st=${(cut + 0.07).toFixed(3)}:d=0.05`, out);
 }
 
 /*
