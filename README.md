@@ -43,6 +43,24 @@ try (var images = new DiffusionModel(DiffusionModel.Config.builder()
 }
 ```
 
+## Quick start
+
+The fastest way to see Kiln work: build the engines, fetch three models, and run the demo. One Java program
+has Qwen3 4B write a country song, ACE-Step 1.5 sing it and FLUX.2 [klein] paint its cover, all in one JVM.
+
+```sh
+native/build.sh vulkan            # or hip | cuda | metal | cpu (see Building)
+hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Embedding-0.6B-Q8_0.gguf \
+    acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
+hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors
+hf download Comfy-Org/flux2-dev split_files/vae/flux2-vae.safetensors
+hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetensors
+./gradlew single                  # writes single.wav, cover.png and lyrics.txt
+```
+
+To try models without writing code, use [Kiln Studio](https://github.com/liberation-data/kiln-studio).
+
 ## Status
 
 Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen AI Max+ 395 "Strix Halo",
