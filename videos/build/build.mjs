@@ -8,7 +8,8 @@
  *   2. Renders each card in cards/ (HTML, 1920 × 1080, sharing shared/cards/card.css) to a PNG with Chrome or
  *      Chromium, and gives it a slow push-in.
  *   3. Cuts each scene: its cards crossfaded, timed to its narration. A scene's `Clip:` line plays clips/<name>.mp4
- *      after its narration, with its own sound. Then the scenes, joined.
+ *      after its narration, with its own sound; an `outro:` plays last. Then the scenes, joined. When the music has
+ *      a sections.txt with a duck, the cut is fitted to the music, not the other way round (see timingOf).
  *   4. Mixes in the music: the longest audio file in music/out/ (rendered elsewhere), under the voice, ducked under
  *      each word (`duck: on`) and further under a clip, up at the end; then the whole levelled to -16 LUFS.
  *   5. Writes out/<name>.mp4, its captions (out/<name>.vtt), out/timing.json (when each scene and clip starts, for
@@ -20,7 +21,7 @@
  * script's pace. Needs ffmpeg, and Chrome or Chromium (CHROME_PATH, else /usr/bin/chromium-browser, else Chrome).
  *
  * A script's header may set `voice:`, `pace:`, `tail:` (silence after each scene's last word, 0.7 s), `opening:`
- * (silence before the first word, 0.5 s) and `duck: on`.
+ * (silence before the first word, 0.5 s), `duck: on` and `outro: a.mp4 | b.mp4` (the first that exists).
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
