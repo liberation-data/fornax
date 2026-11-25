@@ -12,7 +12,9 @@ import java.util.Map;
 /**
  * A video clip with sound from LTX-2.5 through stable-diffusion.cpp.
  * Usage: VideoClip <out.mp4> "<prompt>" [first-frame.png] [last-frame.png]
- *   [-Dwidth=768 -Dheight=448 -Dframes=49 -Dfps=24 -Dsteps=8 -Dcfg=1 -Dseed=7 -Dmodel=distilled|dev]
+ *   [-Dwidth=768 -Dheight=448 -Dframes=49 -Dfps=24 -Dsteps=8 -Dcfg=1 -Dseed=7 -Dmodel=distilled|dev -Drecipe=two-stage]
+ * -Drecipe=two-stage is the ComfyUI "Image to Video (LTX-2.5)" recipe Endless Country used: a draft at width x height
+ * with 8 manual sigmas and the first frame at strength 0.7, the x2 latent upscaler, then a refine at twice the size.
  * Files: from -Dltx.dir=<folder with diffusion_models/ text_encoders/ vae/> when there, else the Hugging Face cache.
  * Needs ffmpeg on the PATH to write the .mp4 (frames and audio are kept beside it either way).
  */
@@ -34,7 +36,9 @@ public class VideoClip {
                 .diffusionModel(file(dir, "diffusion_models/ltx-2.5-22b-" + variant + "-transformer-comfy-int8-convrot.safetensors"))
                 .llm(file(dir, "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors"))
                 .vae(file(dir, "vae/ltx-2.5-video-vae-conv-bf16.safetensors"))
-                .set("audio_vae_path", file(dir, "vae/ltx-2.5-audio-vae-bf16.safetensors"))
+                // -Daudio=false skips LTX's own soundtrack (Endless Country lays the song over every clip anyway).
+                .set("audio_vae_path", Boolean.parseBoolean(System.getProperty("audio", "true"))
+                        ? file(dir, "vae/ltx-2.5-audio-vae-bf16.safetensors") : "")
                 // ComfyUI's int8 LTX keeps biases, norms and embedders in bf16; ggml's Vulkan and CPU backends can't
                 // add bf16 to f32, so widen those (~0.9 GB) to f32 at load. The int8 linears are untouched.
                 .set("tensor_type_rules", System.getProperty("ltx.rules", BF16_TO_F32))
@@ -45,6 +49,18 @@ public class VideoClip {
         double guidance = Double.parseDouble(System.getProperty("cfg", variant.equals("distilled") ? "1" : "3"));
         var req = new DiffusionModel.VideoRequest(prompt, w, h, frames, fps, steps, guidance, Long.getLong("seed", 7))
                 .withExtra(Map.of("sample.method", "euler", "sample.scheduler", "ltx2"));
+        if ("two-stage".equals(System.getProperty("recipe"))) {
+            var extra = new java.util.HashMap<String, Object>(req.extra());
+            extra.put("sample.method", "euler_a");
+            extra.put("sample.sigmas", new float[] {1.0f, 0.99375f, 0.9875f, 0.98125f, 0.975f, 0.909375f, 0.725f, 0.421875f, 0.0f});
+            extra.put("strength", 0.7);
+            extra.put("hires.enabled", true);
+            extra.put("hires.model_path", file(dir, "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"));
+            extra.put("hires.sigmas", new float[] {0.85f, 0.725f, 0.4219f, 0.0f});
+            // Tiled decode, as the ComfyUI workflow does: short GPU dispatches stay under the driver's compute timeout.
+            extra.put("vae_tiling.enabled", true);
+            req = req.withExtra(extra);
+        }
         if (args.length > 2) req = req.withInitImage(ImageIO.read(new File(args[2])));
         if (args.length > 3) req = req.withEndImage(ImageIO.read(new File(args[3])));
 
@@ -81,7 +97,6 @@ public class VideoClip {
 
     private static String file(String dir, String rel) {
         if (dir != null && Files.exists(Path.of(dir, rel))) return Path.of(dir, rel).toString();
-        String name = rel.substring(rel.lastIndexOf('/') + 1);
-        return HfCache.requireAny("Lightricks/LTX-2.5", rel, "Lightricks/LTX-2.5", "vae/" + name).toString();
+        return HfCache.require("Lightricks/LTX-2.5", rel).toString();
     }
 }

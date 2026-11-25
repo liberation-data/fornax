@@ -29,6 +29,7 @@ public final class Sd {
     static final MethodHandle opt_set_int = fn("sd_opt_set_int", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_LONG));
     static final MethodHandle opt_set_float = fn("sd_opt_set_float", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_DOUBLE));
     static final MethodHandle opt_set_string = fn("sd_opt_set_string", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+    static final MethodHandle opt_set_floats = fn("sd_opt_set_floats", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG));
     static final MethodHandle opt_set_tensor = fn("sd_opt_set_tensor", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
     static final MethodHandle opt_set_audios = fn("sd_opt_set_audios", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG));
     static final MethodHandle opt_set_tensors = fn("sd_opt_set_tensors", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG));

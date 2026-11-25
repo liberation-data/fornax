@@ -215,6 +215,7 @@ public final class DiffusionModel implements AutoCloseable {
                 case Long l -> (int) Sd.opt_set_int.invokeExact(opt, key, (long) l);
                 case Number n -> (int) Sd.opt_set_float.invokeExact(opt, key, n.doubleValue());
                 case String s -> (int) Sd.opt_set_string.invokeExact(opt, key, a.allocateFrom(s));
+                case float[] f -> (int) Sd.opt_set_floats.invokeExact(opt, key, a.allocateFrom(JAVA_FLOAT, f), (long) f.length);
                 default -> throw new IllegalArgumentException("unsupported option type for " + e.getKey());
             };
             Sd.check(st, "set option '" + e.getKey() + "'");
