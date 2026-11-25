@@ -238,17 +238,14 @@ const theme = 'vitesse-dark';
             .card p { margin: 0; font-size: 17px; line-height: 1.6; color: var(--muted); }
 
             .dark { background: var(--abyss); color: #f2e4d8; padding: 96px 32px; }
-            /* Faint fire behind the dark sections: the hero's photo under a deep wash, a touch stronger at the bottom like
-               embers, held still while the page scrolls (a gentle parallax). Static on phones and for reduced motion. */
-            .dark { position: relative; isolation: isolate; }
-            .dark::before {
-                content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-                background: linear-gradient(var(--abyss) 0%, rgba(23, 13, 8, 0.93) 40%, rgba(23, 13, 8, 0.8) 100%), var(--photo) center 60% / cover;
-                background-attachment: scroll, fixed;
-            }
-            @media (max-width: 800px), (prefers-reduced-motion: reduce) {
-                .dark::before { background-attachment: scroll; background-image: linear-gradient(var(--abyss) 0%, rgba(23, 13, 8, 0.93) 40%, rgba(23, 13, 8, 0.8) 100%), var(--photo-small); }
-            }
+            /* Faint fire behind the dark section: six frames of the kiln's flames (rendered with Kiln's LTX-2.5 from the
+               hero photo) under a deep wash. Scrolling steps through them, so the fire crackles as you move, and drifts
+               slower than the page (a gentle parallax). Phones and reduced motion get one still frame. */
+            .dark { position: relative; isolation: isolate; overflow: hidden; }
+            .dark .flames { position: absolute; inset: 0; z-index: -2; pointer-events: none; }
+            .dark .flames img { position: absolute; left: 0; top: -12%; width: 100%; height: 124%; object-fit: cover; object-position: center 60%; opacity: 0; transition: opacity 0.16s linear; will-change: opacity, transform; }
+            .dark .flames img.on { opacity: 1; }
+            .dark::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(rgba(23, 13, 8, 0.9) 0%, rgba(23, 13, 8, 0.8) 40%, rgba(23, 13, 8, 0.58) 100%); }
             .dark .eyebrow { color: var(--accent); }
             .dark h2 { color: #fff; }
             .dark a { color: var(--glow); }
@@ -514,6 +511,7 @@ const theme = 'vitesse-dark';
             </section>
 
             <section class="dark" id="code">
+                <div class="flames" aria-hidden="true">{[0, 1, 2, 3, 4, 5].map((k) => <img src={`/fire/f${k}.webp`} alt="" loading="lazy" decoding="async" class={k === 0 ? 'on' : undefined} />)}</div>
                 <div class="wrap split">
                     <div class="text">
                         <p class="eyebrow">Plain Java</p>
@@ -826,6 +824,30 @@ const theme = 'vitesse-dark';
             </div>
         </footer>
 
+        <script>
+            // The dark section's fire: scrolling steps through its frames (a crackle every ~40 px) and drifts it slower
+            // than the page. Left on its first frame for reduced motion and on phones.
+            {
+                const flames = document.querySelector<HTMLElement>('.dark .flames');
+                const still = matchMedia('(prefers-reduced-motion: reduce), (max-width: 800px)');
+                if (flames && !still.matches) {
+                    const frames = [...flames.querySelectorAll('img')];
+                    let shown = 0, queued = false;
+                    const update = () => {
+                        queued = false;
+                        const box = flames.getBoundingClientRect();
+                        if (box.bottom < 0 || box.top > innerHeight) return;
+                        const k = Math.floor(scrollY / 40) % frames.length;
+                        if (k !== shown) { frames[shown].classList.remove('on'); frames[k].classList.add('on'); shown = k; }
+                        const drift = (box.top + box.height / 2 - innerHeight / 2) * -0.2;
+                        for (const f of frames) f.style.transform = `translateY(${drift.toFixed(1)}px)`;
+                    };
+                    addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(update); } }, { passive: true });
+                    for (const f of frames) f.loading = 'eager';
+                    update();
+                }
+            }
+        </script>
         <script>
             const status = document.querySelector<HTMLElement>('.installs .sr');
             for (const button of document.querySelectorAll<HTMLButtonElement>('.copy')) {
