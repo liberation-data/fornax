@@ -8,3 +8,23 @@ include 'kiln-acestep'  // acestep.cpp: ACE-Step 1.5 songs
 include 'kiln-yue2'     // yue2.cpp: YuE2 songs
 include 'kiln-examples' // runnable demos (not published)
 include 'kiln-bench'    // A/B against ComfyUI's HTTP API (not published)
+
+// Natives jars, org.kiln4j:kiln-natives-<os>-<arch>-<backend>: the engines' libraries from build/native/ (see
+// native/build.sh), one jar per platform and backend. A platform is included only when its libraries have been built,
+// unless -Pkiln.natives.require=true (the release build), which fails on a missing one. -Pkiln.natives=... lists others.
+def nativePlatforms = providers.gradleProperty('kiln.natives')
+        .getOrElse('linux-x86_64-vulkan,macos-aarch64-metal,macos-x86_64-metal').split(',')*.trim()
+def requireNatives = providers.gradleProperty('kiln.natives.require').getOrElse('false').toBoolean()
+nativePlatforms.each { platform ->
+    // native/build.sh names a directory by `uname -m`, which is arm64 on macOS
+    def built = file("build/native/${platform.startsWith('macos-aarch64-') ? platform.replace('aarch64', 'arm64') : platform}")
+    if (!built.isDirectory()) {
+        if (requireNatives) throw new GradleException("No native libraries for $platform in $built (run native/build.sh)")
+        return
+    }
+    def name = "kiln-natives-$platform"
+    include name
+    def dir = file("build/kiln-natives/$platform")  // a project needs a directory; this one has nothing in it
+    dir.mkdirs()
+    project(":$name").projectDir = dir
+}

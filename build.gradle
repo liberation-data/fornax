@@ -1,5 +1,14 @@
 // Kiln: in-process generative models for the JVM via Java's Foreign Function & Memory API.
 
+import com.vanniktech.maven.publish.JavaLibrary
+import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.SourcesJar
+
+plugins {
+    // Maven Central through the Central Portal (see .github/workflows/release.yml)
+    id 'com.vanniktech.maven.publish' version '0.37.0' apply false
+}
+
 def os = System.getProperty('os.name').toLowerCase().contains('mac') ? 'macos' : 'linux'
 def arch = System.getProperty('os.arch').replace('amd64', 'x86_64').replace('aarch64', 'arm64')
 def nativeDir = file("build/native/${os}-${arch}-${findProperty('kiln.backend')}")
@@ -11,8 +20,6 @@ subprojects {
 
     java {
         toolchain { languageVersion = JavaLanguageVersion.of(25) }
-        withSourcesJar()
-        withJavadocJar()
     }
 
     tasks.withType(JavaCompile).configureEach { options.compilerArgs += ['-Xlint:all,-restricted'] }
@@ -31,7 +38,78 @@ subprojects {
         testLogging { events 'passed', 'skipped', 'failed'; showStandardStreams = true }
     }
 
-    if (name != 'kiln-core') dependencies { api project(':kiln-core') }
+    if (name != 'kiln-core' && !name.startsWith('kiln-natives-')) dependencies { api project(':kiln-core') }
+
+    tasks.withType(Jar).configureEach {
+        manifest { attributes 'Implementation-Title': project.name, 'Implementation-Version': project.version }
+        from(rootProject.files('LICENSE', 'NOTICE')) { into 'META-INF' }
+    }
+}
+
+// What goes to Maven Central, as org.kiln4j:<project name>. The version is gradle.properties' unless -Pversion=...
+def published = [
+    'kiln-core'   : 'Kiln core: native library loading, Hugging Face cache lookup, audio and the model pool',
+    'kiln-llama'  : 'Kiln llama: GGUF language models through llama.cpp, in-process via Java FFM',
+    'kiln-tts'    : 'Kiln TTS: text to speech through llama.cpp (mtmd), in-process via Java FFM',
+    'kiln-sd'     : 'Kiln SD: images and video through stable-diffusion.cpp, in-process via Java FFM',
+    'kiln-acestep': 'Kiln ACE-Step: ACE-Step 1.5 songs through acestep.cpp, in-process via Java FFM',
+    'kiln-yue2'   : 'Kiln YuE2: YuE2 songs through yue2.cpp, in-process via Java FFM',
+]
+configure(subprojects.findAll { published.containsKey(it.name) || it.name.startsWith('kiln-natives-') }) { p ->
+    apply plugin: 'com.vanniktech.maven.publish'
+    def natives = p.name.startsWith('kiln-natives-')
+    mavenPublishing {
+        configure(natives ? new JavaLibrary(new JavadocJar.Empty(), new SourcesJar.Empty())
+                          : new JavaLibrary(new JavadocJar.Javadoc(), new SourcesJar.Sources()))
+        publishToMavenCentral()
+        signAllPublications()
+        coordinates('org.kiln4j', p.name, p.version.toString())
+        pom {
+            name = p.name
+            description = natives ? "Kiln's native engine libraries for ${p.name - 'kiln-natives-'}: llama.cpp, " +
+                    'stable-diffusion.cpp, acestep.cpp and yue2.cpp, each built into one self-contained library' : published[p.name]
+            inceptionYear = '2026'
+            url = 'https://kiln4j.org'
+            licenses {
+                license {
+                    name = 'The Apache License, Version 2.0'
+                    url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
+                    distribution = 'repo'
+                }
+            }
+            developers {
+                developer {
+                    id = 'jasperblues'
+                    name = 'Jasper Blues'
+                    url = 'https://github.com/jasperblues'
+                }
+            }
+            scm {
+                url = 'https://github.com/liberation-data/kiln'
+                connection = 'scm:git:https://github.com/liberation-data/kiln.git'
+                developerConnection = 'scm:git:ssh://git@github.com/liberation-data/kiln.git'
+            }
+        }
+    }
+}
+
+// A natives jar: build/native/<dir>/*.so or *.dylib under org/kiln4j/natives/<os>-<arch>-<backend>/, where
+// NativeLibrary finds them on the classpath (see BundledNatives). settings.gradle includes one per built platform.
+def engineLibraries = ['kiln_llama', 'kiln_tts', 'stable-diffusion', 'kiln_acestep', 'kiln_yue2']
+configure(subprojects.findAll { it.name.startsWith('kiln-natives-') }) { p ->
+    def platform = p.name - 'kiln-natives-'
+    // native/build.sh names its directory by `uname -m`, which is arm64 on macOS
+    def libs = rootProject.file("build/native/${platform.startsWith('macos-aarch64-') ? platform.replace('aarch64', 'arm64') : platform}")
+    def ext = platform.startsWith('macos-') ? 'dylib' : 'so'
+    tasks.named('jar', Jar) {
+        from(libs) { include "*.$ext"; into "org/kiln4j/natives/$platform" }
+        // A release ships every engine; a local build may have only some of them.
+        def required = providers.gradleProperty('kiln.natives.require').map { it.toBoolean() }.getOrElse(false)
+        if (required) doFirst {
+            def missing = engineLibraries.collect { "lib${it}.$ext" }.findAll { !new File(libs, it).isFile() }
+            if (missing) throw new GradleException("$platform natives are missing $missing in $libs")
+        }
+    }
 }
 
 project(':kiln-examples') {
