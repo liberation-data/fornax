@@ -66,4 +66,11 @@ class LlamaModelIT {
         assertTrue(res.contains("71"), res);
         assertFalse(streamed.isEmpty());
     }
+
+    @Test
+    void cancelStopsGenerationEarly() {
+        var r = model.chat(List.of(LlamaModel.Message.user("Count from 1 to 200, one number per line.")),
+                LlamaModel.Options.DEFAULT.withTemperature(0).withMaxTokens(400), piece -> model.cancel());
+        assertTrue(r.generatedTokens() <= 2, "generated " + r.generatedTokens());
+    }
 }

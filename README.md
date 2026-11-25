@@ -70,7 +70,17 @@ private. The engines pin different ggml versions, so this is what lets several o
   `kiln-llama` binds a small stable C layer (`kiln-llama/native`) instead.
 - `acestep.cpp` and `yue2.cpp` are C++ only, so each gets a ~100-line C layer: JSON request in, PCM audio out.
 
+Engine quirks and how to debug them: [docs/engine-notes.md](docs/engine-notes.md).
+
 Every model class is `AutoCloseable`; weights are freed on `close()`. Instances aren't thread-safe.
+
+`ModelPool` keeps models resident between uses, the way ComfyUI does: it unloads idle models least recently used
+first to stay within a memory budget, optionally unloads after an idle timeout, and gives each model one user at a
+time.
+
+`LlamaModel.chatJson` does OpenAI-style chat with **tool calling**, using the model's own chat template and
+tool-call format (the same templates and parsers as llama-server): messages and tools in OpenAI's format in, a
+message with `content`, `reasoning_content` and `tool_calls` out.
 
 ## Building
 
@@ -142,7 +152,6 @@ images and songs. The app starts it; to run it on its own:
 
 - Test and document the HIP, CUDA and Metal builds; prebuilt native libraries per platform.
 - Video through stable-diffusion.cpp (`sd_generate_video`: Wan, LTX).
-- Model pool: keep models resident, evict by memory budget and idle time (as ComfyUI does).
 - `kiln-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `kiln-llama`).
 - An optional OpenAI-compatible server.
 - Vision-language models through llama.cpp's `mtmd` (document parsing, image Q&A).

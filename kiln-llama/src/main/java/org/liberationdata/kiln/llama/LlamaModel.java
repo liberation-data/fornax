@@ -43,13 +43,24 @@ public final class LlamaModel implements AutoCloseable {
                     MethodType.methodType(int.class, MemorySegment.class, MemorySegment.class));
         } catch (ReflectiveOperationException e) { throw new ExceptionInInitializerError(e); }
     }
-    private static final ThreadLocal<Consumer<String>> SINK = new ThreadLocal<>();
+    private record Sink(LlamaModel model, Consumer<String> consumer) {}
+
+    private static final ThreadLocal<Sink> SINK = new ThreadLocal<>();
 
     private static int onToken(MemorySegment piece, MemorySegment user) {
-        Consumer<String> sink = SINK.get();
-        if (sink != null) sink.accept(NativeLibrary.string(piece));
-        return 0;
+        Sink sink = SINK.get();
+        if (sink == null) return 0;
+        if (sink.consumer() != null) sink.consumer().accept(NativeLibrary.string(piece));
+        return sink.model().cancelled ? 1 : 0;
     }
+
+    private volatile boolean cancelled;
+
+    /**
+     * Stops the generation in progress (from any thread) after the current token; the call returns what was
+     * generated so far. Takes effect for calls that stream (a non-null onPiece/onContent callback).
+     */
+    public void cancel() { cancelled = true; }
 
     public record Message(String role, String content) {
         public static Message system(String c) { return new Message("system", c); }
@@ -135,9 +146,10 @@ public final class LlamaModel implements AutoCloseable {
         finally { SINK.remove(); }
     }
 
-    private static MemorySegment callback(Arena a, Consumer<String> onPiece) {
+    private MemorySegment callback(Arena a, Consumer<String> onPiece) {
+        cancelled = false;
         if (onPiece == null) return MemorySegment.NULL;
-        SINK.set(onPiece);
+        SINK.set(new Sink(this, onPiece));
         return NativeLibrary.linker().upcallStub(ON_TOKEN, TOKEN_CB, a);
     }
 

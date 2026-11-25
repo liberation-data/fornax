@@ -29,6 +29,9 @@ public final class Sd {
     static final MethodHandle opt_set_int = fn("sd_opt_set_int", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_LONG));
     static final MethodHandle opt_set_float = fn("sd_opt_set_float", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_DOUBLE));
     static final MethodHandle opt_set_string = fn("sd_opt_set_string", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+    static final MethodHandle opt_set_floats = fn("sd_opt_set_floats", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG));
+    static final MethodHandle opt_set_tensor = fn("sd_opt_set_tensor", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+    static final MethodHandle opt_set_audios = fn("sd_opt_set_audios", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG));
     static final MethodHandle opt_set_tensors = fn("sd_opt_set_tensors", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG));
     // context + generation
     static final MethodHandle ctx_create = fn("sd_ctx_create", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
@@ -52,6 +55,9 @@ public final class Sd {
     // callbacks
     static final MethodHandle set_log_callback = fn("sd_set_log_callback", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS));
     static final MethodHandle set_progress_callback = fn("sd_set_progress_callback", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS));
+
+    /** sd_audio_t: { uint32_t sample_rate; const sd_tensor_t* data; } */
+    static final StructLayout AUDIO = MemoryLayout.structLayout(JAVA_INT.withName("sample_rate"), MemoryLayout.paddingLayout(4), ADDRESS.withName("data"));
 
     public static final int SD_TENSOR_U8 = 1;
     public static final int SD_TENSOR_F32 = 4;
@@ -79,7 +85,13 @@ public final class Sd {
     public interface ProgressSink { void progress(int step, int steps, float seconds); }
 
     // sd log levels: 0 debug, 1 info, 2 warn, 3 error. Quiet unless KILN_VERBOSE is set.
-    private static LogSink logSink = (l, t) -> { if (l >= (System.getenv("KILN_VERBOSE") != null ? 1 : 3)) System.err.print(t); };
+    private static LogSink logSink = (l, t) -> { if (l >= logThreshold()) System.err.print(t); };
+
+    /** KILN_VERBOSE unset: errors only; set: info and up; "debug": everything, including the compiled DGL program. */
+    private static int logThreshold() {
+        String v = System.getenv("KILN_VERBOSE");
+        return v == null ? 3 : "debug".equalsIgnoreCase(v) ? 0 : 1;
+    }
     private static ProgressSink progressSink = (s, n, t) -> {};
 
     static void onLog(int level, MemorySegment text, MemorySegment data) {

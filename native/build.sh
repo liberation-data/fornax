@@ -30,6 +30,12 @@ fetch() {  # fetch <dir-name>
         git -C "$dir" checkout -q "$commit"
     fi
     git -C "$dir" submodule update -q --init --recursive
+    # Kiln's patches to the engine (native/patches/<engine>/*.patch), each applied once.
+    for p in "$ROOT/native/patches/$1"/*.patch; do
+        [ -e "$p" ] || continue
+        if git -C "$dir" apply --reverse --check "$p" 2>/dev/null; then continue; fi
+        git -C "$dir" apply "$p" || { echo "patch failed: $p" >&2; exit 1; }
+    done
 }
 
 # ggml backend switches, plus the system libraries a static ggml backend needs at link time.
