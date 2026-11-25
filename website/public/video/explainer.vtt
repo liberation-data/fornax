@@ -1,110 +1,113 @@
 WEBVTT
 
-00:00:00.500 --> 00:00:06.130
+00:00:00.500 --> 00:00:06.029
 Kiln runs open generative models inside
 your Java application: language models,
 
-00:00:06.130 --> 00:00:08.839
+00:00:06.029 --> 00:00:08.689
 images, songs, video, and audio tools.
 
-00:00:08.839 --> 00:00:13.574
+00:00:08.689 --> 00:00:13.338
 You call them like any other Java
 method, and they run on your GPU.
 
-00:00:14.283 --> 00:00:18.951
+00:00:13.895 --> 00:00:18.428
 If you want a local language model
 or embeddings in Java, there are options.
 
-00:00:18.951 --> 00:00:22.575
+00:00:18.428 --> 00:00:21.948
 They work, though they're often
 slower than they should be.
 
-00:00:22.575 --> 00:00:26.445
+00:00:21.948 --> 00:00:25.706
 But what if you want to flag
 a fracture on an X-ray for review?
 
-00:00:26.445 --> 00:00:28.533
+00:00:25.706 --> 00:00:27.734
 Spot defects on a production line?
 
-00:00:28.533 --> 00:00:30.069
+00:00:27.734 --> 00:00:29.226
 Read a stack of invoices?
 
-00:00:30.069 --> 00:00:32.034
+00:00:29.226 --> 00:00:31.134
 Isolate the vocals from a track?
 
-00:00:32.034 --> 00:00:34.675
+00:00:31.134 --> 00:00:33.700
 Or any of a plethora
 of other capabilities?
 
-00:00:34.675 --> 00:00:37.132
+00:00:33.700 --> 00:00:36.086
 Until now, from the JVM, you were stuck.
 
-00:00:37.132 --> 00:00:41.900
+00:00:36.086 --> 00:00:40.715
 It meant a Python stack, or a tool like
 ComfyUI behind HTTP: another runtime,
 
-00:00:41.900 --> 00:00:44.933
+00:00:40.715 --> 00:00:43.662
 another process,
 and a network hop on every call.
 
-00:00:44.933 --> 00:00:47.329
+00:00:43.662 --> 00:00:45.988
 Kiln calls the native engines directly.
 
-00:00:47.329 --> 00:00:49.847
+00:00:45.988 --> 00:00:48.434
 No Python, no server, nothing in between.
 
-00:00:50.549 --> 00:00:53.624
+00:00:48.995 --> 00:00:52.039
 It uses Java's Foreign
 Function and Memory API,
 
-00:00:53.624 --> 00:00:56.960
+00:00:52.039 --> 00:00:55.342
 so the call into the engine
 is a plain native call.
 
-00:00:56.960 --> 00:01:00.549
+00:00:55.342 --> 00:00:58.895
 Weights load once and stay
 on the GPU between requests,
 
-00:01:00.549 --> 00:01:05.703
+00:00:58.895 --> 00:01:03.998
 and when memory runs short, Kiln unloads
 the models you've used least recently.
 
-00:01:05.703 --> 00:01:09.912
+00:01:03.998 --> 00:01:08.165
 Text streams back token by token,
 and models can call your tools.
 
-00:01:10.616 --> 00:01:15.193
-In Kiln Studio, chat with a model
-and watch the tokens per second,
+00:01:08.728 --> 00:01:13.192
+In Kiln Studio, read an invoice
+into JSON, spot a defect on a part,
 
-00:01:15.193 --> 00:01:18.453
-paint an image, write a song,
-or render a clip.
+00:01:13.192 --> 00:01:15.790
+or flag an X-ray for a doctor's review.
 
-00:01:18.453 --> 00:01:23.941
+00:01:15.790 --> 00:01:19.487
+Or chat, paint an image,
+write a song, or render a clip.
+
+00:01:19.487 --> 00:01:24.756
 On our test laptop, Kiln made a one-minute
 song up to twice as fast as ComfyUI,
 
-00:01:23.941 --> 00:01:25.052
+00:01:24.756 --> 00:01:25.823
 on the same GPU.
 
-00:01:25.749 --> 00:01:30.442
+00:01:26.395 --> 00:01:30.964
 Pull a model from Hugging Face with
 one command, and try it in Kiln Studio.
 
-00:01:30.442 --> 00:01:34.476
+00:01:30.964 --> 00:01:34.892
 Kiln is plain Java with no dependencies,
 so it works in any app,
 
-00:01:34.476 --> 00:01:38.951
+00:01:34.892 --> 00:01:39.249
 and it's a great companion for Embabel
 Agent: local models, in process.
 
-00:01:39.649 --> 00:01:42.919
+00:01:39.828 --> 00:01:43.012
 Here's what open models
 can make, running in Kiln.
 
-00:01:42.919 --> 00:01:45.339
+00:01:43.012 --> 00:01:45.369
 This is Endless Country, episode two.
 
 00:01:54.130 --> 00:01:54.648
