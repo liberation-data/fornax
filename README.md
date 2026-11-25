@@ -25,6 +25,7 @@ Kiln binds native inference engines with Java's Foreign Function & Memory API (J
 | Module | Engine | Models |
 |---|---|---|
 | `kiln-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...) |
+| `kiln-tts` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`mtmd`) | text to speech: Kokoro, ZONOS3, LFM3-Audio, Chatterbox, VoxCPM2, ... |
 | `kiln-sd` | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) | FLUX.1/FLUX.2, Qwen-Image and Qwen-Image-Edit, SD 1.x/2.x/XL/3, Wan, LTX |
 | `kiln-acestep` | [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) | ACE-Step 1.5 songs (vocals, lyrics, up to several minutes) |
 | `kiln-yue2` | [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp) | YuE2 songs |
@@ -88,7 +89,7 @@ Needs JDK 25, CMake, Ninja, a C++17 compiler, and the SDK for your GPU backend
 (Vulkan: the Vulkan headers, `glslc` and SPIRV-Headers; on Fedora `dnf install vulkan-headers vulkan-loader-devel glslc spirv-headers-devel`).
 
 ```sh
-native/build.sh vulkan            # or hip | cuda | metal | cpu; optionally list engines: llama sd acestep yue2
+native/build.sh vulkan            # or hip | cuda | metal | cpu; optionally list engines: llama tts sd acestep yue2
 ./gradlew build
 ```
 
@@ -129,6 +130,7 @@ CC BY-NC 4.0, for example.
 ./gradlew chat --args='"Write a haiku about a kiln"'
 ./gradlew song --args='song.wav'                         # -Pdit=xl-turbo for the larger model
 ./gradlew yue2 --args='yue2-song.wav'
+./gradlew speak --args='out.wav "Hello from the JVM" bm_george'   # -Pmodel=zonos3|lfm3-audio|chatterbox-turbo|...
 ./gradlew image --args='klein out.png "a neon sign that says KILN"' -Psteps=12 -Pwidth=768 -Pheight=768
 ```
 

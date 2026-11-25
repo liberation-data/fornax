@@ -37,12 +37,14 @@ subprojects {
 project(':kiln-examples') {
     dependencies {
         implementation project(':kiln-llama')
+        implementation project(':kiln-tts')
         implementation project(':kiln-sd')
         implementation project(':kiln-acestep')
         implementation project(':kiln-yue2')
     }
     // ./gradlew chat --args='"your prompt"'   image --args='klein out.png "a prompt"'   song   yue2
-    [chat: 'Chat', image: 'Image', song: 'Song', yue2: 'Yue2Song', single: 'Single', video: 'VideoClip'].each { task, cls ->
+    // speak --args='out.wav "text" am_michael' -Pmodel=kokoro
+    [chat: 'Chat', image: 'Image', song: 'Song', yue2: 'Yue2Song', single: 'Single', video: 'VideoClip', speak: 'Speak'].each { task, cls ->
         tasks.register(task, JavaExec) {
             group = 'kiln examples'
             description = "Runs org.liberationdata.kiln.examples.${cls}"
@@ -54,7 +56,7 @@ project(':kiln-examples') {
             workingDir = rootProject.projectDir
             // -Pmodel=... -Psteps=... etc. become system properties (only ones given on the command line)
             def cli = gradle.startParameter.projectProperties
-            ['model', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio', 'preprocess', 'hires', 'upscaler', 'refine', 'strength'].each { p ->
+            ['model', 'mmproj', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio', 'preprocess', 'hires', 'upscaler', 'refine', 'strength'].each { p ->
                 if (cli.containsKey(p)) systemProperty p, cli[p]
             }
         }

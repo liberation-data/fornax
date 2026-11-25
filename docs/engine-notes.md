@@ -55,3 +55,9 @@ surprises you.
 | `LTXVLatentUpsampler` with the x2 model | `hires.upscaler=model` plus `hires.model_path` |
 | Stage 2: sigmas 0.85, 0.725, 0.4219, 0, first frame at 1.0 | `hires.sigmas`; sd.cpp holds the first frame fully in the refine |
 | Tiled VAE decode | `vae_tiling.enabled` |
+
+## llama.cpp text to speech (kiln-tts)
+
+- **Call `postprocess_cpu_params` before `common_init_from_params`.** The parser fills in the thread counts after
+  the arguments; without it the threadpool is sized from -1 and ggml tries to allocate 2^64 bytes. See
+  [tts-notes.md](tts-notes.md) for the rest (models, voices, licences).

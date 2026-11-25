@@ -5,12 +5,12 @@
 #
 #   native/build.sh [vulkan|hip|cuda|metal|cpu] [engine...]
 #
-# Engines: llama sd acestep yue2 (default: all). Output: build/native/<os>-<arch>-<backend>/.
+# Engines: llama tts sd acestep yue2 (default: all). Output: build/native/<os>-<arch>-<backend>/.
 # Env: JOBS, HIP_ARCH (default gfx1151), CMAKE_EXTRA (extra cmake args for every engine).
 set -euo pipefail
 
 BACKEND=${1:-vulkan}; shift || true
-ENGINES=${*:-llama sd acestep yue2}
+ENGINES=${*:-llama tts sd acestep yue2}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=$ROOT/engines-src
 OS=$(uname -s | tr A-Z a-z); ARCH=$(uname -m)
@@ -84,6 +84,19 @@ build_llama() {
     $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_llama.$EXT" "$ROOT/kiln-llama/native/kiln_llama.cpp" \
         -I"$s/include" -I"$s/ggml/include" -I"$s/common" -I"$s/vendor" \
         $(group "$(find "$b" -name libllama-common.a)" "$(find "$b" -name libllama-common-base.a)" \
+                $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(find "$b" -name libllama.a)") $(ggml_archives "$b") \
+        $PRIVATE $OMP $LIBS -lpthread
+}
+
+build_tts() {  # llama.cpp's text to speech (libmtmd's audio generation), in the same build tree as llama
+    fetch llama.cpp
+    local s=$SRC/llama.cpp b=$SRC/llama.cpp/build-$BACKEND
+    mkdir -p "$b"
+    cmake_build "$s" "$b" "llama llama-common mtmd" $GGML -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF \
+        -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_MTMD=ON
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_tts.$EXT" "$ROOT/kiln-tts/native/kiln_tts.cpp" \
+        -I"$s/include" -I"$s/ggml/include" -I"$s/common" -I"$s/vendor" -I"$s/tools/mtmd" \
+        $(group "$(find "$b" -name libmtmd.a)" "$(find "$b" -name libllama-common.a)" "$(find "$b" -name libllama-common-base.a)" \
                 $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(find "$b" -name libllama.a)") $(ggml_archives "$b") \
         $PRIVATE $OMP $LIBS -lpthread
 }
