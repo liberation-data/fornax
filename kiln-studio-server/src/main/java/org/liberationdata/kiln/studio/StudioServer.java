@@ -377,7 +377,7 @@ public final class StudioServer {
         if (width % 16 != 0 || height % 16 != 0 || width < 128 || height < 128 || width > 1536 || height > 1536) {
             throw new IllegalArgumentException("width and height are multiples of 16, from 128 to 1536");
         }
-        if (frames < 9 || frames > 257 || frames % 8 != 1) throw new IllegalArgumentException("frames are 8n + 1, from 9 to 257");
+        if (frames < 9 || frames % 8 != 1) throw new IllegalArgumentException("frames are 8n + 1, from 9 up");
         if (fps < 1 || fps > 60) throw new IllegalArgumentException("fps is from 1 to 60");
         BufferedImage first = image(Json.str(req, "image", ""));
 
