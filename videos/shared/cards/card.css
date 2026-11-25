@@ -70,7 +70,8 @@ em { font-family: Serif, serif; font-style: italic; font-weight: 400; color: var
 .emblem > div { width: 212px; height: 212px; border: 3px dotted rgb(255 255 255 / 85%); border-radius: 50%; display: grid; place-items: center; }
 .emblem img { width: 124px; height: 124px; filter: drop-shadow(0 0 26px rgb(255 150 40 / 55%)); }
 .rule { height: 3px; background: rgb(255 255 255 / 90%); }
-.wordmark { margin: 0; font: 700 230px/1 Ub, sans-serif; letter-spacing: 0.14em; padding-left: 0.14em; }
+.wordmark { margin: 0; font: 700 230px/1 Ub, sans-serif; letter-spacing: 0.02em; }
+.wordmark .j { color: var(--accent); }
 .subtitle { margin: 0; font: 500 54px Ub, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
 .tagline { margin: 0; font: italic 400 50px/1.4 Serif, serif; color: #fbeee2; }
 .tagline em { color: var(--glow); }
