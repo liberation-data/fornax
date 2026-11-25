@@ -1,2 +1,2 @@
 aura-2-hyperion-en
-Kiln! Open models, inside your JVM! [pause 0.8] Fire it up at kiln four J dot org!
+Kiln! Open models, inside your JVM! [pause 0.5] Sponsored by Rod Johnson, and created by Jasper Blues. [pause 0.8] kiln four J dot org!
