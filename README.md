@@ -141,10 +141,11 @@ second argument. The request formats are the engines' own (see
 `kiln-studio-server` is the backend of [Kiln Studio](../kiln-studio), a desktop app for trying models: a JDK-only HTTP
 server on localhost (`com.sun.net.httpserver`, replies streamed as server-sent events) that lists what in the Hugging
 Face cache Kiln can run, keeps models in a `ModelPool`, and serves chat (with a tool-calling demo through `chatJson`),
-images and songs. The app starts it; to run it on its own:
+images, songs (ACE-Step and YuE2) and video clips with sound (LTX-2.5, whose .mp4 needs ffmpeg). The app starts it;
+to run it on its own:
 
 ```sh
-./gradlew studioServer                    # http://127.0.0.1:5191; -Pport=, -Pbudget=<GB>, -Pstub=image,song
+./gradlew studioServer                    # http://127.0.0.1:5191; -Pport=, -Pbudget=<GB>, -Pstub=image,song,video
 ./gradlew :kiln-studio-server:studioJar   # one runnable jar, which the app ships
 ```
 

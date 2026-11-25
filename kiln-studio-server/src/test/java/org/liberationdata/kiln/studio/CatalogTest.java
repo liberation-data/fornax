@@ -50,6 +50,29 @@ class CatalogTest {
         assertFalse(catalog.find("image:flux2-klein").orElseThrow().available());
     }
 
+    @Test void yue2IsASongModelWithItsLicenseAndNotAChatModel() throws Exception {
+        file("Serveurperso/YuE2-GGUF", "a", "YuE2-3B-Q8_0.gguf", 4);
+        var catalog = new Catalog(root);
+        assertFalse(catalog.find("song:yue2-3b").orElseThrow().available());
+        file("Serveurperso/YuE2-GGUF", "a", "YuE2-Vae-F32.gguf", 5);
+        var yue2 = catalog.find("song:yue2-3b").orElseThrow();
+        assertTrue(yue2.available());
+        assertEquals(9, yue2.sizeBytes());
+        assertEquals("yue2.cpp", yue2.engine());
+        assertTrue(yue2.license().startsWith("CC BY-NC 4.0"));
+        assertTrue(catalog.chatModels().isEmpty());
+    }
+
+    @Test void ltxWithoutItsAudioVaeIsAnotherModel() throws Exception {
+        var ltx = new Catalog(root).find("video:ltx-2.5-distilled").orElseThrow();
+        assertEquals(Catalog.Kind.video, ltx.kind());
+        assertEquals(List.of("diffusion_model", "llm", "vae", "audio_vae", "upscaler"), ltx.parts().stream().map(Catalog.Part::role).toList());
+        var silent = ltx.without("audio_vae", "+silent", " (no audio)");
+        assertEquals("video:ltx-2.5-distilled+silent", silent.id());
+        assertNull(silent.path("audio_vae"));
+        assertEquals(4, silent.parts().size());
+    }
+
     @Test void anEmptyCacheHasNoChatModels() {
         assertTrue(new Catalog(root.resolve("missing")).chatModels().isEmpty());
     }

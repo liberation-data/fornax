@@ -20,14 +20,14 @@ import java.util.stream.Stream;
  * What in the Hugging Face cache Kiln can run, as the studio offers it:
  * <ul>
  *   <li><b>chat</b>: every GGUF language model in the cache (llama.cpp), found by scanning it;</li>
- *   <li><b>image</b> and <b>song</b>: the presets the Kiln examples use (stable-diffusion.cpp, ACE-Step), each a set of
- *       files, available when all of them are downloaded.</li>
+ *   <li><b>image</b>, <b>song</b> and <b>video</b>: the presets the Kiln examples use (stable-diffusion.cpp, ACE-Step,
+ *       YuE2, LTX-2.5), each a set of files, available when all of them are downloaded.</li>
  * </ul>
  * Read afresh on each call, so a model downloaded while the studio runs shows up on the next refresh.
  */
 final class Catalog {
 
-    enum Kind { chat, image, song }
+    enum Kind { chat, image, song, video }
 
     /** One file a model needs: which part it is, where on the Hub it comes from, and where it is now (or null). */
     record Part(String role, String repo, String file, Path path) {
@@ -36,10 +36,19 @@ final class Catalog {
 
     /**
      * A model the studio can load. {@code defaults} are the generation settings the preset suggests (steps, guidance,
-     * size, ...), which the page fills its form with.
+     * size, ...), which the page fills its form with. {@code license} is said where the weights' license limits what
+     * may be done with what they make (null otherwise).
      */
-    record Model(String id, Kind kind, String name, String engine, List<Part> parts, Map<String, Object> defaults) {
+    record Model(String id, Kind kind, String name, String engine, List<Part> parts, Map<String, Object> defaults, String license) {
         boolean available() { return parts.stream().allMatch(Part::present); }
+
+        Model licensed(String license) { return new Model(id, kind, name, engine, parts, defaults, license); }
+
+        /** The same model loaded without one of its parts (LTX without its audio VAE), as a model of its own in the pool. */
+        Model without(String role, String idSuffix, String nameSuffix) {
+            return new Model(id + idSuffix, kind, name + nameSuffix, engine,
+                    parts.stream().filter(p -> !p.role().equals(role)).toList(), defaults, license);
+        }
 
         long sizeBytes() {
             long n = 0;
@@ -55,8 +64,12 @@ final class Catalog {
         }
     }
 
+    static final String YUE2 = "Serveurperso/YuE2-GGUF";
+    /** YuE2's weights' license, as Kiln's README and website say it. */
+    static final String YUE2_LICENSE = "CC BY-NC 4.0: no commercial use of the weights or of what they make";
+
     // GGUFs in the cache that aren't chat models: the song engines' own weights, embedders, VAEs and vision projectors.
-    private static final Set<String> NOT_CHAT_REPOS = Set.of("Serveurperso/ACE-Step-1.5-GGUF", "Serveurperso/YuE2-GGUF");
+    private static final Set<String> NOT_CHAT_REPOS = Set.of("Serveurperso/ACE-Step-1.5-GGUF", YUE2);
     private static final Pattern NOT_CHAT_FILE = Pattern.compile("(?i).*(embed|vae|mmproj|reranker).*");
     // Of a split GGUF, the first shard names the model (llama.cpp loads the rest beside it).
     private static final Pattern SHARD = Pattern.compile("(?i)(.*)-(\\d{5})-of-(\\d{5})\\.gguf");
@@ -73,6 +86,7 @@ final class Catalog {
         List<Model> all = new ArrayList<>(chatModels());
         all.addAll(imagePresets());
         all.addAll(songPresets());
+        all.addAll(videoPresets());
         return all;
     }
 
@@ -120,14 +134,14 @@ final class Catalog {
                     }
                     String name = base.replaceAll("(?i)(-\\d{5}-of-\\d{5})?\\.gguf$", "");
                     out.add(new Model("chat:" + repo + "/" + file, Kind.chat, name, "llama.cpp", parts,
-                            Json.obj("maxTokens", 1024L, "temperature", 0.7, "contextSize", 8192L)));
+                            Json.obj("maxTokens", 1024L, "temperature", 0.7, "contextSize", 8192L), null));
                 }
             }
         } catch (IOException e) { throw new UncheckedIOException(e); }
         return out;
     }
 
-    // ---- image and song: presets, as the Kiln examples have them ----
+    // ---- image, song and video: presets, as the Kiln examples have them ----
 
     List<Model> imagePresets() {
         String qwenVl = "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors";
@@ -160,11 +174,36 @@ final class Catalog {
                 preset("song:acestep-xl-turbo", Kind.song, "ACE-Step 1.5 XL turbo", "acestep.cpp", song,
                         part("text_encoder", ace, "Qwen3-Embedding-0.6B-Q8_0.gguf"),
                         part("dit", ace, "acestep-v15-xl-turbo-Q8_0.gguf"),
-                        part("vae", ace, "vae-BF16.gguf")));
+                        part("vae", ace, "vae-BF16.gguf")),
+                // Yue2Song's files. YuE2 takes no BPM or key: its style says them, in words.
+                preset("song:yue2-3b", Kind.song, "YuE2 3B", "yue2.cpp", Json.obj("duration", 60L),
+                        part("model", YUE2, "YuE2-3B-Q8_0.gguf"),
+                        part("vae", YUE2, "YuE2-Vae-F32.gguf")).licensed(YUE2_LICENSE));
+    }
+
+    /**
+     * LTX-2.5 through stable-diffusion.cpp, with VideoClip's files: the transformer, Gemma text encoder, video and audio
+     * VAEs, and the x2 latent upscaler its two-stage recipe refines with. Sizes are the draft's; two-stage doubles them.
+     */
+    List<Model> videoPresets() {
+        String ltx = "Lightricks/LTX-2.5";
+        List<Model> out = new ArrayList<>();
+        for (String variant : List.of("distilled", "dev")) {
+            boolean distilled = variant.equals("distilled");
+            out.add(preset("video:ltx-2.5-" + variant, Kind.video, "LTX-2.5 22B " + variant, "stable-diffusion.cpp",
+                    Json.obj("width", 672L, "height", 448L, "frames", 49L, "fps", 24L, "steps", distilled ? 8L : 20L,
+                            "cfg", distilled ? 1.0 : 3.0, "strength", 0.7),
+                    part("diffusion_model", ltx, "diffusion_models/ltx-2.5-22b-" + variant + "-transformer-comfy-int8-convrot.safetensors"),
+                    part("llm", ltx, "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors"),
+                    part("vae", ltx, "vae/ltx-2.5-video-vae-conv-bf16.safetensors"),
+                    part("audio_vae", ltx, "vae/ltx-2.5-audio-vae-bf16.safetensors"),
+                    part("upscaler", ltx, "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors")));
+        }
+        return out;
     }
 
     private static Model preset(String id, Kind kind, String name, String engine, Map<String, Object> defaults, Part... parts) {
-        return new Model(id, kind, name, engine, List.of(parts), defaults);
+        return new Model(id, kind, name, engine, List.of(parts), defaults, null);
     }
 
     private Part part(String role, String repo, String file) {

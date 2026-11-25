@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Every route, over HTTP, with each engine a stub: the wiring the page relies on, with nothing loaded on the GPU. */
 class StudioServerTest {
@@ -33,6 +34,13 @@ class StudioServerTest {
         put(cache, "Comfy-Org/z_image_turbo", "split_files/text_encoders/qwen_3_4b.safetensors");
         for (String f : List.of("Qwen3-Embedding-0.6B-Q8_0.gguf", "acestep-v15-turbo-Q8_0.gguf", "vae-BF16.gguf")) {
             put(cache, "Serveurperso/ACE-Step-1.5-GGUF", f);
+        }
+        put(cache, "Serveurperso/YuE2-GGUF", "YuE2-3B-Q8_0.gguf");
+        put(cache, "Serveurperso/YuE2-GGUF", "YuE2-Vae-F32.gguf");
+        for (String f : List.of("diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+                "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors", "vae/ltx-2.5-video-vae-conv-bf16.safetensors",
+                "vae/ltx-2.5-audio-vae-bf16.safetensors", "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors")) {
+            put(cache, "Lightricks/LTX-2.5", f);
         }
         studio = new Studio(new Catalog(cache), 1L << 30, null, EnumSet.allOf(Catalog.Kind.class), dir.resolve("outputs"));
         server = new StudioServer(studio, 0);
@@ -79,6 +87,12 @@ class StudioServerTest {
         assertEquals(true, qwen.get("available"));
         assertEquals(false, qwen.get("loaded"));
         assertEquals(false, model("song:acestep-turbo-lm4b").get("available"));
+        var yue2 = model("song:yue2-3b");
+        assertEquals("yue2.cpp", yue2.get("engine"));
+        assertTrue(yue2.get("license").toString().startsWith("CC BY-NC 4.0"));
+        assertNull(model("song:acestep-turbo").get("license"));
+        assertEquals(true, model("video:ltx-2.5-distilled").get("available"));
+        assertEquals(false, model("video:ltx-2.5-dev").get("available"));
     }
 
     @Test void loadAndUnload() throws Exception {
@@ -133,11 +147,95 @@ class StudioServerTest {
         assertEquals("RIFF", new String(part.body(), 0, 4));
     }
 
+    @Test void yue2SongTakesItsOwnRequestAndKeepsTheScore() throws Exception {
+        String s = call("POST", "/api/song", "{\"model\": \"song:yue2-3b\", \"caption\": \"country rock\", \"lyrics\": \"la\","
+                + "\"duration\": 2, \"bpm\": 120, \"keyscale\": \"D major\", \"seed\": 5}").body();
+        var done = event(s, "done");
+        var request = (Map<?, ?>) done.get("request");
+        // yue2-rusty.json's shape: a style, no caption, BPM or key.
+        assertEquals("country rock", request.get("style"));
+        assertEquals(5L, request.get("lm_seed"));
+        assertFalse(request.containsKey("caption") || request.containsKey("bpm") || request.containsKey("keyscale"));
+        assertTrue(done.get("score").toString().startsWith("X:1"));
+        assertTrue(done.get("license").toString().startsWith("CC BY-NC"));
+        assertEquals(2.0, done.get("audioSeconds"));
+        String name = done.get("url").toString().replaceAll(".*/|\\.wav$", "");
+        assertTrue(Files.readString(dir.resolve("outputs").resolve(name + ".abc")).startsWith("X:1"));
+    }
+
+    private static boolean hasFfmpeg() { return Mp4.find(null) != null; }
+
+    @Test void videoReportsBothStagesAndServesTheMp4() throws Exception {
+        assumeTrue(hasFfmpeg(), "no ffmpeg on the PATH");
+        String png = java.util.Base64.getEncoder().encodeToString(Files.readAllBytes(stillPng()));
+        String s = call("POST", "/api/video", "{\"model\": \"video:ltx-2.5-distilled\", \"prompt\": \"a kiln at dusk\","
+                + "\"image\": \"data:image/png;base64," + png + "\", \"width\": 160, \"height\": 128, \"frames\": 9, \"fps\": 8, \"seed\": 3}").body();
+        var progress = event(s, "progress");
+        assertEquals(2L, progress.get("stage"));
+        assertEquals(3L, progress.get("steps"));
+        assertTrue(s.contains("\"state\":\"encoding\""));
+        var done = event(s, "done");
+        assertEquals(320L, done.get("width"));  // the refine doubles the draft
+        assertEquals(9L, done.get("frames"));
+        assertEquals(true, done.get("audio"));
+        var mp4 = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.port() + done.get("url"))).build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals("video/mp4", mp4.headers().firstValue("Content-Type").orElse(""));
+        assertEquals("ftyp", new String(mp4.body(), 4, 4));
+        // Only the .mp4 is kept.
+        try (var files = Files.list(dir.resolve("outputs"))) {
+            assertEquals(List.of(done.get("url").toString().substring("/api/outputs/".length())),
+                    files.map(p -> p.getFileName().toString()).toList());
+        }
+    }
+
+    @Test void videoWithoutAudioIsAModelOfItsOwn() throws Exception {
+        assumeTrue(hasFfmpeg(), "no ffmpeg on the PATH");
+        String s = call("POST", "/api/video", "{\"model\": \"video:ltx-2.5-distilled\", \"prompt\": \"rain\", \"width\": 128,"
+                + "\"height\": 128, \"frames\": 9, \"fps\": 8, \"steps\": 2, \"twoStage\": false, \"audio\": false}").body();
+        var done = event(s, "done");
+        assertEquals(false, done.get("audio"));
+        assertEquals(128L, done.get("width"));
+        assertEquals(2L, event(s, "progress").get("steps"));
+        var silent = model("video:ltx-2.5-distilled+silent");
+        assertEquals(true, silent.get("loaded"));
+        assertFalse(((List<?>) silent.get("parts")).stream().anyMatch(p -> ((Map<?, ?>) p).get("role").equals("audio_vae")));
+        assertEquals(false, model("video:ltx-2.5-distilled").get("loaded"));
+        assertEquals(true, Json.object(call("POST", "/api/models/unload", "{\"id\": \"video:ltx-2.5-distilled+silent\"}").body()).get("unloaded"));
+    }
+
+    @Test void videoWithoutFfmpegSaysWhereTheFramesAre() throws Exception {
+        var bare = new StudioServer(studio, 0, null);
+        bare.start();
+        try {
+            var r = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + bare.port() + "/api/video"))
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"model\": \"video:ltx-2.5-distilled\", \"prompt\": \"x\","
+                            + "\"width\": 128, \"height\": 128, \"frames\": 9, \"twoStage\": false, \"steps\": 1}")).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            String message = event(r.body(), "error").get("message").toString();
+            assertTrue(message.contains("needs ffmpeg") && message.contains("-frames"), message);
+        } finally {
+            bare.stop();
+        }
+    }
+
+    private Path stillPng() throws Exception {
+        var img = new java.awt.image.BufferedImage(64, 48, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        Path p = dir.resolve("still.png");
+        javax.imageio.ImageIO.write(img, "png", p.toFile());
+        return p;
+    }
+
     @Test void refusesWhatItCannotDo() throws Exception {
         assertEquals(400, call("POST", "/api/chat", "{\"model\": \"chat:nope\"}").statusCode());
         assertEquals(400, call("POST", "/api/image", "{\"model\": \"song:acestep-turbo\", \"prompt\": \"x\"}").statusCode());
         assertEquals(400, call("POST", "/api/song", "{\"model\": \"song:acestep-turbo-lm4b\", \"caption\": \"x\"}").statusCode());
         assertEquals(400, call("POST", "/api/image", "{\"model\": \"image:flux2-klein\", \"prompt\": \"x\", \"width\": 100}").statusCode());
+        assertEquals(400, call("POST", "/api/song", "{\"model\": \"song:yue2-3b\", \"caption\": \" \"}").statusCode());
+        assertEquals(400, call("POST", "/api/video", "{\"model\": \"video:ltx-2.5-distilled\", \"prompt\": \"x\", \"frames\": 50}").statusCode());
+        assertEquals(400, call("POST", "/api/video", "{\"model\": \"video:ltx-2.5-distilled\", \"prompt\": \"x\", \"width\": 100}").statusCode());
+        assertEquals(400, call("POST", "/api/video", "{\"model\": \"video:ltx-2.5-distilled\", \"prompt\": \"x\", \"image\": \"bm90IGFuIGltYWdl\"}").statusCode());
+        assertEquals(400, call("POST", "/api/video", "{\"model\": \"video:ltx-2.5-dev\", \"prompt\": \"x\"}").statusCode());
         assertEquals(405, call("GET", "/api/chat", null).statusCode());
         assertEquals(404, call("GET", "/api/outputs/..%2Fsecret.png", null).statusCode());
         assertEquals(404, call("GET", "/api/models/extra", null).statusCode());

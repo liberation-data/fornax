@@ -25,6 +25,8 @@ final class Studio implements AutoCloseable {
     /** The ids being loaded now, for the Models panel to say so while a load takes its time. */
     private final Set<String> loading = ConcurrentHashMap.newKeySet();
     private final Map<String, Double> loadSeconds = new ConcurrentHashMap<>();
+    /** Models made from the catalogue's for a request (LTX without its audio), by id: the pool may hold them too. */
+    private final Map<String, Catalog.Model> variants = new ConcurrentHashMap<>();
 
     Studio(Catalog catalog, long budgetBytes, Duration idleTimeout, Set<Catalog.Kind> stubs, Path outputs) throws IOException {
         this.catalog = catalog;
@@ -49,6 +51,15 @@ final class Studio implements AutoCloseable {
         if (!m.available()) throw new IllegalArgumentException(id + " is missing files: " + m.parts().stream()
                 .filter(p -> !p.present()).map(p -> p.repo() + " " + p.file()).toList());
         return m;
+    }
+
+    /**
+     * The model without its audio VAE, for a video asked for without sound: audio_vae_path is set when the model loads,
+     * so this is a model of its own in the pool, beside the one with audio.
+     */
+    Catalog.Model silent(Catalog.Model m) {
+        if (m.path("audio_vae") == null) return m;
+        return variants.computeIfAbsent(m.id() + "+silent", id -> m.without("audio_vae", "+silent", " (no audio)"));
     }
 
     /** Whether using the model now would load it first (so a request can say it is loading). */
@@ -77,7 +88,9 @@ final class Studio implements AutoCloseable {
                 case chat -> stubbed(m.kind()) ? Engines.stubChat()
                         : Engines.llama(m, (int) Json.num(m.defaults(), "contextSize", 8192));
                 case image -> stubbed(m.kind()) ? Engines.stubPainter() : Engines.diffusion(m);
-                case song -> stubbed(m.kind()) ? Engines.stubSinger() : Engines.aceStep(m);
+                case song -> stubbed(m.kind()) ? Engines.stubSinger()
+                        : m.engine().equals("yue2.cpp") ? Engines.yue2(m) : Engines.aceStep(m);
+                case video -> stubbed(m.kind()) ? Engines.stubFilmmaker(m.path("audio_vae") != null) : Engines.ltx(m);
             };
             loadSeconds.put(m.id(), (System.nanoTime() - t0) / 1e9);
             return model;
@@ -91,7 +104,10 @@ final class Studio implements AutoCloseable {
         Map<String, ModelPool.Entry> entries = new java.util.HashMap<>();
         for (var e : pool.entries()) entries.put(e.key(), e);
         List<Object> models = new ArrayList<>();
-        for (Catalog.Model m : catalog.models()) {
+        List<Catalog.Model> all = new ArrayList<>(catalog.models());
+        // A variant is listed while the pool holds it, so it can be seen, and unloaded, as any other model.
+        for (var v : variants.values()) if (entries.containsKey(v.id()) && entries.get(v.id()).loaded()) all.add(v);
+        for (Catalog.Model m : all) {
             var e = entries.get(m.id());
             boolean loaded = e != null && e.loaded();
             List<Object> parts = new ArrayList<>();
@@ -101,7 +117,7 @@ final class Studio implements AutoCloseable {
                     "available", m.available(), "sizeBytes", m.sizeBytes(), "parts", parts, "defaults", m.defaults(),
                     "loaded", loaded, "inUse", e != null && e.inUse() && loaded, "loading", loading.contains(m.id()),
                     "lastUsed", e == null ? null : e.lastUsed().toString(), "loadSeconds", loadSeconds.get(m.id()),
-                    "stub", stubbed(m.kind())));
+                    "stub", stubbed(m.kind()), "license", m.license()));
         }
         return Json.obj("cacheRoot", catalog.root().toString(), "budgetBytes", budgetBytes, "loadedBytes", pool.loadedBytes(),
                 "gpu", Gpu.memory(), "stubs", stubs.stream().map(Enum::name).sorted().toList(), "models", models);

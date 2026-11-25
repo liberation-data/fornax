@@ -6,6 +6,7 @@ import org.liberationdata.kiln.llama.LlamaModel;
 import org.liberationdata.kiln.sd.DiffusionModel;
 
 import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -37,25 +38,34 @@ import java.util.regex.Pattern;
  * POST /api/chat                   streams a reply (server-sent events: status, token, done | error)
  * POST /api/chat/tools             the tool-calling demo through chatJson (status, token, assistant, tool, done | error)
  * POST /api/image                  generates an image (status, progress, done | error)
- * POST /api/song                   generates a song (status, done | error)
- * GET  /api/outputs/{file}         an image or song made, from the studio's home
+ * POST /api/song                   generates a song, with ACE-Step or YuE2 (status, done | error)
+ * POST /api/video                  generates a video clip with sound, with LTX-2.5 (status, progress, done | error)
+ * GET  /api/outputs/{file}         an image, song or video made, from the studio's home
  * </pre>
  *
  * Settings, as system properties or the environment: {@code kiln.studio.port} / {@code KILN_STUDIO_PORT} (5191),
  * {@code kiln.studio.budget} / {@code KILN_STUDIO_BUDGET_GB} (the pool's budget in GB, 24),
- * {@code kiln.studio.stub} / {@code KILN_STUDIO_STUB} (kinds answered by stubs, as {@code image,song}),
+ * {@code kiln.studio.stub} / {@code KILN_STUDIO_STUB} (kinds answered by stubs, as {@code image,song,video}),
+ * {@code kiln.studio.ffmpeg} / {@code KILN_STUDIO_FFMPEG} (the ffmpeg that makes a video's .mp4; else the PATH's),
  * {@code KILN_STUDIO_HOME} (~/.kiln-studio, where outputs are kept), {@code KILN_STUDIO_IDLE_MINUTES} (15), and
  * {@code KILN_STUDIO_PARENT_PID}: the app that started it, whose exit ends the server too, so a model never stays on
  * the GPU after the app has gone.
  */
 public final class StudioServer {
-    private static final Pattern OUTPUT_NAME = Pattern.compile("[A-Za-z0-9._-]+\\.(png|wav|json)");
+    private static final Pattern OUTPUT_NAME = Pattern.compile("[A-Za-z0-9._-]+\\.(png|wav|json|mp4)");
 
     private final Studio studio;
     private final HttpServer http;
+    private final String ffmpeg;
 
     StudioServer(Studio studio, int port) throws IOException {
+        this(studio, port, Mp4.find(setting("kiln.studio.ffmpeg", "KILN_STUDIO_FFMPEG", "")));
+    }
+
+    /** ffmpeg: the one that makes a video's .mp4, or null for none (a video then fails, saying where its frames are). */
+    StudioServer(Studio studio, int port, String ffmpeg) throws IOException {
         this.studio = studio;
+        this.ffmpeg = ffmpeg;
         this.http = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), port), 0);
         // Platform threads: a generation is one long native call, which would pin a virtual thread's carrier throughout.
         http.setExecutor(Executors.newCachedThreadPool(r -> {
@@ -71,6 +81,7 @@ public final class StudioServer {
         route("/api/chat/tools", "POST", this::chatTools);
         route("/api/image", "POST", this::image);
         route("/api/song", "POST", this::song);
+        route("/api/video", "POST", this::video);
         http.createContext("/api/outputs/", ex -> handle(ex, "GET", this::output));
     }
 
@@ -119,7 +130,8 @@ public final class StudioServer {
     private void health(HttpExchange ex) throws IOException {
         json(ex, 200, Json.obj("ok", true, "name", "kiln-studio-server", "java", Runtime.version().toString(),
                 "kilnLibraryPath", System.getProperty("kiln.library.path", System.getenv("KILN_LIBRARY_PATH")),
-                "cacheRoot", studio.catalog().root().toString(), "stubs", studio.stubs().stream().map(Enum::name).sorted().toList()));
+                "cacheRoot", studio.catalog().root().toString(), "stubs", studio.stubs().stream().map(Enum::name).sorted().toList(),
+                "ffmpeg", ffmpeg));
     }
 
     private void load(HttpExchange ex) throws IOException {
@@ -276,16 +288,29 @@ public final class StudioServer {
 
     /**
      * {"model", "caption", "lyrics", "duration", "bpm", "keyscale", "seed", "steps", "cfg", "shift", "language"}, made into
-     * acestep.cpp's own request (as kiln-examples' requests are), or {"request": {...}} to send one as it is.
+     * the engine's own request (as kiln-examples' requests are), or {"request": {...}} to send one as it is. For YuE2 the
+     * caption is its style (genre, voice, instruments, and the tempo and key in words), and only the lyrics, duration,
+     * seed and steps go with it.
      */
     @SuppressWarnings("unchecked")
     private void song(HttpExchange ex) throws IOException {
         Map<String, Object> req = body(ex);
         var m = studio.model(Json.str(req, "model", ""), Catalog.Kind.song);
         var d = m.defaults();
+        boolean yue2 = m.engine().equals("yue2.cpp");
         Map<String, Object> ace;
         if (req.get("request") instanceof Map<?, ?> given) {
             ace = (Map<String, Object>) given;
+        } else if (yue2) {
+            String style = Json.str(req, "caption", "").trim();
+            if (style.isEmpty()) throw new IllegalArgumentException("no style: describe the music");
+            long seed = Json.num(req, "seed", -1);
+            if (seed < 0) seed = (long) (Math.random() * Integer.MAX_VALUE);
+            // yue2-rusty.json's fields; YuE2's own defaults for the rest (full chain of thought, 32 steps).
+            ace = Json.obj("style", style, "lyrics", Json.str(req, "lyrics", ""),
+                    "duration", Json.num(req, "duration", Json.num(d, "duration", 60)),
+                    "seed", seed, "lm_seed", seed, "output_format", "wav16");
+            if (req.get("steps") != null) ace.put("steps", Json.num(req, "steps", 32));
         } else {
             String caption = Json.str(req, "caption", "").trim();
             if (caption.isEmpty()) throw new IllegalArgumentException("no caption: describe the music");
@@ -314,14 +339,108 @@ public final class StudioServer {
                 String name = "song-" + stamp();
                 r.audio().writeWav(studio.outputs().resolve(name + ".wav").toFile());
                 if (r.resolvedRequestJson() != null) Files.writeString(studio.outputs().resolve(name + ".json"), r.resolvedRequestJson());
+                if (r.score() != null) Files.writeString(studio.outputs().resolve(name + ".abc"), r.score());
                 sse.send("done", Json.obj("url", "/api/outputs/" + name + ".wav", "file", studio.outputs().resolve(name + ".wav").toString(),
                         "seconds", seconds, "audioSeconds", r.audio().seconds(), "realtime", r.audio().seconds() / Math.max(1e-9, seconds),
                         "request", new Json.Raw(r.resolvedRequestJson() != null ? r.resolvedRequestJson() : requestJson),
-                        "stub", studio.stubbed(Catalog.Kind.song)));
+                        "score", r.score(), "license", m.license(), "stub", studio.stubbed(Catalog.Kind.song)));
             } catch (RuntimeException e) {
                 sse.send("error", Json.obj("message", message(e)));
             }
         }
+    }
+
+    // VideoClip's two-stage recipe (ComfyUI's "Image to Video (LTX-2.5)", as Endless Country used it; docs/engine-notes.md).
+    private static final float[] DRAFT_SIGMAS = {1.0f, 0.99375f, 0.9875f, 0.98125f, 0.975f, 0.909375f, 0.725f, 0.421875f, 0.0f};
+    private static final float[] REFINE_SIGMAS = {0.85f, 0.725f, 0.4219f, 0.0f};
+
+    /**
+     * {"model", "prompt", "image" (the first frame: a data: URL or base64 of a PNG or JPEG), "width", "height", "frames",
+     * "fps", "steps", "cfg", "seed", "audio" (true), "twoStage" (true), "strength"}: the preset's defaults for those left
+     * out. Two-stage drafts at width x height with manual sigmas, upscales the latent x2 with the learned upscaler and
+     * refines, so the clip is twice the size; otherwise one pass at width x height in steps. Without audio, the model is
+     * loaded without its audio VAE.
+     */
+    private void video(HttpExchange ex) throws IOException {
+        Map<String, Object> req = body(ex);
+        var m = studio.model(Json.str(req, "model", ""), Catalog.Kind.video);
+        var d = m.defaults();
+        String prompt = Json.str(req, "prompt", "").trim();
+        if (prompt.isEmpty()) throw new IllegalArgumentException("no prompt");
+        int width = (int) Json.num(req, "width", Json.num(d, "width", 672)), height = (int) Json.num(req, "height", Json.num(d, "height", 448));
+        int frames = (int) Json.num(req, "frames", Json.num(d, "frames", 49)), fps = (int) Json.num(req, "fps", Json.num(d, "fps", 24));
+        int steps = (int) Json.num(req, "steps", Json.num(d, "steps", 8));
+        double cfg = Json.dbl(req, "cfg", Json.dbl(d, "cfg", 1.0));
+        boolean twoStage = Json.bool(req, "twoStage", true), audio = Json.bool(req, "audio", true);
+        long seed = Json.num(req, "seed", -1);
+        if (seed < 0) seed = (long) (Math.random() * Integer.MAX_VALUE);
+        if (width % 16 != 0 || height % 16 != 0 || width < 128 || height < 128 || width > 1536 || height > 1536) {
+            throw new IllegalArgumentException("width and height are multiples of 16, from 128 to 1536");
+        }
+        if (frames < 9 || frames > 257 || frames % 8 != 1) throw new IllegalArgumentException("frames are 8n + 1, from 9 to 257");
+        if (fps < 1 || fps > 60) throw new IllegalArgumentException("fps is from 1 to 60");
+        BufferedImage first = image(Json.str(req, "image", ""));
+
+        Map<String, Object> extra = new java.util.HashMap<>(Map.of("sample.method", "euler", "sample.scheduler", "ltx2"));
+        if (twoStage) {
+            extra.put("sample.method", "euler_a");
+            extra.put("sample.sigmas", DRAFT_SIGMAS);
+            extra.put("strength", Json.dbl(req, "strength", Json.dbl(d, "strength", 0.7)));
+            extra.put("hires.enabled", true);
+            // sd.cpp runs the learned upscaler only when hires.upscaler is "model"; it otherwise interpolates, which ghosts.
+            extra.put("hires.upscaler", "model");
+            extra.put("hires.model_path", m.path("upscaler").toString());
+            extra.put("hires.sigmas", REFINE_SIGMAS);
+            // Tiled decode: short GPU dispatches stay under the driver's compute timeout.
+            extra.put("vae_tiling.enabled", true);
+        }
+        var request = new DiffusionModel.VideoRequest(prompt, width, height, frames, fps, steps, cfg, seed).withExtra(extra);
+        // LTX was trained on compressed frames: the keyframe goes through H.264 at CRF 18 first, as LTXVPreprocess does.
+        if (first != null) request = request.withInitImage(twoStage ? Mp4.preprocess(first, 18, ffmpeg) : first);
+        var model = audio ? m : studio.silent(m);
+
+        try (var sse = new Sse(ex)) {
+            try (var lease = leaseSaying(sse, model, Engines.Filmmaker.class)) {
+                sse.send("status", Json.obj("state", "generating"));
+                long t0 = System.nanoTime();
+                // The draft's steps, then the refine's: each stage counts from 1 again.
+                var stage = new AtomicInteger(1);
+                var last = new AtomicInteger();
+                var video = lease.model().film(request, (s, n, secs) -> {
+                    if (s < last.getAndSet(s)) stage.incrementAndGet();
+                    sse.send("progress", Json.obj("step", s, "steps", n, "secondsPerStep", secs, "stage", stage.get(),
+                            "stages", twoStage ? 2 : 1));
+                });
+                double seconds = (System.nanoTime() - t0) / 1e9;
+                if (video.frames().isEmpty()) throw new IllegalStateException("the model made no frames");
+                sse.send("status", Json.obj("state", "encoding"));
+                String name = "video-" + stamp() + ".mp4";
+                try {
+                    Mp4.write(video, studio.outputs().resolve(name), ffmpeg);
+                } catch (IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+                var f0 = video.frames().get(0);
+                sse.send("done", Json.obj("url", "/api/outputs/" + name, "file", studio.outputs().resolve(name).toString(),
+                        "width", f0.getWidth(), "height", f0.getHeight(), "frames", video.frames().size(), "fps", video.fps(),
+                        "videoSeconds", video.seconds(), "audio", video.audio() != null, "steps", steps, "cfg", cfg, "seed", seed,
+                        "twoStage", twoStage, "seconds", seconds, "stub", studio.stubbed(Catalog.Kind.video)));
+            } catch (RuntimeException e) {
+                sse.send("error", Json.obj("message", message(e)));
+            }
+        }
+    }
+
+    /** An image sent in a request, as a data: URL or bare base64 (null for none). */
+    private static BufferedImage image(String data) throws IOException {
+        if (data.isBlank()) return null;
+        String b64 = data.startsWith("data:") ? data.substring(data.indexOf(',') + 1) : data;
+        byte[] bytes;
+        try { bytes = java.util.Base64.getMimeDecoder().decode(b64); }
+        catch (IllegalArgumentException e) { throw new IllegalArgumentException("the image is not base64"); }
+        BufferedImage img = ImageIO.read(new java.io.ByteArrayInputStream(bytes));
+        if (img == null) throw new IllegalArgumentException("the image is not a PNG or JPEG");
+        return img;
     }
 
     private void output(HttpExchange ex) throws IOException {
@@ -329,7 +448,8 @@ public final class StudioServer {
         if (!OUTPUT_NAME.matcher(name).matches()) { json(ex, 404, Json.obj("error", "not found")); return; }
         Path file = studio.outputs().resolve(name);
         if (!Files.isRegularFile(file)) { json(ex, 404, Json.obj("error", "not found")); return; }
-        String type = name.endsWith(".png") ? "image/png" : name.endsWith(".wav") ? "audio/wav" : "application/json";
+        String type = name.endsWith(".png") ? "image/png" : name.endsWith(".wav") ? "audio/wav"
+                : name.endsWith(".mp4") ? "video/mp4" : "application/json";
         long size = Files.size(file);
         var h = ex.getResponseHeaders();
         h.set("Content-Type", type);

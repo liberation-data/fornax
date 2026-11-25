@@ -89,12 +89,13 @@ project(':kiln-studio-server') {
         implementation project(':kiln-llama')
         implementation project(':kiln-sd')
         implementation project(':kiln-acestep')
+        implementation project(':kiln-yue2')
     }
     application {
         mainClass = 'org.liberationdata.kiln.studio.StudioServer'
         applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
     }
-    // ./gradlew studioServer: the backend on its own, for the studio's dev server to talk to (-Pport=7860, -Pstub=image,song)
+    // ./gradlew studioServer: the backend on its own, for the studio's dev server to talk to (-Pport=7860, -Pstub=image,song,video)
     tasks.register('studioServer', JavaExec) {
         group = 'kiln examples'
         description = 'Runs the Kiln Studio backend'
@@ -103,8 +104,10 @@ project(':kiln-studio-server') {
         javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
         jvmArgs '--enable-native-access=ALL-UNNAMED'
         systemProperty 'kiln.library.path', nativeDir.absolutePath
+        // ggml-vulkan's default of 100 nodes a submission lets one LTX decode outlast amdgpu's compute timeout (docs/engine-notes.md).
+        environment 'GGML_VK_MAX_NODES_PER_SUBMIT', System.getenv('GGML_VK_MAX_NODES_PER_SUBMIT') ?: '8'
         def cli = gradle.startParameter.projectProperties
-        ['port', 'stub', 'budget'].each { p -> if (cli.containsKey(p)) systemProperty "kiln.studio.${p}", cli[p] }
+        ['port', 'stub', 'budget', 'ffmpeg'].each { p -> if (cli.containsKey(p)) systemProperty "kiln.studio.${p}", cli[p] }
     }
     // One jar holding the server and the Kiln modules it uses: what the desktop app ships and starts with `java -jar`.
     tasks.register('studioJar', Jar) {
