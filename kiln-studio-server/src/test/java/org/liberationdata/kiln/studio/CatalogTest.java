@@ -73,6 +73,25 @@ class CatalogTest {
         assertEquals(4, silent.parts().size());
     }
 
+    @Test void findsPartsInAModelFolderAfterTheCache() throws Exception {
+        // The video VAE in the cache, the rest in a ComfyUI-style models folder, as on a machine that ran ComfyUI.
+        file("Lightricks/LTX-2.5", "s1", "vae/ltx-2.5-video-vae-conv-bf16.safetensors", 4);
+        Path folder = root.resolve("comfy-models");
+        for (String f : List.of("diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+                "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+                "vae/ltx-2.5-audio-vae-bf16.safetensors",
+                "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors")) {
+            Path p = folder.resolve(f);
+            Files.createDirectories(p.getParent());
+            Files.write(p, new byte[4]);
+        }
+        assertFalse(new Catalog(root).find("video:ltx-2.5-distilled").orElseThrow().available());
+        var ltx = new Catalog(root, List.of(folder)).find("video:ltx-2.5-distilled").orElseThrow();
+        assertTrue(ltx.available());
+        assertEquals(folder.resolve("text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors"), ltx.path("llm"));
+        assertTrue(ltx.path("vae").startsWith(root.resolve("models--Lightricks--LTX-2.5")));
+    }
+
     @Test void anEmptyCacheHasNoChatModels() {
         assertTrue(new Catalog(root.resolve("missing")).chatModels().isEmpty());
     }

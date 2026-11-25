@@ -75,10 +75,24 @@ final class Catalog {
     private static final Pattern SHARD = Pattern.compile("(?i)(.*)-(\\d{5})-of-(\\d{5})\\.gguf");
 
     private final Path root;
+    private final List<Path> folders;
 
-    Catalog(Path root) { this.root = root; }
+    Catalog(Path root) { this(root, List.of()); }
 
-    Catalog() { this(HfCache.root()); }
+    /**
+     * Model folders are searched after the Hugging Face cache, each for a part's file at its path in the repo (as
+     * ComfyUI's models folder keeps them: diffusion_models/…, text_encoders/…, vae/…).
+     */
+    Catalog(Path root, List<Path> folders) { this.root = root; this.folders = List.copyOf(folders); }
+
+    /** The Hugging Face cache, then the folders in kiln.studio.modelDirs or KILN_STUDIO_MODEL_DIRS (path-separated). */
+    Catalog() { this(HfCache.root(), modelFolders()); }
+
+    static List<Path> modelFolders() {
+        String v = System.getProperty("kiln.studio.modelDirs", System.getenv("KILN_STUDIO_MODEL_DIRS"));
+        if (v == null || v.isBlank()) return List.of();
+        return java.util.Arrays.stream(v.split(java.io.File.pathSeparator)).filter(d -> !d.isBlank()).map(Path::of).toList();
+    }
 
     Path root() { return root; }
 
@@ -207,7 +221,17 @@ final class Catalog {
     }
 
     private Part part(String role, String repo, String file) {
-        return new Part(role, repo, file, find(repo, file));
+        Path p = find(repo, file);
+        if (p == null) p = inFolders(file);
+        return new Part(role, repo, file, p);
+    }
+
+    private Path inFolders(String file) {
+        for (Path d : folders) {
+            Path p = d.resolve(file);
+            if (Files.isRegularFile(p)) return p;
+        }
+        return null;
     }
 
     /** The first of two places a file may be in, as HfCache.requireAny has it. */
