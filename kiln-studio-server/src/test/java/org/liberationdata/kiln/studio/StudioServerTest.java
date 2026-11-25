@@ -226,6 +226,19 @@ class StudioServerTest {
         return p;
     }
 
+    @Test void aSilentStreamIsKeptAlive() throws Exception {
+        long was = Sse.keepAliveMillis;
+        Sse.keepAliveMillis = 100;
+        try {
+            // The stub singer says nothing for 800 ms.
+            String s = call("POST", "/api/song", "{\"model\": \"song:yue2-3b\", \"caption\": \"folk\", \"duration\": 1}").body();
+            assertTrue(s.contains(": keep-alive\n\n"), s);
+            event(s, "done");
+        } finally {
+            Sse.keepAliveMillis = was;
+        }
+    }
+
     @Test void refusesWhatItCannotDo() throws Exception {
         assertEquals(400, call("POST", "/api/chat", "{\"model\": \"chat:nope\"}").statusCode());
         assertEquals(400, call("POST", "/api/image", "{\"model\": \"song:acestep-turbo\", \"prompt\": \"x\"}").statusCode());
