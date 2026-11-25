@@ -15,10 +15,9 @@ import { getImage, Image } from 'astro:assets';
 import splash from '../assets/splash.jpg';
 import lines from '../assets/lines-light.png';
 import logo from '../assets/logo.png';
-import cover from '../assets/cover.png';
 import studioDesktop from '../assets/studio-desktop.png';
+import { existsSync } from 'node:fs';
 import { STUDIO, studioRelease, studioRepoPublic, studioUrl } from '../lib/github';
-import lyricsText from '../lyrics.txt?raw';
 
 const REPO = 'https://github.com/liberation-data/kiln';
 
@@ -40,11 +39,10 @@ const photo = async (width: number) => {
     return { avif: avif.src, css: `image-set(url('${avif.src}') type('image/avif'), url('${webp.src}') type('image/webp'), url('${jpeg.src}') type('image/jpeg'))` };
 };
 const [photoLarge, photoSmall] = await Promise.all([photo(1920), photo(960)]);
+const hasExplainer = existsSync('public/video/explainer.mp4');
 const photoVars = `--photo: ${photoLarge.css}; --photo-small: ${photoSmall.css}; --lines: url('${lines.src}');`;
 const logoSmall = await getImage({ src: logo, width: 144, format: 'png' });
 
-const [songTitle, ...songRest] = lyricsText.trim().split('\n');
-const lyrics = songRest.join('\n').trim().split(/\n\s*\n/).map((stanza) => stanza.split('\n').map((l) => l.trim()));
 
 const samples = {
     text: `// The weights load onto the GPU once, and stay there until close()
@@ -186,6 +184,10 @@ const theme = 'vitesse-dark';
             .intro { padding: 96px 32px 40px; text-align: center; }
             .intro .wrap { max-width: 860px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
             .intro p:not(.eyebrow) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
+            .backing { padding: 24px 32px 88px; }
+            .explainer { padding: 0 32px 88px; }
+            .explainer video { display: block; width: 100%; max-width: 960px; margin: 0 auto; aspect-ratio: 16 / 9; border-radius: 16px; background: var(--abyss); box-shadow: 0 18px 40px rgba(42, 20, 8, 0.18); }
+            .backing p { text-align: center; color: var(--ink); background: var(--tint); border-radius: 14px; max-width: 880px; margin: 0 auto; padding: 26px 32px; font-size: 19px; line-height: 1.6; }
             .why { padding: 0 32px 96px; }
             .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 28px; }
             .card { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 36px; display: flex; flex-direction: column; gap: 14px; }
@@ -250,22 +252,12 @@ const theme = 'vitesse-dark';
             .backends small { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
             .backends .ok small { color: var(--ember); }
 
-            .single .wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: start; }
-            @media (max-width: 900px) { .single .wrap { grid-template-columns: minmax(0, 1fr); } }
-            .single figure { margin: 0; display: flex; flex-direction: column; gap: 12px; }
-            .single figure img { width: 100%; height: auto; border-radius: 14px; border: 1px solid #3a2519; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); }
-            .single figcaption { font-size: 14px; line-height: 1.5; color: #b39c8c; }
             .steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 16px; }
             .steps li { counter-increment: step; display: grid; grid-template-columns: 40px 1fr; gap: 14px; align-items: start; font-size: 17px; line-height: 1.5; color: #ecdccf; }
             .steps li::before { content: counter(step); width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--abyss); font-weight: 700; }
             .steps strong { color: #fff; }
             .cmd { display: inline-block; padding: 12px 16px; border-radius: 10px; background: #120a06; border: 1px solid #3a2519; color: #fff; font-size: 15px; }
             .cmd::before { content: '$ '; color: var(--accent); }
-            details.lyrics { border: 1px solid #3a2519; border-radius: 12px; background: #120a06; }
-            details.lyrics summary { cursor: pointer; padding: 14px 18px; font-weight: 500; color: #fff; }
-            details.lyrics .body { padding: 0 18px 18px; font-family: 'Noto Serif', Georgia, serif; font-style: italic; font-size: 16px; line-height: 1.6; color: #e2cfc0; }
-            details.lyrics .body p { margin: 0 0 14px; }
-            details.lyrics .body .tag { font-family: Ubuntu, sans-serif; font-style: normal; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
 
             .how { padding: 96px 32px; }
             .how header { max-width: 820px; display: flex; flex-direction: column; gap: 16px; margin-bottom: 40px; }
@@ -346,7 +338,7 @@ const theme = 'vitesse-dark';
             footer a:hover { color: #fff; text-decoration: underline; }
 
             @media (max-width: 600px) {
-                .intro, .why, .dark, .engines, .results, .studio, .how, .start-section, .roadmap, footer { padding-left: 16px; padding-right: 16px; }
+                .intro, .backing, .explainer, .why, .dark, .engines, .results, .studio, .how, .start-section, .roadmap, footer { padding-left: 16px; padding-right: 16px; }
                 .intro { padding-top: 64px; }
                 .dark, .engines, .results, .studio, .how, .start-section { padding-top: 64px; padding-bottom: 64px; }
                 .card { padding: 26px 22px; }
@@ -369,7 +361,6 @@ const theme = 'vitesse-dark';
                     <a href="#code" class="wide">Code</a>
                     <a href="#engines">Models</a>
                     <a href="#results">Results</a>
-                    <a href="#single" class="wide">Demo</a>
                     <a href="#studio">Studio</a>
                     <a href="#start">Get started</a>
                     <a href={REPO}>GitHub</a>
@@ -382,7 +373,7 @@ const theme = 'vitesse-dark';
                 <div class="rule" style="width: min(820px, 94%)" aria-hidden="true"></div>
                 <p class="subtitle">Open generative models for the JVM</p>
                 <p class="tagline">Call models as plain Java methods, <em>on your GPU, inside your JVM</em>.</p>
-                <a href="#single" class="pill"><span class="new">Demo</span><span>Three models, one JVM, one country single</span></a>
+                <a href="#studio" class="pill"><span class="new">New</span><span>Kiln Studio: try the models without writing code</span></a>
                 <div class="installs">
                     {installs.map((line) => (
                         <button type="button" class="copy" data-copy={line} aria-label={`Copy ${line}`}>
@@ -408,6 +399,14 @@ const theme = 'vitesse-dark';
                     </p>
                 </div>
             </section>
+
+            {hasExplainer && <section class="explainer" id="video">
+                <div class="wrap">
+                    <video controls preload="metadata" playsinline poster="/video/explainer-poster.jpg" aria-label="Kiln explained in two minutes">
+                        <source src="/video/explainer.mp4" type="video/mp4" />
+                    </video>
+                </div>
+            </section>}
 
             <section class="why">
                 <div class="wrap row">
@@ -568,47 +567,6 @@ const theme = 'vitesse-dark';
                 </div>
             </section>
 
-            <section class="dark single" id="single">
-                <div class="wrap">
-                    <div class="split" style="display: contents">
-                        <div class="text" style="display: flex; flex-direction: column; gap: 22px">
-                            <p class="eyebrow">All in one</p>
-                            <h2>Three engines, one JVM, one country single.</h2>
-                            <p style="margin: 0; font-size: 18px; line-height: 1.65; color: #d9c4b4">
-                                One Java program takes an idea for a song (“a robot with a honky-tonk heart who falls for the
-                                jukebox”) and turns it into a record, with nothing but Kiln between it and the GPU.
-                            </p>
-                            <ol class="steps">
-                                <li><span><strong>llama.cpp</strong> runs Qwen3 4B Instruct, which writes the title, the lyrics and a description of the cover.</span></li>
-                                <li><span><strong>acestep.cpp</strong> runs ACE-Step 1.5 turbo, which sings the lyrics as a 75-second country song.</span></li>
-                                <li><span><strong>stable-diffusion.cpp</strong> runs FLUX.2 [klein], which paints the cover from that description.</span></li>
-                            </ol>
-                            <div><code class="cmd">./gradlew single</code></div>
-                            <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #b39c8c">
-                                Writes <code>single.wav</code>, <code>cover.png</code> and <code>lyrics.txt</code>. The models load one
-                                after another, each freed before the next.
-                            </p>
-                            <details class="lyrics">
-                                <summary>Read the lyrics: “{songTitle}”</summary>
-                                <div class="body">
-                                    {lyrics.map((stanza) => (
-                                        <p>
-                                            {stanza.map((line, i) => (/^\[.*\]$/.test(line)
-                                                ? <span class="tag">{line.slice(1, -1)}</span>
-                                                : <>{line}</>)).flatMap((node, i) => (i === 0 ? [node] : [<br />, node]))}
-                                        </p>
-                                    ))}
-                                </div>
-                            </details>
-                        </div>
-                        <figure>
-                            <Image src={cover} alt={`The single's cover, painted by FLUX.2 klein: a robot in a red-lit bar beside a jukebox, under the title “${songTitle}” in vintage lettering`} width={768} height={768} loading="lazy" />
-                            <figcaption>The cover, as FLUX.2 [klein] painted it at 768×768 in 12 steps. Unretouched, misspelled lettering and all.</figcaption>
-                        </figure>
-                    </div>
-                </div>
-            </section>
-
             <section class="studio" id="studio">
                 <div class="wrap">
                     <header>
@@ -744,6 +702,14 @@ const theme = 'vitesse-dark';
                 </div>
             </section>
 
+            <section class="backing">
+                <div class="wrap">
+                    <p>
+                        <strong>Founded by Jasper Blues</strong>, creator of <a href="https://github.com/appsquickly/typhoon">Typhoon</a>. <strong>Sponsored by Rod Johnson</strong>, creator of the Spring Framework and of <a href="https://hub.embabel.com">Embabel</a>, the AI agent framework for the JVM.
+                    </p>
+                </div>
+            </section>
+
             <section class="fire cta">
                 <div class="wrap">
                     <h2>Fire up your JVM.</h2>
@@ -762,6 +728,7 @@ const theme = 'vitesse-dark';
                     <img src={logoSmall.src} alt="" width="40" height="40" />
                     <p>
                         Kiln is a community project by Liberation Data, the home of <a href="https://drivine.org">Drivine</a>.
+                        Founded by Jasper Blues, creator of Typhoon. Sponsored by Rod Johnson, creator of the Spring Framework and Embabel.
                         Apache 2.0. The engines it builds against are MIT-licensed.
                     </p>
                 </div>

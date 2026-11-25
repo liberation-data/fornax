@@ -3,3 +3,4 @@ dist/
 .astro/
 art-candidates/
 shots/
+public/video/
