@@ -36,7 +36,8 @@ Cards: options-today, stuck @"you were stuck", stack-before, stack-after @"Kiln 
 Cards: code, models @"Weights load once"
 
 > It uses Java's Foreign Function and Memory API, so the call into the engine is a plain native call. Weights load
-> once and stay on the GPU between requests. Text streams back token by token, and models can call your tools.
+> once and stay on the GPU between requests, and when memory runs short, Kiln unloads the models you've used least
+> recently. Text streams back token by token, and models can call your tools.
 
 ## 4. Show me
 
