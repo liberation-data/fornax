@@ -13,6 +13,7 @@ import '@fontsource/jetbrains-mono/latin-500.css';
 import { Code } from 'astro:components';
 import { getImage, Image } from 'astro:assets';
 import splash from '../assets/splash.jpg';
+import shareCard from '../assets/share-card.jpg';
 import lines from '../assets/lines-light.png';
 import logo from '../assets/logo.png';
 import studioDesktop from '../assets/studio-desktop.png';
@@ -25,10 +26,10 @@ const REPO = 'https://github.com/liberation-data/kiln';
 // Kiln Studio's latest release and the installers it attached, for the download buttons in the Studio section. None
 // (the repository still private, no release yet, or GitHub out of reach): the section says they are on their way.
 const [studio, studioPublic] = await Promise.all([studioRelease(), studioRepoPublic()]);
-const DESCRIPTION = 'Call open-weight models (text, images, songs) as plain Java methods, running on your GPU, inside your JVM.';
+const DESCRIPTION = 'Open models as plain Java calls: chat, vision, documents, images, songs, video and speech, running on your GPU, inside your JVM.';
 
-// The link preview: the splash as a 1200-wide JPEG, at an absolute URL on the site's domain.
-const preview = await getImage({ src: splash, format: 'jpeg', width: 1200, quality: 80 });
+// The link preview: the video's title card (logo, kiln4j, tagline), 1200×630, at an absolute URL on the site's domain.
+const preview = await getImage({ src: shareCard, format: 'jpeg', width: 1200, quality: 85 });
 const previewUrl = new URL(preview.src, Astro.site).href;
 const pageUrl = new URL('/', Astro.site).href;
 
@@ -133,6 +134,8 @@ const theme = 'vitesse-dark';
         <meta property="og:url" content={pageUrl} />
         <meta property="og:type" content="website" />
         <meta property="og:image" content={previewUrl} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
         <meta name="twitter:card" content="summary_large_image" />
         <link rel="canonical" href={pageUrl} />
         <link rel="preload" as="image" href={photoLarge.avif} type="image/avif" media="(min-width: 801px)" />
