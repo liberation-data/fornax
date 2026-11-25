@@ -7,3 +7,7 @@ engines-src/
 *.iml
 hs_err_pid*.log
 /out/
+
+# Explainer media: Endless Country footage is non-commercial and stays out of the repo; audio renders too
+videos/explainer/clips/
+videos/explainer/music/out/
