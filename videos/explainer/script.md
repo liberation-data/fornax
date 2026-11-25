@@ -15,8 +15,8 @@ outro: stinger/out/stinger-1344x768-dub.mp4 | stinger/out/stinger-1344x768-hold.
 
 Cards: title 4s, one-line
 
-> Kiln runs open generative models inside your Java application: language models, images, songs, video, and audio
-> tools. You call them like any other Java method, and they run on your GPU.
+> Kiln runs open models in your JVM. Read invoices, spot defects, flag X-rays, transcribe calls,
+> or write a song and render a clip. Plain Java calls, on your GPU.
 
 ## 2. The why
 
