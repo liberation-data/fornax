@@ -16,7 +16,7 @@ import splash from '../assets/splash.jpg';
 import lines from '../assets/lines-light.png';
 import logo from '../assets/logo.png';
 import cover from '../assets/cover.png';
-import studioChat from '../assets/studio-chat.png';
+import studioDesktop from '../assets/studio-desktop.png';
 import { STUDIO, studioRelease, studioRepoPublic, studioUrl } from '../lib/github';
 import lyricsText from '../lyrics.txt?raw';
 
@@ -620,7 +620,7 @@ const theme = 'vitesse-dark';
                         </p>
                     </header>
                     <figure>
-                        <Image src={studioChat} widths={[800, 1600]} sizes="(max-width: 1264px) 100vw, 1200px" loading="lazy" alt="Kiln Studio in its dark theme with two windows on its desktop. Behind, the Chat window: Qwen3 4B Instruct answering a request for a haiku about a kiln and one sentence on what a kiln is for, at 68.7 tokens a second, with its time to the first token and token counts. In front, overlapping it, the Image window: FLUX.2 [klein] with its prompt, size and steps, and the image it made, a kiln's orange fire beside shelves of stoneware jars, generated in 2 minutes 17 seconds over 12 steps" />
+                        <Image src={studioDesktop} widths={[800, 1600]} sizes="(max-width: 1264px) 100vw, 1200px" loading="lazy" alt="Kiln Studio in its dark theme with two windows on its desktop. Behind, the Chat window: Qwen3 4B Instruct answering a request for a haiku about a kiln and one sentence on what a kiln is for, at 68.7 tokens a second, with its time to the first token and token counts. In front, overlapping it, the Image window: FLUX.2 [klein] with its prompt, size and steps, and the image it made, a kiln's orange fire beside shelves of stoneware jars, generated in 2 minutes 17 seconds over 12 steps" />
                         <figcaption>Chat with Qwen3 4B Instruct at 68.7 tokens a second, and an image from FLUX.2 [klein].</figcaption>
                     </figure>
                     {studio ? (
