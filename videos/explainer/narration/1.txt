@@ -1,2 +1,2 @@
 aura-2-hyperion-en
-Kiln runs open models in your JVM. Read invoices, spot defects, flag X-rays, transcribe calls, or write a song and render a clip. Plain Java calls, on your GPU.
+Kiln runs open models in your JVM. [pause 0.5] Read invoices, spot defects, flag X-rays, transcribe calls, or write a song and render a clip. [pause 0.5] Plain Java calls, on your GPU.
