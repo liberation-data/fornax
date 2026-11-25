@@ -1,2 +1,2 @@
 aura-2-hyperion-en
-Here's what these open models can make. This is Endless Country, episode two, made with Comfy U.I.. Every local step in it can now run in Kiln, and episode three will.
+Here's what open models can make, running in Kiln. This is Endless Country, episode two.

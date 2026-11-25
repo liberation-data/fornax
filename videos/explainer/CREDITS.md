@@ -5,5 +5,5 @@
   model: notation rendered with Muse Sounds through Jasper Blues' render pipeline (just intonation, notes inégales,
   historical pitch, A = 415), which will be shared later. Until then its sources are kept private (see #10).
 - **Endless Country, episode 2:** an excerpt from "What Will the Dog Think?" (endlesscountry.com), made with open
-  models in ComfyUI.
+  models running in Kiln (remade from the ComfyUI original before publishing).
 - **Logo stinger:** LTX-2.5 through Kiln, from keyframes by Jasper Blues; its sound was made by LTX and tuned to E♭.

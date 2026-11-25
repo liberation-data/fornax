@@ -11,3 +11,5 @@ hs_err_pid*.log
 # Explainer media: Endless Country footage is non-commercial and stays out of the repo; audio renders too
 videos/explainer/clips/
 videos/explainer/music/out/
+videos/explainer/stinger/out/
+videos/explainer/preview/

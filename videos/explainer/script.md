@@ -1,8 +1,8 @@
 # Kiln: open models as plain Java calls
 
 The Kiln explainer: about two minutes. One voice, cards and real screenshots, over a baroque violin bed rendered with
-Muse Sounds. It segues into Endless Country episode 2 as an example of what these open models make. That episode was
-made with ComfyUI; episode 3 will be made with Kiln, and its clip replaces this one then. The script may run ahead of the
+Muse Sounds. It segues into Endless Country episode 2 as an example of what these open models make. Episode 2 is being
+remade in Kiln before this video is published; the video says it was made in Kiln. The script may run ahead of the
 code (vocal isolation, transcription): the video is made first, and the features land before it ships. Before
 publishing, check every claim against the README.
 
@@ -60,8 +60,7 @@ Cards: pull, embabel @"Embabel Agent"
 
 Cards: endless-country
 
-> Here's what these open models can make. This is Endless Country, episode two, made with ComfyUI. Every local step in
-> it can now run in Kiln, and episode three will.
+> Here's what open models can make, running in Kiln. This is Endless Country, episode two.
 
 Clip: endless-country-ep2 (8 s from 2:15: "…what will the dog think?", the tear, the dog's stare; with its own sound; the violin bed ducks under it)
 
