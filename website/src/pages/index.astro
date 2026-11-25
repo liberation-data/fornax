@@ -105,13 +105,13 @@ const theme = 'vitesse-dark';
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Kiln: open models, in your JVM</title>
+        <title>kiln4j: open models, in your JVM</title>
         <meta name="description" content={DESCRIPTION} />
         <meta name="theme-color" content="#1a0e08" />
         <link rel="icon" href="/favicon.ico" sizes="32x32" />
         <link rel="icon" type="image/png" href="/favicon-64.png" sizes="64x64" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        <meta property="og:title" content="Kiln: open models, in your JVM" />
+        <meta property="og:title" content="kiln4j: open models, in your JVM" />
         <meta property="og:description" content={DESCRIPTION} />
         <meta property="og:url" content={pageUrl} />
         <meta property="og:type" content="website" />
@@ -158,7 +158,8 @@ const theme = 'vitesse-dark';
             .nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; width: 100%; padding: 24px 32px; }
             .nav a { color: #f6e9dc; text-decoration: none; }
             .nav a:hover { color: #fff; text-decoration: underline; }
-            .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: 0.16em; font-size: 18px; }
+            .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: 0.03em; font-size: 20px; }
+            .brand .j, .splash h1 .j { color: var(--accent); }
             .nav-links { display: flex; flex-wrap: wrap; align-items: center; gap: 28px; font-size: 16px; }
             @media (max-width: 760px) { .nav { padding: 20px 16px; } .nav-links { gap: 18px; font-size: 15px; } .nav-links .wide { display: none; } }
 
@@ -167,7 +168,7 @@ const theme = 'vitesse-dark';
             .emblem > div { width: 112px; height: 112px; border: 2px dotted rgba(255, 255, 255, 0.85); border-radius: 50%; display: grid; place-items: center; }
             .emblem img { width: 66px; height: 66px; filter: drop-shadow(0 0 14px rgba(255, 150, 40, 0.55)); }
             .rule { height: 2px; background: rgba(255, 255, 255, 0.9); }
-            .splash h1 { margin: 14px 0 10px; font-weight: 700; font-size: clamp(64px, 10vw, 128px); line-height: 1; letter-spacing: 0.14em; padding-left: 0.14em; text-shadow: 0 2px 22px rgba(60, 20, 0, 0.6); }
+            .splash h1 { margin: 14px 0 10px; font-weight: 700; font-size: clamp(64px, 10vw, 128px); line-height: 1; letter-spacing: 0.02em; text-shadow: 0 2px 22px rgba(60, 20, 0, 0.6); }
             .subtitle { margin: 22px 0 10px; font-weight: 500; font-size: clamp(19px, 2.5vw, 32px); letter-spacing: 0.06em; text-transform: uppercase; text-shadow: 0 2px 12px rgba(40, 10, 0, 0.6); }
             .tagline { margin: 0; max-width: 880px; font-family: 'Noto Serif', Georgia, serif; font-style: italic; font-size: clamp(18px, 2vw, 25px); line-height: 1.4; color: #fbeee2; text-shadow: 0 1px 10px rgba(40, 10, 0, 0.6); }
             .tagline em { font-style: italic; color: var(--glow); }
@@ -363,7 +364,7 @@ const theme = 'vitesse-dark';
     <body style={photoVars}>
         <header class="fire hero">
             <nav class="nav wrap" aria-label="Main">
-                <a href="/" class="brand"><img src={logoSmall.src} alt="" width="34" height="34" /><span>KILN</span></a>
+                <a href="/" class="brand"><img src={logoSmall.src} alt="" width="34" height="34" /><span>kiln<span class="j">4j</span></span></a>
                 <div class="nav-links">
                     <a href="#code" class="wide">Code</a>
                     <a href="#engines">Models</a>
@@ -377,7 +378,7 @@ const theme = 'vitesse-dark';
             <div class="splash">
                 <div class="emblem"><div><img src={logoSmall.src} alt="The Kiln logo: a flame in a kiln's arched door" width="66" height="66" /></div></div>
                 <div class="rule" style="width: min(620px, 80%); margin-top: 32px" aria-hidden="true"></div>
-                <h1>KILN</h1>
+                <h1>kiln<span class="j">4j</span></h1>
                 <div class="rule" style="width: min(820px, 94%)" aria-hidden="true"></div>
                 <p class="subtitle">Open generative models for the JVM</p>
                 <p class="tagline">Call models as plain Java methods, <em>on your GPU, inside your JVM</em>.</p>
