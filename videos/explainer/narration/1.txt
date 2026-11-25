@@ -1,2 +1,2 @@
-kiln:zonos3:Imogen_en-British_F_1 seed 1
+aura-2-hyperion-en
 Kiln runs open generative models inside your Java application: language models, images, songs, video, and audio tools. You call them like any other Java method, and they run on your GPU.

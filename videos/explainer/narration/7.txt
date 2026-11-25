@@ -1,2 +1,2 @@
-kiln:zonos3:Imogen_en-British_F_1 seed 1
+aura-2-hyperion-en
 Kiln. Open models, inside your JVM. kiln four J dot org.
