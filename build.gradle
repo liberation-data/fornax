@@ -44,7 +44,7 @@ project(':kiln-examples') {
     }
     // ./gradlew chat --args='"your prompt"'   image --args='klein out.png "a prompt"'   song   yue2
     // speak --args='out.wav "text" am_michael' -Pmodel=kokoro
-    [chat: 'Chat', image: 'Image', song: 'Song', yue2: 'Yue2Song', single: 'Single', video: 'VideoClip', speak: 'Speak'].each { task, cls ->
+    [chat: 'Chat', image: 'Image', song: 'Song', yue2: 'Yue2Song', single: 'Single', video: 'VideoClip', speak: 'Speak', speakBatch: 'SpeakBatch'].each { task, cls ->
         tasks.register(task, JavaExec) {
             group = 'kiln examples'
             description = "Runs org.liberationdata.kiln.examples.${cls}"

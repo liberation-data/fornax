@@ -69,6 +69,9 @@ const PAUSE = /\s*\[pause(?:\s+([\d.]+)s?)?\]\s*/g;
 /** The script: its voice, and each scene's cards, narration and clip. */
 function readScript() {
     const voice = /^voice:\s*(\S+)/m.exec(SCRIPT)?.[1] ?? 'aura-2-hyperion-en';
+    // A Kiln voice (`voice: kiln:<model>`) may be designed by a description, `voice-prompt: (A warm narrator)`, at a seed.
+    const voicePrompt = /^voice-prompt:\s*(.+)$/m.exec(SCRIPT)?.[1]?.trim() ?? '';
+    const voiceSeed = Number(/^voice-seed:\s*(\d+)/m.exec(SCRIPT)?.[1] ?? 1);
     const paceArg = process.argv.find((a) => a.startsWith('--pace='))?.slice(7);
     const pace = Number(paceArg ?? /^pace:\s*(\S+)/m.exec(SCRIPT)?.[1] ?? 1);
     if (!(pace >= 0.8 && pace <= 1.25)) throw new Error(`script.md: pace ${pace} is outside 0.8 to 1.25, where speech still sounds natural`);
@@ -104,27 +107,30 @@ function readScript() {
     });
     const twice = scenes.find((s, k) => scenes.findIndex((t) => t.n === s.n) !== k);
     if (twice) throw new Error(`script.md: two scenes are numbered ${twice.n}`);
-    return { voice, pace, scenes };
+    return { voice, voicePrompt, voiceSeed, pace, scenes };
 }
 
 /* How names are spoken. Only what is sent to the voice changes; the captions keep the script's spelling. */
 const spellings = JSON.parse(readFileSync(join(SHARED, 'spellings.json'), 'utf8'));
 const spoken = (words) => Object.entries(spellings).reduce((t, [from, to]) => t.replaceAll(from, to), words);
 
-async function voiceScenes({ voice, scenes }) {
+async function voiceScenes({ voice, voicePrompt, voiceSeed, scenes }) {
+    const kiln = voice.startsWith('kiln:');
     mkdirSync(join(VIDEO, 'narration'), { recursive: true });
     for (const scene of scenes) {
         const mp3 = join(VIDEO, 'narration', `${scene.n}.mp3`);
         const said = join(VIDEO, 'narration', `${scene.n}.txt`);
-        const want = `${voice}\n${spoken(scene.words)}`;
+        const want = `${kiln ? `${voice} seed ${voiceSeed} ${voicePrompt}`.trim() : voice}\n${spoken(scene.words)}`;
         if (existsSync(mp3) && existsSync(said) && readFileSync(said, 'utf8') === want) continue;
         if (args.has('--no-voice')) throw new Error(`scene ${scene.n} changed and --no-voice was given`);
         const key = process.env.DEEPGRAM_API_KEY;
-        if (!key) throw new Error(`scene ${scene.n} needs voicing: set DEEPGRAM_API_KEY`);
+        if (!kiln && !key) throw new Error(`scene ${scene.n} needs voicing: set DEEPGRAM_API_KEY`);
         /* Each stretch between pauses is voiced on its own, then joined with the silence the pause asks for. */
         const pieces = spoken(scene.words).split(new RegExp(PAUSE.source));
-        const parts = [];
-        for (let k = 0; k < pieces.length; k += 2) {
+        // `kiln:<model>` or `kiln:<model>:<voice>` (a named voice the model ships, e.g. kiln:zonos3:Rupert).
+        const [kilnModel, kilnVoice = ''] = voice.slice(5).split(':');
+        const parts = kiln ? voiceInKiln(scene, pieces, kilnModel, voicePrompt, voiceSeed, kilnVoice) : [];
+        for (let k = 0; !kiln && k < pieces.length; k += 2) {
             if (k > 0) parts.push(Number(pieces[k - 1] ?? 0.65) || 0.65);
             if (!pieces[k].trim()) continue;
             // Deepgram clips the last sound it is given (the "U" of "GPU"), so each stretch is voiced with a throwaway
@@ -297,6 +303,33 @@ function silencesOf(mp3) {
     const starts = [...report.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
     const ends = [...report.matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
     return starts.map((from, k) => [from, ends[k] ?? length]).filter(([from, to]) => from > 0.05 && to < length - 0.05);
+}
+
+/*
+ * A VOICE IN KILN: every stretch of a scene is spoken by kiln-examples' SpeakBatch, with one loaded model at one seed,
+ * each stretch led by the voice's description (VoxCPM2's voice design), then trimmed of the silence around it.
+ */
+function voiceInKiln(scene, pieces, model, prompt, seed, named = '') {
+    const kilnRoot = resolve(VIDEOS, '..');
+    const parts = [];
+    const lines = [];
+    for (let k = 0; k < pieces.length; k += 2) {
+        if (k > 0) parts.push(Number(pieces[k - 1] ?? 0.65) || 0.65);
+        if (!pieces[k].trim()) continue;
+        const raw = join(OUT, `voice-${scene.n}-${k}-raw.wav`);
+        lines.push(`${raw}\t${prompt}${pieces[k].trim().replace(/\s+/g, ' ')}`);
+        parts.push(raw);
+    }
+    const tsv = join(OUT, `voice-${scene.n}.tsv`);
+    writeFileSync(tsv, `${lines.join('\n')}\n`);
+    run(join(kilnRoot, 'gradlew'), ['-q', '-p', kilnRoot, 'speakBatch', `--args=${tsv} ${named}`.trim(), `-Pmodel=${model}`, `-Pseed=${seed}`]);
+    return parts.map((p) => {
+        if (typeof p === 'number') return p;
+        const out = p.replace('-raw.wav', '.wav');
+        // Trim the silence before and after the words, as Deepgram's are.
+        ffmpeg('-i', p, '-af', 'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.05,areverse,silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.12,areverse', out);
+        return out;
+    });
 }
 
 /* The throwaway word voiced after each stretch (see voicing), and the cut that removes it. */
