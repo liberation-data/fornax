@@ -6,7 +6,8 @@ remade in Kiln before this video is published; the video says it was made in Kil
 code (vocal isolation, transcription): the video is made first, and the features land before it ships. Before
 publishing, check every claim against the README.
 
-voice: aura-2-hyperion-en
+voice: kiln:zonos3:Imogen_en-British_F_1
+voice-seed: 1
 pace: 1.05
 duck: on
 outro: stinger/out/stinger-1344x768-hold.mp4 | stinger/out/stinger-1344x768.mp4 | stinger/out/stinger-352x192.mp4
