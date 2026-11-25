@@ -12,6 +12,7 @@ import '@fontsource/jetbrains-mono/latin-500.css';
 import { Code } from 'astro:components';
 import { getImage, Image } from 'astro:assets';
 import splash from '../assets/splash.jpg';
+import lines from '../assets/lines-light.png';
 import logo from '../assets/logo.png';
 import cover from '../assets/cover.png';
 import lyricsText from '../lyrics.txt?raw';
@@ -32,7 +33,7 @@ const photo = async (width: number) => {
     return { avif: avif.src, css: `image-set(url('${avif.src}') type('image/avif'), url('${webp.src}') type('image/webp'), url('${jpeg.src}') type('image/jpeg'))` };
 };
 const [photoLarge, photoSmall] = await Promise.all([photo(1920), photo(960)]);
-const photoVars = `--photo: ${photoLarge.css}; --photo-small: ${photoSmall.css};`;
+const photoVars = `--photo: ${photoLarge.css}; --photo-small: ${photoSmall.css}; --lines: url('${lines.src}');`;
 const logoSmall = await getImage({ src: logo, width: 144, format: 'png' });
 
 const [songTitle, ...songRest] = lyricsText.trim().split('\n');
@@ -142,7 +143,7 @@ const theme = 'vitesse-dark';
             .fire { position: relative; overflow: hidden; color: #fff; background: var(--abyss); }
             .fire::before, .fire::after { content: ''; position: absolute; inset: 0; }
             .fire::before { background: linear-gradient(rgba(23, 10, 4, 0.42), rgba(23, 10, 4, 0.62)), var(--photo) center 45% / cover; }
-            .fire::after { background: repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 4px); }
+            .fire::after { background: var(--lines); opacity: 0.3; }
             .fire > * { position: relative; z-index: 1; }
             @media (max-width: 800px) { .fire::before { background-image: linear-gradient(rgba(23, 10, 4, 0.5), rgba(23, 10, 4, 0.68)), var(--photo-small); } }
 
