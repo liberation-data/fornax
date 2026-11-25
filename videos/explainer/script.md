@@ -9,7 +9,7 @@ publishing, check every claim against the README.
 voice: aura-2-hyperion-en
 pace: 1.05
 duck: on
-outro: stinger/out/stinger-1344x768.mp4 | stinger/out/stinger-352x192.mp4
+outro: stinger/out/stinger-1344x768-hold.mp4 | stinger/out/stinger-1344x768.mp4 | stinger/out/stinger-352x192.mp4
 
 ## 1. The what
 
