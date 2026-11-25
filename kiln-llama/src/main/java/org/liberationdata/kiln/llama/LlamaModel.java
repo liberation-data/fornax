@@ -157,8 +157,9 @@ public final class LlamaModel implements AutoCloseable {
         /** Qwen3-VL 4B Instruct: image questions, documents, charts and grounding (boxes on a 0 to 1000 grid). Apache-2.0. */
         QWEN3_VL_4B("Qwen/Qwen3-VL-4B-Instruct-GGUF", "Qwen3VL-4B-Instruct-Q4_K_M.gguf", "mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"),
         /**
-         * PaddleOCR-VL 1.6 (0.9B): document parsing. It takes a task prompt rather than a question, such as "OCR:",
-         * "Table Recognition:", "Formula Recognition:" or "Chart Recognition:". Apache-2.0.
+         * PaddleOCR-VL 1.6 (0.9B): document element recognition. It takes a task prompt rather than a question: "OCR:",
+         * "Table Recognition:", "Formula Recognition:", "Chart Recognition:", "Seal Recognition:" or "Spotting:".
+         * Use it greedy (temperature 0). Apache-2.0.
          */
         PADDLEOCR_VL("PaddlePaddle/PaddleOCR-VL-1.6-GGUF", "PaddleOCR-VL-1.6-GGUF.gguf", "PaddleOCR-VL-1.6-GGUF-mmproj.gguf"),
         /**
