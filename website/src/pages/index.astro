@@ -118,8 +118,17 @@ const examples = `./gradlew single    # an LLM writes a song, ACE-Step sings it,
 ./gradlew yue2 --args='yue2-song.wav'
 ./gradlew image --args='klein out.png "a neon sign that says KILN"' -Psteps=12 -Pwidth=768 -Pheight=768`;
 
-const run = `java -Dkiln.library.path=build/native/linux-x86_64-vulkan \\
-     --enable-native-access=ALL-UNNAMED -jar your-app.jar`;
+const depend = `// build.gradle.kts: the engine module, and the natives jar for the OS and arch building it
+val natives = when {
+    !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
+    System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
+    else -> "macos-x86_64-metal"
+}
+dependencies {
+    implementation("org.kiln4j:kiln-llama:0.1.0")
+    runtimeOnly("org.kiln4j:kiln-natives-$natives:0.1.0")
+}
+// and run with --enable-native-access=ALL-UNNAMED`;
 
 const installs = ['native/build.sh vulkan', './gradlew build', './gradlew single'];
 const theme = 'vitesse-dark';
@@ -776,8 +785,8 @@ const theme = 'vitesse-dark';
                             <div class="shell"><Code code={examples} lang="sh" theme={theme} /></div>
                         </div>
                         <div>
-                            <div><h3>4. In your own app</h3><p>Put the libraries on <code>-Dkiln.library.path</code> (or <code>KILN_LIBRARY_PATH</code>, or the platform loader path) and allow native access.</p></div>
-                            <div class="shell"><Code code={run} lang="sh" theme={theme} /></div>
+                            <div><h3>4. In your own app</h3><p>From Maven Central: an engine module and the natives jar for your platform. Kiln unpacks the libraries into its cache and loads them, so your app needs no native build. To use one from step 1 instead, put it on <code>-Dkiln.library.path</code>.</p></div>
+                            <div class="shell"><Code code={depend} lang="kotlin" theme={theme} /></div>
                         </div>
                     </div>
                 </div>
