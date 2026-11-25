@@ -58,6 +58,8 @@ const CLIP_DUCK = -14;
 const CLIP_LUFS = -18;
 /* The outro's own sound (the stinger's fire), over the music's last bars. */
 const OUTRO_LUFS = -19;
+/* A beat on the last card after the last word, before the outro starts. */
+const OUTRO_BREATH = 1.6;
 
 const run = (cmd, argv) => execFileSync(cmd, argv, { stdio: ['ignore', 'pipe', 'inherit'], maxBuffer: 1 << 28 }).toString();
 const ffmpeg = (...argv) => run('ffmpeg', ['-v', 'error', '-y', ...argv]);
@@ -414,7 +416,7 @@ function timingOf({ scenes, pace }) {
         let lead = leadAt(i, kk);
         if (sync && i === clipScene + 1) lead = Math.max(0.1, close.at - at);
         const last = i === voiced.length - 1;
-        let length = lead + talk + (fitted(i) ? tailAt(i, kk) + extra : last ? (outro ? 0.6 : END) : TAIL);
+        let length = lead + talk + (fitted(i) ? tailAt(i, kk) + extra : last ? (outro ? OUTRO_BREATH : END) : TAIL);
         if (sync && i === clipScene) length = duck.at - at;
         if (last && outro && cadence && at + length < cadence.at) length = cadence.at - at;
         length = frame(at + length) - at;
