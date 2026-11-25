@@ -54,6 +54,8 @@ const DUCK = /^duck:\s*on\b/m.test(SCRIPT);
 const CLIP_DUCK = -14;
 /* Clips are levelled to this, a little under the narration's -16, as footage cut into an explainer is. */
 const CLIP_LUFS = -18;
+/* The outro's own sound (the stinger's fire), over the music's last bars. */
+const OUTRO_LUFS = -19;
 
 const run = (cmd, argv) => execFileSync(cmd, argv, { stdio: ['ignore', 'pipe', 'inherit'], maxBuffer: 1 << 28 }).toString();
 const ffmpeg = (...argv) => run('ffmpeg', ['-v', 'error', '-y', ...argv]);
@@ -218,12 +220,12 @@ function crossfade(files, out) {
  * narration's text, as a share of the narration's length, which is right to about half a second. Between two fixed
  * starts (the scene's, a cue's, the scene's end), a card with seconds holds that long and the rest share what is left.
  */
-function cardLengths(scene, length, talk, lead = LEAD) {
+function cardLengths(scene, length, talk, lead = LEAD, squeezed = (t) => t) {
     const n = scene.cards.length;
     const starts = Array(n + 1).fill(null);
     starts[0] = 0;
     starts[n] = length;
-    scene.cards.forEach((c, k) => { if (k > 0 && c.cue) starts[k] = lead + cueAt(scene, c.cue, talk); });
+    scene.cards.forEach((c, k) => { if (k > 0 && c.cue) starts[k] = lead + cueAt(scene, c.cue, talk, squeezed); });
     const lengths = [];
     for (let from = 0, to; from < n; from = to) {
         for (to = from + 1; starts[to] === null; to++);
@@ -244,7 +246,7 @@ function cardLengths(scene, length, talk, lead = LEAD) {
  * When a phrase is said, in seconds from the scene's first word: its share of the spoken characters, as a share of the
  * time spent speaking, plus the pauses before it. Right to about half a second.
  */
-function cueAt(scene, cue, talk, pace = script.pace) {
+function cueAt(scene, cue, talk, squeezed, pace = script.pace) {
     const plain = (w) => w.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (existsSync(wordsFile(scene))) {
         const { said, words } = JSON.parse(readFileSync(wordsFile(scene), 'utf8'));
@@ -256,7 +258,7 @@ function cueAt(scene, cue, talk, pace = script.pace) {
             const rest = find(tries[0].slice(1));
             if (rest > 0) at = rest - 1;
         }
-        if (said === readFileSync(join(VIDEO, 'narration', `${scene.n}.txt`), 'utf8') && at >= 0) return words[at].start / pace;
+        if (said === readFileSync(join(VIDEO, 'narration', `${scene.n}.txt`), 'utf8') && at >= 0) return squeezed(words[at].start) / pace;
         console.warn(`  note: scene ${scene.n}: "${cue}" not found in its word times; estimated`);
     }
     const pauses = [...scene.words.matchAll(PAUSE)].map((m) => ({ at: m.index, secs: Number(m[1] ?? 0.65) || 0.65 }));
@@ -267,52 +269,139 @@ function cueAt(scene, cue, talk, pace = script.pace) {
     return (talk - silence) * (chars(index) / chars(scene.words.length)) + before;
 }
 
-/** A scene's length: its lead, its voice, and the tail after it (the last scene holds END); a clip comes after. */
-function sceneLength(scene, index, count, talk) {
-    return leadOf(index) + talk + (index === count - 1 ? END : TAIL);
+/** The music's landmarks, from the sections.txt beside it: `<seconds> <bar> <label>` a line. */
+function sectionsOf(music) {
+    const file = music && join(dirname(music), 'sections.txt');
+    if (!file || !existsSync(file)) return [];
+    return readFileSync(file, 'utf8').split('\n').map((l) => /^\s*([\d.]+)\s+\S+\s+(.*)$/.exec(l)).filter(Boolean).map(([, at, label]) => ({ at: Number(at), label }));
 }
 
-/** The cut's timing without cutting it: when each scene starts and speaks, and where the clips play. */
+/** The video's outro, from script.md's `outro:` line: the first of its paths (in the video's folder) that exists. */
+function outroFile() {
+    const line = /^outro:\s*(.+)$/m.exec(SCRIPT)?.[1];
+    if (!line) return null;
+    const found = line.split('|').map((p) => join(VIDEO, p.trim())).find(existsSync);
+    if (!found) console.warn(`  note: none of the outro's files is here yet (${line.trim()}): ending on the last card`);
+    return found ?? null;
+}
+
+/** The silences inside a narration (not before its first word or after its last), at least 0.3 s, as [from, to]. */
+function silencesOf(mp3) {
+    const length = duration(mp3);
+    const report = spawnSync('ffmpeg', ['-nostdin', '-nostats', '-i', mp3, '-af', 'silencedetect=n=-40dB:d=0.3', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 1 << 28 }).stderr;
+    const starts = [...report.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
+    const ends = [...report.matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
+    return starts.map((from, k) => [from, ends[k] ?? length]).filter(([from, to]) => from > 0.05 && to < length - 0.05);
+}
+
+/*
+ * SQUEEZING A NARRATION: each silence inside it keeps KEEP seconds and `k` of the rest (k = 1 leaves it as voiced, 0
+ * keeps only KEEP), cut from its middle. The words are untouched.
+ */
+const KEEP = 0.3;
+function squeeze(silences, k) {
+    return silences.map(([from, to]) => {
+        const keep = KEEP + (to - from - KEEP) * k;
+        return [from + keep / 2, to - keep / 2];
+    }).filter(([from, to]) => to - from > 0.01);
+}
+/** A time in the narration as voiced, in the squeezed narration. */
+const squeezer = (cuts) => (t) => t - cuts.reduce((s, [from, to]) => s + Math.max(0, Math.min(t, to) - from), 0);
+
+const frame = (t) => Math.round(t * FPS) / FPS;
+
+/*
+ * THE CUT'S TIMING: when each scene starts and speaks, where its clip plays, and where the outro is.
+ *
+ * MUSIC SYNC. When the music's sections.txt has a "duck" section (rests written for the clip) and a scene has a clip,
+ * the music is not moved or stretched; the cut is fitted to it. The clip starts as the duck does, the next scene's
+ * first word comes with the section after it (the close), and the outro starts at the music's "final cadence" (or
+ * once the last word has had a moment). The scenes before the clip are fitted into the time before the duck by their
+ * gaps: the silences between their sentences (squeeze) and the gaps between scenes, both shortened by one factor
+ * found to fit; if they're too short, the gaps grow.
+ */
 function timingOf({ scenes, pace }) {
+    const music = musicFile();
+    const marks = sectionsOf(music);
+    const duckAt = marks.findIndex((m) => /^duck\b/i.test(m.label));
+    const duck = marks[duckAt], close = marks[duckAt + 1];
+    const cadence = marks.find((m) => /final cadence/i.test(m.label));
+    const clipScene = scenes.findIndex((s) => s.clip);
+    const sync = !!(duck && close && clipScene >= 0);
+    const outro = outroFile();
+    const voiced = scenes.map((scene) => {
+        const mp3 = join(VIDEO, 'narration', `${scene.n}.mp3`);
+        return { scene, mp3, raw: duration(mp3), silences: silencesOf(mp3) };
+    });
+    const fitted = (i) => sync && i <= clipScene;
+    const leadAt = (i, k) => (i === 0 ? OPENING : fitted(i) ? 0.2 + (LEAD - 0.2) * k : LEAD);
+    const tailAt = (i, k) => (fitted(i) ? 0.3 + (TAIL - 0.3) * k : TAIL);
+    const talkAt = (v, k) => (v.raw - squeeze(v.silences, k).reduce((s, [a, b]) => s + b - a, 0)) / pace;
+    const before = (k) => voiced.slice(0, clipScene + 1).reduce((s, v, i) => s + leadAt(i, k) + talkAt(v, k) + tailAt(i, k), 0);
+    let k = 1, extra = 0;
+    if (sync) {
+        if (before(1) <= duck.at) extra = (duck.at - before(1)) / (clipScene + 1);
+        else if (before(0) > duck.at) {
+            k = 0;
+            console.warn(`  warning: the scenes before the clip need ${before(0).toFixed(1)}s even squeezed, and the music's duck is at ${duck.at}s: the clip comes late`);
+        } else {
+            let lo = 0, hi = 1;
+            for (let n = 0; n < 40; n++) { const mid = (lo + hi) / 2; if (before(mid) > duck.at) hi = mid; else lo = mid; }
+            k = lo;
+        }
+        console.log(`  synced to the music: the clip at its duck (${duck.at}s), scene ${scenes[clipScene + 1]?.n ?? '-'} at its close (${close.at}s); gaps before the clip at ${(k * 100).toFixed(0)}%${extra ? ` plus ${extra.toFixed(2)}s each` : ''}`);
+    }
     const timeline = [];
     const clips = [];
     let at = 0;
-    for (const [index, scene] of scenes.entries()) {
-        const talk = duration(join(VIDEO, 'narration', `${scene.n}.mp3`)) / pace;
-        const lead = leadOf(index);
-        timeline.push({ scene, at, start: at + lead, talk, lead });
-        at += sceneLength(scene, index, scenes.length, talk);
-        if (scene.clip) {
-            const d = duration(scene.clip);
-            clips.push({ start: at, end: at + d, file: scene.clip });
+    for (const [i, v] of voiced.entries()) {
+        const kk = fitted(i) ? k : 1;
+        const cuts = squeeze(v.silences, kk);
+        const talk = talkAt(v, kk);
+        let lead = leadAt(i, kk);
+        if (sync && i === clipScene + 1) lead = Math.max(0.1, close.at - at);
+        const last = i === voiced.length - 1;
+        let length = lead + talk + (fitted(i) ? tailAt(i, kk) + extra : last ? (outro ? 0.6 : END) : TAIL);
+        if (sync && i === clipScene) length = duck.at - at;
+        if (last && outro && cadence && at + length < cadence.at) length = cadence.at - at;
+        length = frame(at + length) - at;
+        timeline.push({ scene: v.scene, at, start: at + lead, talk, lead, length, mp3: v.mp3, raw: v.raw, cuts, squeezed: squeezer(cuts) });
+        at += length;
+        if (v.scene.clip) {
+            const d = frame(duration(v.scene.clip));
+            clips.push({ start: at, end: at + d, file: v.scene.clip });
             at += d;
         }
     }
-    return { timeline, clips, total: at };
+    const tail = outro ? { start: at, end: at + frame(duration(outro)), file: outro } : null;
+    return { timeline, clips, outro: tail, total: tail ? tail.end : at, sync };
 }
 
-/** A footage clip, as a part of the cut: pillarboxed into 1920 × 1080, its sound levelled, faded in and out. */
-function clipPart(file, out) {
-    const d = duration(file);
+/**
+ * Footage, as a part of the cut, its sound levelled to `lufs`, faded in and out: a clip pillarboxed into 1920 × 1080,
+ * or with `fill` scaled to cover it (an outro a little off 16:9).
+ */
+function footagePart(file, out, { lufs = CLIP_LUFS, fill = false } = {}) {
+    const d = frame(duration(file));
     const sound = hasAudio(file)
-        ? `[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=${(CLIP_LUFS - loudnessOf(file)).toFixed(2)}dB,afade=t=in:d=0.08,afade=t=out:st=${d - 0.25}:d=0.25[a]`
+        ? `[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=${(lufs - loudnessOf(file)).toFixed(2)}dB,afade=t=in:d=0.08,afade=t=out:st=${d - 0.25}:d=0.25,apad=whole_dur=${d}[a]`
         : `anullsrc=r=48000:cl=stereo:d=${d}[a]`;
+    const fit = fill
+        ? 'scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:1080'
+        : 'scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x170d08';
     ffmpeg('-i', file, '-filter_complex',
-        `[0:v]scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x170d08,fps=${FPS},format=yuv420p,setsar=1,fade=t=in:st=0:d=0.3,fade=t=out:st=${d - 0.3}:d=0.3[v];${sound}`,
+        `[0:v]${fit},fps=${FPS},format=yuv420p,setsar=1,tpad=stop_mode=clone:stop_duration=1,trim=duration=${d},fade=t=in:st=0:d=0.3,fade=t=out:st=${d - 0.3}:d=0.3[v];${sound}`,
         '-map', '[v]', '-map', '[a]', '-t', String(d),
         '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-r', String(FPS),
         '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '192k', out);
 }
 
-async function cutScenes(script, cards) {
-    const { scenes, pace } = script;
+async function cutScenes(script, cut, cards) {
+    const { pace } = script;
     const parts = [];
-    for (const [index, scene] of scenes.entries()) {
-        const mp3 = join(VIDEO, 'narration', `${scene.n}.mp3`);
-        const talk = duration(mp3) / pace;
-        const lead = leadOf(index);
-        const length = sceneLength(scene, index, scenes.length, talk);
-        const lengths = cardLengths(scene, length, talk, lead);
+    for (const [index, t] of cut.timeline.entries()) {
+        const { scene, lead, length, talk, mp3, raw, cuts } = t;
+        const lengths = cardLengths(scene, length, talk, lead, t.squeezed);
         let from = 0;
         console.log(`  ${scene.n}: ${scene.cards.map((c, k) => { const at = from; from += lengths[k]; return `${c.name} ${at.toFixed(1)}s`; }).join(', ')}`);
         const clips = scene.cards.map((c, k) => {
@@ -322,25 +411,40 @@ async function cutScenes(script, cards) {
         });
         const pictures = join(OUT, `s${scene.n}-v.mp4`);
         crossfade(clips, pictures);
+        /* The narration as kept: everything between the squeezed silences' cuts. */
+        const keep = [];
+        let kept = 0;
+        for (const [a, b] of cuts) { keep.push([kept, a]); kept = b; }
+        keep.push([kept, raw]);
+        const voice = `${keep.map(([a, b], k) => `[1:a]atrim=${a.toFixed(4)}:${b.toFixed(4)},asetpts=PTS-STARTPTS[k${k}];`).join('')}${keep.map((_, k) => `[k${k}]`).join('')}concat=n=${keep.length}:v=0:a=1,`;
+        const lastScene = index === cut.timeline.length - 1;
+        const fadeOut = lastScene && !cut.outro ? 1.2 : 0.3;
         const part = join(OUT, `s${scene.n}.mp4`);
         ffmpeg('-i', pictures, '-i', mp3, '-filter_complex',
-            `[0:v]tpad=stop_mode=clone:stop_duration=${length},trim=duration=${length},setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.3,fade=t=out:st=${length - (index === scenes.length - 1 ? 1.2 : 0.3)}:d=${index === scenes.length - 1 ? 1.2 : 0.3}[v];` +
+            `[0:v]tpad=stop_mode=clone:stop_duration=${length},trim=duration=${length},setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.3,fade=t=out:st=${length - fadeOut}:d=${fadeOut}[v];` +
             /* Levelled by a fixed gain from its measured loudness: loudnorm's dynamic levelling pumped the voice. */
-            `[1:a]aresample=48000,${pace === 1 ? '' : `atempo=${pace},`}volume=${(-16 - loudnessOf(mp3)).toFixed(2)}dB,aformat=channel_layouts=mono[n];` +
-            `anullsrc=r=48000:cl=mono:d=${lead}[l];[l][n]concat=n=2:v=0:a=1,apad=whole_dur=${length}[a]`,
+            `${voice}aresample=48000,${pace === 1 ? '' : `atempo=${pace},`}volume=${(-16 - loudnessOf(mp3)).toFixed(2)}dB,aformat=channel_layouts=mono[n];` +
+            `anullsrc=r=48000:cl=mono:d=${lead}[l];[l][n]concat=n=2:v=0:a=1,apad=whole_dur=${length},atrim=0:${length}[a]`,
             '-map', '[v]', '-map', '[a]', '-t', String(length),
             '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-r', String(FPS),
             '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '192k', part);
         parts.push(part);
         if (scene.clip) {
             const clipped = join(OUT, `s${scene.n}-clip.mp4`);
-            clipPart(scene.clip, clipped);
+            footagePart(scene.clip, clipped);
             parts.push(clipped);
         }
+    }
+    if (cut.outro) {
+        const outro = join(OUT, 'outro.mp4');
+        footagePart(cut.outro.file, outro, { lufs: OUTRO_LUFS, fill: true });
+        parts.push(outro);
     }
     const joined = join(OUT, 'joined.mp4');
     ffmpeg(...parts.flatMap((p) => ['-i', p]), '-filter_complex', `${parts.map((_, k) => `[${k}:v][${k}:a]`).join('')}concat=n=${parts.length}:v=1:a=1[v][a]`,
         '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', joined);
+    const drift = duration(joined) - cut.total;
+    if (Math.abs(drift) > 0.1) console.warn(`  warning: the cut is ${drift.toFixed(2)}s off its timing; the music may not land`);
     return joined;
 }
 
@@ -370,34 +474,55 @@ function musicFile() {
     return audio.sort((a, b) => b.secs - a.secs > 0.05 || b.secs - a.secs < -0.05 ? b.secs - a.secs : b.lossless - a.lossless)[0]?.file ?? null;
 }
 
+/** A stretch of a file's integrated loudness, in LUFS; -70 for silence. */
+function loudnessBetween(file, from, to) {
+    const measured = spawnSync('ffmpeg', ['-nostdin', '-nostats', '-ss', String(from), '-to', String(to), '-i', file, '-af', 'ebur128', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 1 << 28 }).stderr;
+    const loudness = Number([...measured.matchAll(/\bI:\s*(-?[\d.]+) LUFS/g)].at(-1)?.[1]);
+    return Number.isFinite(loudness) ? loudness : -70;
+}
+
+/* Where the music sits, in LUFS: under the voice (-16 LUFS), and on its own after the last word. */
+const UNDER_LUFS = -29, END_LUFS = -20;
+
 /**
- * The music's level over the cut, in dB from where it is levelled (-16 LUFS): up for the opening, under the voice,
- * further under a clip, and up after the last word for the end card, then out. Linear between the points.
+ * The music's gain over the cut, in dB, linear between points. Each scene's stretch of the music is measured and set
+ * to sit at UNDER_LUFS under the voice, so a loud passage (the opening flourish) and a quiet one (a piano bar) sit
+ * alike; further under a clip (whose own sound carries it); at END_LUFS after the last word; then out.
  */
-function musicCurve({ timeline, clips, total }) {
-    const [first, under, end] = [-6, -13, -4];
+function musicCurve(music, { timeline, clips, total }) {
     const last = timeline.at(-1);
     const spoken = last.start + last.talk;
-    const points = [[0, first], [Math.max(0.4, timeline[0].start), first], [timeline[0].start + 1.2, under]];
-    for (const c of clips) points.push([c.start - 0.5, under], [c.start + 0.2, under + CLIP_DUCK], [c.end - 0.4, under + CLIP_DUCK], [c.end + 0.6, under]);
-    points.push([spoken + 0.2, under], [spoken + 1.4, end], [total - 2, end], [total, -40]);
+    const gain = (from, to, target) => {
+        const level = loudnessBetween(music, from, to);
+        return level <= -60 ? 0 : Math.max(-24, Math.min(14, target - level));
+    };
+    const points = [];
+    timeline.forEach((t, k) => {
+        const clip = clips.find((c) => c.start >= t.at && c.start < (timeline[k + 1]?.at ?? total));
+        const to = k === timeline.length - 1 ? spoken : (clip?.start ?? timeline[k + 1].at);
+        const g = gain(t.start, to, UNDER_LUFS);
+        points.push([t.at + (k ? 0.6 : 0), g], [to - 0.4, g]);
+        if (clip) points.push([clip.start + 0.2, g + CLIP_DUCK], [clip.end - 0.4, g + CLIP_DUCK]);
+    });
+    const g = gain(spoken + 0.2, Math.max(spoken + 1, total - 1), END_LUFS);
+    points.push([spoken + 1.4, g], [total - 2, g], [total, g - 40]);
     points.sort((a, b) => a[0] - b[0]);
-    let expr = `${points.at(-1)[1]}`;
+    let expr = `${points.at(-1)[1].toFixed(2)}`;
     for (let k = points.length - 2; k >= 0; k--) {
         const [t0, d0] = points[k];
         const [t1, d1] = points[k + 1];
-        const seg = t1 > t0 ? `${d0}+(t-${t0.toFixed(3)})*${((d1 - d0) / (t1 - t0)).toFixed(4)}` : `${d1}`;
+        const seg = t1 > t0 ? `${d0.toFixed(2)}+(t-${t0.toFixed(3)})*${((d1 - d0) / (t1 - t0)).toFixed(4)}` : `${d1.toFixed(2)}`;
         expr = `if(lt(t,${t1.toFixed(3)}),${seg},${expr})`;
     }
     return expr;
 }
 
-/** The bed as it sits under the cut: levelled, shaped by the curve, as long as the cut. */
+/** The bed as it sits under the cut: fitted, levelled by the curve, as long as the cut. */
 function bed(music, cut, out) {
     const length = duration(music);
     if (length < cut.total - 0.5) console.warn(`  warning: the music is ${length.toFixed(1)}s, the cut ${cut.total.toFixed(1)}s: the end is without music`);
     ffmpeg('-i', music, '-af',
-        `aresample=48000,aformat=channel_layouts=stereo,volume=${(-16 - loudnessOf(music)).toFixed(2)}dB,volume=eval=frame:volume='pow(10,(${musicCurve(cut)})/20)',apad=whole_dur=${cut.total},atrim=0:${cut.total}`,
+        `aresample=48000,aformat=channel_layouts=stereo,volume=eval=frame:volume='pow(10,(${musicCurve(music, cut)})/20)',apad=whole_dur=${cut.total},atrim=0:${cut.total}`,
         '-c:a', 'pcm_s16le', out);
 }
 
@@ -459,6 +584,7 @@ function writeTiming(cut) {
         spokenEnd: +(last.start + last.talk).toFixed(3),
         scenes: cut.timeline.map(({ scene, at, start, talk }) => ({ n: Number(scene.n), title: scene.title, at: +at.toFixed(3), speechStart: +start.toFixed(3), speechEnd: +(start + talk).toFixed(3) })),
         clips: cut.clips.map((c) => ({ start: +c.start.toFixed(3), end: +c.end.toFixed(3) })),
+        outro: cut.outro && { start: +cut.outro.start.toFixed(3), end: +cut.outro.end.toFixed(3) },
     };
     writeFileSync(join(OUT_ROOT, 'timing.json'), `${JSON.stringify(timing, null, 2)}\n`);
 }
@@ -494,7 +620,7 @@ if (args.has('--cards')) {
 await voiceScenes(script);
 const cut = timingOf(script);
 writeTiming(cut);
-const joined = await cutScenes(script, cards);
+const joined = await cutScenes(script, cut, cards);
 const { master, music } = mix(joined, cut);
 writeFileSync(join(OUT_ROOT, `${name}.vtt`), captions(cut.timeline));
 /* One frame from the middle of each scene's speech, and one from each clip, to look at. */
@@ -503,10 +629,12 @@ rmSync(frames, { recursive: true, force: true });
 mkdirSync(frames, { recursive: true });
 for (const { scene, start, talk } of cut.timeline) ffmpeg('-ss', (start + talk / 2).toFixed(2), '-i', master, '-frames:v', '1', '-q:v', '3', join(frames, `scene-${scene.n}.jpg`));
 cut.clips.forEach((c, k) => ffmpeg('-ss', ((c.start + c.end) / 2).toFixed(2), '-i', master, '-frames:v', '1', '-q:v', '3', join(frames, `clip-${k + 1}.jpg`)));
+if (cut.outro) ffmpeg('-ss', (cut.outro.start + (cut.outro.end - cut.outro.start) * 0.7).toFixed(2), '-i', master, '-frames:v', '1', '-q:v', '3', join(frames, 'outro.jpg'));
 
 const seconds = duration(master);
 if (script.pace !== 1) console.log(`  narration at pace ${script.pace}`);
-for (const { scene, start, talk } of cut.timeline) console.log(`  ${scene.n}. ${scene.title.padEnd(14)} ${start.toFixed(1)}s, ${talk.toFixed(1)}s of voice`);
-for (const c of cut.clips) console.log(`  clip           ${c.start.toFixed(1)}s to ${c.end.toFixed(1)}s`);
+for (const { scene, start, talk } of cut.timeline) console.log(`  ${scene.n}. ${scene.title.padEnd(14)} ${start.toFixed(2)}s, ${talk.toFixed(1)}s of voice`);
+for (const c of cut.clips) console.log(`  clip           ${c.start.toFixed(2)}s to ${c.end.toFixed(2)}s`);
+if (cut.outro) console.log(`  outro          ${cut.outro.start.toFixed(2)}s to ${cut.outro.end.toFixed(2)}s (${cut.outro.file})`);
 console.log(`  ${music ? `with ${music}` : 'no music yet (music/out/ has no audio): rebuild when it lands'}`);
 console.log(`  ${master}: ${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')} (${seconds.toFixed(1)}s), ${FINAL ? 'final, 60fps' : 'draft, 30fps'}`);
