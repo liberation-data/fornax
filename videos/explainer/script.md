@@ -22,7 +22,8 @@ Cards: options-today, stuck @"you're stuck", stack-before, stack-after @"Kiln ca
 
 > If you want a local language model or embeddings in Java, there are options. They work, though they're often slower
 > than they should be. [pause] But what if you want to isolate the vocals from a track? Generate product shots for a
-> catalogue? Turn a storyboard into footage? [pause] From the JVM, you're stuck. It's a Python stack, or a tool like
+> catalogue? Turn a storyboard into footage? Or any of a plethora of other capabilities? [pause] From the JVM, you're
+> stuck. It's a Python stack, or a tool like
 > ComfyUI behind HTTP: another runtime, another process, and a network hop on every call.
 >
 > Kiln calls the native engines directly. No Python, no server, nothing in between.
@@ -36,12 +37,13 @@ Cards: code, models @"Weights load once"
 
 ## 4. Show me
 
-Cards: studio (the two-window screenshot), numbers @"ComfyUI"
+Cards: studio (the two-window screenshot), numbers @"twice as fast"
 
 > In Kiln Studio, chat with a model and watch the tokens per second, paint an image, write a song, or render a clip.
-> On our test laptop, Kiln made a one-minute song in under half the time ComfyUI took.
+> On our test laptop, Kiln made a one-minute song up to twice as fast as ComfyUI, on the same GPU.
 
-(Speed line to settle: cold is 17.3 s against 38.2 s, warm 14.7 s against 23.0 s, ACE-Step 1.5 turbo, 60 s song.)
+(Backed by kiln-bench, ACE-Step 1.5 turbo, 60 s song: cold 17.3 s against 38.2 s (2.2×), warm 14.7 s against 23.0 s
+(1.6×). "Up to" covers both.)
 
 ## 5. Your own
 
