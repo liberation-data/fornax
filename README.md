@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
-**Call open-weight models (text, images, songs) as plain Java methods, running on your GPU, inside your JVM.**
+**Call open-weight models (language, vision, speech, images, songs, video) as plain Java methods, running on your GPU, inside your JVM.**
 
 ```java
 try (var llm = new LlamaModel("Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {   // weights load onto the GPU once

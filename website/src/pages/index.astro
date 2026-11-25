@@ -201,6 +201,7 @@ const theme = 'vitesse-dark';
             .copy code { font-size: 14px; padding: 0; background: none; color: #fff; }
             .copy.done::after { content: 'Copied'; position: absolute; inset: 0; display: grid; place-items: center; border-radius: 7px; background: var(--accent); color: var(--abyss); font-weight: 700; }
             .status { margin: 18px 0 0; font-size: 14px; color: #f0dccb; text-shadow: 0 1px 8px rgba(40, 10, 0, 0.6); }
+            .status a { color: var(--glow); text-decoration: underline; text-underline-offset: 3px; }
             .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
             .intro { padding: 96px 32px 40px; text-align: center; }
@@ -452,7 +453,7 @@ const theme = 'vitesse-dark';
                     ))}
                     <span class="sr" role="status"></span>
                 </div>
-                <p class="status">Early · Apache 2.0 · a Liberation Data project</p>
+                <p class="status">Early · Apache 2.0 · a Liberation Data project · <a href="#get-studio">Download Kiln Studio</a></p>
             </div>
         </header>
 
@@ -515,7 +516,7 @@ const theme = 'vitesse-dark';
                 <div class="flames" aria-hidden="true">{[0, 1, 2, 3, 4, 5].map((k) => <img src={`/fire/f${k}.webp`} alt="" loading="lazy" decoding="async" class={k === 0 ? 'on' : undefined} />)}</div>
                 <div class="wrap split">
                     <div class="text">
-                        <p class="eyebrow">Plain Java</p>
+                        <p class="eyebrow">Plain Java API</p>
                         <h2>Models are objects. Generating is a method call.</h2>
                         <p>Open a model in a try-with-resources block, call it as often as you like, and close it to give the memory back.</p>
                         <ul class="dashes">
@@ -802,6 +803,7 @@ const theme = 'vitesse-dark';
                     <div class="actions">
                         <a href={REPO} class="button primary">Kiln on GitHub</a>
                         <a href="/docs/getting-started/" class="button ghost">Getting started</a>
+                        <a href="#get-studio" class="button ghost">Download Kiln Studio</a>
                     </div>
                 </div>
             </section>

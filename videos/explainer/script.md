@@ -57,8 +57,8 @@ Cards: studio-invoice, studio-defects @"spot a defect", studio-review @"an X-ray
 
 Cards: pull, embabel @"Embabel Agent"
 
-> Pull a model from Hugging Face with one command, and try it in Kiln Studio. Kiln is plain Java with no
-> dependencies, so it works in any app, and it's a great companion for Embabel Agent: local models, in process.
+> Pull a model from Hugging Face with one command, and try it in Kiln Studio. Kiln needs no other Java
+> libraries, just its native engines, so it works in any app, and it's a great companion for Embabel Agent: local models, in process.
 
 ## 6. An example
 
