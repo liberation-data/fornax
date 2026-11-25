@@ -20,13 +20,13 @@ Cards: title 4s, one-line
 
 ## 2. The why
 
-Cards: options-today, stuck @"you're stuck", stack-before, stack-after @"Kiln calls"
+Cards: options-today, stuck @"you were stuck", stack-before, stack-after @"Kiln calls"
 
 > If you want a local language model or embeddings in Java, there are options. They work, though they're often slower
 > than they should be. [pause] But what if you want to isolate the vocals from a track? Generate product shots for a
-> catalogue? Turn a storyboard into footage? Or any of a plethora of other capabilities? [pause] From the JVM, you're
-> stuck. It's a Python stack, or a tool like
-> ComfyUI behind HTTP: another runtime, another process, and a network hop on every call.
+> catalogue? Turn a storyboard into footage? Or any of a plethora of other capabilities? [pause] Until now, from the
+> JVM, you were stuck. It meant a Python stack, or a tool like ComfyUI behind HTTP: another runtime, another process,
+> and a network hop on every call.
 >
 > Kiln calls the native engines directly. No Python, no server, nothing in between.
 
