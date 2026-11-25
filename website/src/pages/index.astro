@@ -438,7 +438,7 @@ const theme = 'vitesse-dark';
                             <li><span>Every model class is <code>AutoCloseable</code>: weights are freed on <code>close()</code>.</span></li>
                             <li><span>Text streams token by token to any callback, such as <code>System.out::print</code>.</span></li>
                             <li><span>Tool calling with <code>chatJson</code>: OpenAI-style messages and tools in, <code>tool_calls</code> out.</span></li>
-                            <li><span>Songs come back as PCM audio; images as a <code>BufferedImage</code>.</span></li>
+                            <li><span>Audio comes back as PCM; images as a <code>BufferedImage</code>.</span></li>
                             <li><span>Java 22+, built and tested on 25. Instances aren’t thread-safe.</span></li>
                         </ul>
                     </div>
@@ -620,8 +620,8 @@ const theme = 'vitesse-dark';
                         </p>
                     </header>
                     <figure>
-                        <Image src={studioChat} widths={[800, 1600]} sizes="(max-width: 1264px) 100vw, 1200px" loading="lazy" alt="Kiln Studio's Chat window: Qwen3 0.6B answering a prompt about a kiln, with the reply's speed, 186 tokens a second, its time to the first token and its token counts above the conversation" />
-                        <figcaption>The Chat window: Qwen3 0.6B, at 186 tokens a second.</figcaption>
+                        <Image src={studioChat} widths={[800, 1600]} sizes="(max-width: 1264px) 100vw, 1200px" loading="lazy" alt="Kiln Studio in its dark theme with two windows on its desktop. Behind, the Chat window: Qwen3 4B Instruct answering a request for a haiku about a kiln and one sentence on what a kiln is for, at 68.7 tokens a second, with its time to the first token and token counts. In front, overlapping it, the Image window: FLUX.2 [klein] with its prompt, size and steps, and the image it made, a kiln's orange fire beside shelves of stoneware jars, generated in 2 minutes 17 seconds over 12 steps" />
+                        <figcaption>Chat with Qwen3 4B Instruct at 68.7 tokens a second, and an image from FLUX.2 [klein].</figcaption>
                     </figure>
                     {studio ? (
                         <div class="get-studio" id="get-studio">
