@@ -53,18 +53,24 @@ public class VideoClip {
             var extra = new java.util.HashMap<String, Object>(req.extra());
             extra.put("sample.method", "euler_a");
             extra.put("sample.sigmas", new float[] {1.0f, 0.99375f, 0.9875f, 0.98125f, 0.975f, 0.909375f, 0.725f, 0.421875f, 0.0f});
-            extra.put("strength", 0.7);
+            extra.put("strength", Double.parseDouble(System.getProperty("strength", "0.7")));
             // -Dhires=false renders the draft stage alone, to tell its artifacts from the refine's.
             extra.put("hires.enabled", Boolean.parseBoolean(System.getProperty("hires", "true")));
             // -Dupscaler=interpolate swaps the learned x2 latent upscaler for plain interpolation (a diagnostic).
-            if (!"interpolate".equals(System.getProperty("upscaler")))
+            // sd.cpp only runs the learned upscaler when hires.upscaler is "model"; otherwise it silently interpolates the
+            // latent bilinearly and ignores hires.model_path, and refining an interpolated latent ghosts badly.
+            if (!"interpolate".equals(System.getProperty("upscaler"))) {
+                extra.put("hires.upscaler", "model");
                 extra.put("hires.model_path", file(dir, "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"));
+            }
             // -Drefine=scheduler lets sd.cpp's scheduler pick 3 refine steps at strength 0.85 instead of the manual sigmas.
             if ("scheduler".equals(System.getProperty("refine"))) {
                 extra.put("hires.steps", 3);
                 extra.put("hires.denoising_strength", 0.85);
             } else {
-                extra.put("hires.sigmas", new float[] {0.85f, 0.725f, 0.4219f, 0.0f});
+                // -Drefine=renoise starts the refine from pure noise (sigma 1), a diagnostic.
+                extra.put("hires.sigmas", "renoise".equals(System.getProperty("refine"))
+                        ? new float[] {1.0f, 0.725f, 0.4219f, 0.0f} : new float[] {0.85f, 0.725f, 0.4219f, 0.0f});
             }
             // Tiled decode, as the ComfyUI workflow does: short GPU dispatches stay under the driver's compute timeout.
             extra.put("vae_tiling.enabled", true);

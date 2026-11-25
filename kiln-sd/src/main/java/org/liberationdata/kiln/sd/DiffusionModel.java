@@ -101,6 +101,7 @@ public final class DiffusionModel implements AutoCloseable {
                 o.put("sample.guidance.txt_cfg", r.cfg());
                 o.put("seed", r.seed());
                 o.putAll(r.extra());
+                checkHires(o);
                 applyAll(opt, o, tmp);
                 if (refs.length > 0) {
                     for (int i = 0; i < refs.length; i++) refs[i] = toTensor(r.refImages().get(i), tmp);
@@ -141,6 +142,7 @@ public final class DiffusionModel implements AutoCloseable {
                 o.put("sample.guidance.txt_cfg", r.cfg());
                 o.put("seed", r.seed());
                 o.putAll(r.extra());
+                checkHires(o);
                 applyAll(opt, o, tmp);
                 if (r.initImage() != null) setTensor(opt, "init_image", owned, toTensor(r.initImage(), tmp), tmp);
                 if (r.endImage() != null) setTensor(opt, "end_image", owned, toTensor(r.endImage(), tmp), tmp);
@@ -203,6 +205,22 @@ public final class DiffusionModel implements AutoCloseable {
             rr[i] = channels > 1 ? s[(int) (i * channels + 1)] : l[i];
         }
         return new Audio(l, rr, rate);
+    }
+
+    /**
+     * stable-diffusion.cpp only runs a learned hires upscaler when {@code hires.upscaler} is {@code "model"}. With any
+     * other value, or none, it interpolates the latent and silently ignores {@code hires.model_path}, and refining an
+     * interpolated video latent ghosts. So a model path with no upscaler selects the model, and a model path with a
+     * different upscaler is refused.
+     */
+    static void checkHires(Map<String, Object> o) {
+        Object path = o.get("hires.model_path");
+        if (path == null || path.toString().isEmpty()) return;
+        Object upscaler = o.get("hires.upscaler");
+        if (upscaler == null) o.put("hires.upscaler", "model");
+        else if (!"model".equals(upscaler))
+            throw new IllegalArgumentException("hires.model_path is set but hires.upscaler is '" + upscaler
+                    + "', which ignores the model; use \"model\" or drop hires.model_path");
     }
 
     static void applyAll(MemorySegment opt, Map<String, Object> options, Arena a) throws Throwable {

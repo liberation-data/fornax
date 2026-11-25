@@ -85,7 +85,13 @@ public final class Sd {
     public interface ProgressSink { void progress(int step, int steps, float seconds); }
 
     // sd log levels: 0 debug, 1 info, 2 warn, 3 error. Quiet unless KILN_VERBOSE is set.
-    private static LogSink logSink = (l, t) -> { if (l >= (System.getenv("KILN_VERBOSE") != null ? 1 : 3)) System.err.print(t); };
+    private static LogSink logSink = (l, t) -> { if (l >= logThreshold()) System.err.print(t); };
+
+    /** KILN_VERBOSE unset: errors only; set: info and up; "debug": everything, including the compiled DGL program. */
+    private static int logThreshold() {
+        String v = System.getenv("KILN_VERBOSE");
+        return v == null ? 3 : "debug".equalsIgnoreCase(v) ? 0 : 1;
+    }
     private static ProgressSink progressSink = (s, n, t) -> {};
 
     static void onLog(int level, MemorySegment text, MemorySegment data) {

@@ -70,6 +70,8 @@ private. The engines pin different ggml versions, so this is what lets several o
   `kiln-llama` binds a small stable C layer (`kiln-llama/native`) instead.
 - `acestep.cpp` and `yue2.cpp` are C++ only, so each gets a ~100-line C layer: JSON request in, PCM audio out.
 
+Engine quirks and how to debug them: [docs/engine-notes.md](docs/engine-notes.md).
+
 Every model class is `AutoCloseable`; weights are freed on `close()`. Instances aren't thread-safe.
 
 `ModelPool` keeps models resident between uses, the way ComfyUI does: it unloads idle models least recently used
