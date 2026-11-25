@@ -28,6 +28,15 @@ surprises you.
   submission. One big decode (LTX's audio VAE at full size) can exceed the kernel's timeout and lose the device.
   `GGML_VK_MAX_NODES_PER_SUBMIT=8` fixed it. ComfyUI never hit this, because PyTorch on ROCm launches many small
   kernels.
+- **Long video on Vulkan hits the timeout even at 8 nodes per submission.** A 13 s LTX clip (313 frames) refined at
+  1344×896 lost the device on the first refine step: a single attention dispatch over ~47k tokens outlasts the
+  amdgpu compute ring timeout, and no submission size can split one node. Use the HIP backend for long clips: ROCm
+  work goes through KFD user queues, which have no such timeout (that is why ComfyUI never hit it). HIP was also
+  about 2.7× faster per LTX step than Vulkan on the 8060S (44 s against 119 s at 672×448×313, after a slower first step).
+- **HIP graphs overflow a JVM thread's stack.** ggml's HIP backend captures the graph as a HIP graph, and ROCm's
+  `hip::Graph::ScheduleOneNode` recurses once per node. On a JVM thread (smaller stack than a CLI's 8 MB main
+  thread) LTX segfaults in libamdhip64 during text encoding. `GGML_CUDA_DISABLE_GRAPHS=1` fixes it, and Kiln sets it by default (`-Dkiln.gpu.graphs=true` turns graphs back on).
+- **Fedora's ROCm lives in `/usr`**, not `/opt/rocm`; `native/build.sh hip` falls back to `/usr/lib64`.
 - **LTX audio is part of the model.** LTX-2.5 generates sound and picture together. Leaving out
   `audio_vae_path` removes the audio stream; that didn't cause the ghosting, but it isn't how the model was trained.
 

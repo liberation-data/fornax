@@ -42,7 +42,9 @@ fetch() {  # fetch <dir-name>
 case $BACKEND in
     vulkan) GGML="-DGGML_VULKAN=ON"; SD="-DSD_VULKAN=ON"; LIBS="-lvulkan" ;;
     hip)    GGML="-DGGML_HIP=ON -DGPU_TARGETS=${HIP_ARCH:-gfx1151}"; SD="-DSD_HIPBLAS=ON -DGPU_TARGETS=${HIP_ARCH:-gfx1151}"
-            LIBS="-L${ROCM_PATH:-/opt/rocm}/lib -lhipblas -lrocblas -lamdhip64" ;;
+            # /opt/rocm from AMD's packages; Fedora's own ROCm lives in /usr (libraries in /usr/lib64).
+            ROCM_LIB=${ROCM_PATH:-/opt/rocm}/lib; [ -d "$ROCM_LIB" ] || ROCM_LIB=/usr/lib64
+            LIBS="-L$ROCM_LIB -lhipblas -lrocblas -lamdhip64" ;;
     cuda)   GGML="-DGGML_CUDA=ON"; SD="-DSD_CUDA=ON"; LIBS="-L${CUDA_PATH:-/usr/local/cuda}/lib64 -lcudart -lcublas -lcublasLt -lcuda" ;;
     metal)  GGML="-DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON"; SD="-DSD_METAL=ON"
             LIBS="-framework Metal -framework Foundation -framework MetalKit -framework Accelerate" ;;
