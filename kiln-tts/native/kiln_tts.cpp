@@ -120,9 +120,15 @@ int kiln_tts_speak(kiln_tts * h, const char * text, const char * voice_c, const 
     if (!text || !*text) return fail("no text to speak", 1);
     std::string voice = voice_c ? voice_c : "", lang = lang_c ? lang_c : "";
 
-    // A model with predefined voices speaks with one (the first by default); others name the voice in the prompt.
+    // A voice of "@<file>" is a reference clip to speak like (wav or mp3; VoxCPM2 and Qwen3-TTS clone it). Otherwise a
+    // model with predefined voices speaks with one (the first by default); others name the voice in the prompt.
     mtmd::bitmap_ptr speaker;
-    if (h->info.n_voices > 0) {
+    if (!voice.empty() && voice[0] == '@') {
+        auto wrapper = mtmd_helper_bitmap_init_from_file(h->mctx, voice.c_str() + 1, false, mtmd_helper_init_opt_default());
+        if (!wrapper.bitmap) return fail("failed to load the reference clip " + voice.substr(1), 2);
+        speaker.reset(wrapper.bitmap);
+        voice.clear();
+    } else if (h->info.n_voices > 0) {
         if (voice.empty()) voice = mtmd_gen_audio_voice_name(h->mctx, 0);
         speaker.reset(mtmd_gen_audio_get_voice(h->mctx, voice.c_str()));
         if (!speaker) {
