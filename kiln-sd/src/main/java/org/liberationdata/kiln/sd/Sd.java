@@ -29,6 +29,8 @@ public final class Sd {
     static final MethodHandle opt_set_int = fn("sd_opt_set_int", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_LONG));
     static final MethodHandle opt_set_float = fn("sd_opt_set_float", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_DOUBLE));
     static final MethodHandle opt_set_string = fn("sd_opt_set_string", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+    static final MethodHandle opt_set_tensor = fn("sd_opt_set_tensor", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+    static final MethodHandle opt_set_audios = fn("sd_opt_set_audios", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG));
     static final MethodHandle opt_set_tensors = fn("sd_opt_set_tensors", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG));
     // context + generation
     static final MethodHandle ctx_create = fn("sd_ctx_create", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
@@ -52,6 +54,9 @@ public final class Sd {
     // callbacks
     static final MethodHandle set_log_callback = fn("sd_set_log_callback", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS));
     static final MethodHandle set_progress_callback = fn("sd_set_progress_callback", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS));
+
+    /** sd_audio_t: { uint32_t sample_rate; const sd_tensor_t* data; } */
+    static final StructLayout AUDIO = MemoryLayout.structLayout(JAVA_INT.withName("sample_rate"), MemoryLayout.paddingLayout(4), ADDRESS.withName("data"));
 
     public static final int SD_TENSOR_U8 = 1;
     public static final int SD_TENSOR_F32 = 4;
