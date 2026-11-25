@@ -238,6 +238,17 @@ const theme = 'vitesse-dark';
             .card p { margin: 0; font-size: 17px; line-height: 1.6; color: var(--muted); }
 
             .dark { background: var(--abyss); color: #f2e4d8; padding: 96px 32px; }
+            /* Faint fire behind the dark sections: the hero's photo under a deep wash, a touch stronger at the bottom like
+               embers, held still while the page scrolls (a gentle parallax). Static on phones and for reduced motion. */
+            .dark { position: relative; isolation: isolate; }
+            .dark::before {
+                content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+                background: linear-gradient(var(--abyss) 0%, rgba(23, 13, 8, 0.93) 40%, rgba(23, 13, 8, 0.8) 100%), var(--photo) center 60% / cover;
+                background-attachment: scroll, fixed;
+            }
+            @media (max-width: 800px), (prefers-reduced-motion: reduce) {
+                .dark::before { background-attachment: scroll; background-image: linear-gradient(var(--abyss) 0%, rgba(23, 13, 8, 0.93) 40%, rgba(23, 13, 8, 0.8) 100%), var(--photo-small); }
+            }
             .dark .eyebrow { color: var(--accent); }
             .dark h2 { color: #fff; }
             .dark a { color: var(--glow); }
