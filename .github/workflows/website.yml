@@ -8,6 +8,10 @@ on:
         paths: ['website/**', '.github/workflows/website.yml']
     pull_request:
         paths: ['website/**', '.github/workflows/website.yml']
+    # Daily, so a new Kiln Studio release shows on the site without a push here (src/lib/github.ts reads it at build
+    # time). GitHub runs a schedule only from the default branch's copy of this file.
+    schedule:
+        - cron: '23 3 * * *'
     workflow_dispatch:
 
 permissions:
@@ -32,6 +36,9 @@ jobs:
               working-directory: website
             - run: npm run build
               working-directory: website
+              env:
+                  # For Kiln Studio's latest release, without the anonymous API's rate limit.
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             - if: github.event_name != 'pull_request'
               uses: actions/upload-pages-artifact@v5
               with:

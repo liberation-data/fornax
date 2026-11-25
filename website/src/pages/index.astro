@@ -1,7 +1,8 @@
 ---
 /**
- * The landing page: the splash, then what Kiln is, the code, the engines, what it measured, the all-in-one demo and how
- * to build it. Every number here comes from the repository's README or from out/bench/results.md.
+ * The landing page: the splash, then what Kiln is, the code, the engines, what it measured, the all-in-one demo, Kiln
+ * Studio and its downloads, and how to build it. Every number here comes from the repository's README, from
+ * out/bench/results.md, or (the Studio's) from its screenshot.
  */
 import '@fontsource/ubuntu/latin-400.css';
 import '@fontsource/ubuntu/latin-500.css';
@@ -15,9 +16,15 @@ import splash from '../assets/splash.jpg';
 import lines from '../assets/lines-light.png';
 import logo from '../assets/logo.png';
 import cover from '../assets/cover.png';
+import studioChat from '../assets/studio-chat.png';
+import { STUDIO, studioRelease, studioRepoPublic, studioUrl } from '../lib/github';
 import lyricsText from '../lyrics.txt?raw';
 
 const REPO = 'https://github.com/liberation-data/kiln';
+
+// Kiln Studio's latest release and the installers it attached, for the download buttons in the Studio section. None
+// (the repository still private, no release yet, or GitHub out of reach): the section says they are on their way.
+const [studio, studioPublic] = await Promise.all([studioRelease(), studioRepoPublic()]);
 const DESCRIPTION = 'Call open-weight models (text, images, songs) as plain Java methods, running on your GPU, inside your JVM.';
 
 // The link preview: the splash as a 1200-wide JPEG, at an absolute URL on the site's domain.
@@ -268,6 +275,36 @@ const theme = 'vitesse-dark';
             .feature p { margin: 0; font-size: 16px; line-height: 1.6; color: var(--muted); }
             .how .row { gap: 40px 48px; }
 
+            .studio { padding: 96px 32px; }
+            .studio .wrap { display: flex; flex-direction: column; gap: 36px; }
+            .studio header { max-width: 820px; display: flex; flex-direction: column; gap: 16px; }
+            .studio header p:not(.eyebrow) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
+            .studio figure { margin: 0; display: flex; flex-direction: column; gap: 12px; }
+            .studio img { width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 18px 40px rgba(42, 20, 8, 0.14); }
+            .studio figcaption { font-size: 15px; line-height: 1.5; color: var(--muted); }
+            .studio .note { margin: 0; font-size: 16px; line-height: 1.6; color: var(--muted); }
+            .get-studio { display: flex; flex-direction: column; gap: 22px; }
+            .get-studio-head { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+            .get-studio-head strong { font-size: 20px; color: var(--ink); }
+            .get-studio-sub { font-size: 15px; line-height: 1.55; color: var(--muted); }
+            .downloads { display: flex; flex-wrap: wrap; gap: 28px 56px; }
+            .platform { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+            .platform h3 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ember); }
+            .platform .arch { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); }
+            .dl-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+            .dl-button {
+                display: inline-flex; align-items: baseline; gap: 8px; padding: 11px 18px; border-radius: 10px;
+                border: 1.5px solid var(--line); background: #fff; color: var(--ink);
+                font-weight: 700; font-size: 16px; text-decoration: none; white-space: nowrap;
+            }
+            .dl-button:hover { border-color: var(--ember); color: var(--ink); }
+            .dl-button.primary { background: var(--accent); border-color: var(--accent); color: var(--abyss); }
+            .dl-button.primary:hover { border-color: var(--accent); color: var(--abyss); filter: brightness(1.07); }
+            .dl-meta { font-weight: 500; font-size: 13px; color: var(--muted); }
+            .dl-button.primary .dl-meta { color: #5a2a0e; }
+            .install-hint { margin: 0; max-width: 560px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+            .install-hint code { overflow-wrap: anywhere; }
+
             .start-section { padding: 96px 32px; background: #fff; border-top: 1px solid var(--line); }
             .start-section header { max-width: 820px; display: flex; flex-direction: column; gap: 16px; margin-bottom: 40px; }
             .start-section header p:not(.eyebrow) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
@@ -308,9 +345,9 @@ const theme = 'vitesse-dark';
             footer a:hover { color: #fff; text-decoration: underline; }
 
             @media (max-width: 600px) {
-                .intro, .why, .dark, .engines, .results, .how, .start-section, .roadmap, footer { padding-left: 16px; padding-right: 16px; }
+                .intro, .why, .dark, .engines, .results, .studio, .how, .start-section, .roadmap, footer { padding-left: 16px; padding-right: 16px; }
                 .intro { padding-top: 64px; }
-                .dark, .engines, .results, .how, .start-section { padding-top: 64px; padding-bottom: 64px; }
+                .dark, .engines, .results, .studio, .how, .start-section { padding-top: 64px; padding-bottom: 64px; }
                 .card { padding: 26px 22px; }
                 .panel, .table-card, .bars { flex-basis: 100%; }
                 .split { gap: 36px; }
@@ -332,6 +369,7 @@ const theme = 'vitesse-dark';
                     <a href="#engines">Models</a>
                     <a href="#results">Results</a>
                     <a href="#single" class="wide">Demo</a>
+                    <a href="#studio">Studio</a>
                     <a href="#start">Get started</a>
                     <a href={REPO}>GitHub</a>
                 </div>
@@ -567,6 +605,69 @@ const theme = 'vitesse-dark';
                             <figcaption>The cover, as FLUX.2 [klein] painted it at 768×768 in 12 steps. Unretouched, misspelled lettering and all.</figcaption>
                         </figure>
                     </div>
+                </div>
+            </section>
+
+            <section class="studio" id="studio">
+                <div class="wrap">
+                    <header>
+                        <p class="eyebrow">{STUDIO.name}</p>
+                        <h2>Try the models without writing code.</h2>
+                        <p>
+                            Kiln Studio is a desktop app around Kiln: chat with a GGUF model and watch the tokens per second,
+                            watch it call tools, make an image or a song, and see what is loaded and how much memory it holds.
+                            It runs Kiln in a JVM of its own, with its own Java, and finds the models in your Hugging Face cache.
+                        </p>
+                    </header>
+                    <figure>
+                        <Image src={studioChat} widths={[800, 1600]} sizes="(max-width: 1264px) 100vw, 1200px" loading="lazy" alt="Kiln Studio's Chat window: Qwen3 0.6B answering a prompt about a kiln, with the reply's speed, 186 tokens a second, its time to the first token and its token counts above the conversation" />
+                        <figcaption>The Chat window: Qwen3 0.6B, at 186 tokens a second.</figcaption>
+                    </figure>
+                    {studio ? (
+                        <div class="get-studio" id="get-studio">
+                            <p class="get-studio-head">
+                                <strong>Download Kiln Studio.</strong>
+                                <span class="get-studio-sub">Alpha {studio.version}. Models are not included: fetch them with the Hugging Face CLI, as in Getting started.{(studio.mac.appleSilicon || studio.mac.intel) && ' The macOS builds are signed and notarized, so they open without a Gatekeeper prompt.'}</span>
+                            </p>
+                            <div class="downloads">
+                                {(studio.mac.appleSilicon || studio.mac.intel) && (
+                                    <div class="platform">
+                                        <h3>macOS <span class="arch">(Metal)</span></h3>
+                                        <div class="dl-buttons">
+                                            {studio.mac.appleSilicon && (
+                                                <a class="dl-button primary" href={studio.mac.appleSilicon.url}>
+                                                    Apple&nbsp;Silicon <span class="dl-meta">.dmg · {studio.mac.appleSilicon.size}</span>
+                                                </a>
+                                            )}
+                                            {studio.mac.intel && (
+                                                <a class="dl-button" href={studio.mac.intel.url}>
+                                                    Intel <span class="dl-meta">.dmg · {studio.mac.intel.size}</span>
+                                                </a>
+                                            )}
+                                        </div>
+                                        <p class="install-hint">Open the <code>.dmg</code> and drag Kiln Studio to Applications.</p>
+                                    </div>
+                                )}
+                                {studio.linux.length > 0 && (
+                                    <div class="platform">
+                                        <h3>Linux <span class="arch">(x64, Vulkan)</span></h3>
+                                        <div class="dl-buttons">
+                                            {studio.linux.map((d) => (
+                                                <a class="dl-button" href={d.url}>{d.label} <span class="dl-meta">{d.size}</span></a>
+                                            ))}
+                                        </div>
+                                        <p class="install-hint">Needs your GPU's Vulkan driver. A software-centre double-click can't open a local package, so install from a terminal where you downloaded it: <code>sudo dnf&nbsp;install&nbsp;./kiln-studio-linux-x86_64.rpm</code> (Fedora/RHEL) or <code>sudo apt&nbsp;install&nbsp;./kiln-studio-linux-amd64.deb</code> (Debian/Ubuntu).</p>
+                                    </div>
+                                )}
+                            </div>
+                            <p class="note">Every release, and its notes, are on <a href={studio.url}>GitHub</a>.</p>
+                        </div>
+                    ) : (
+                        <p class="note">
+                            Builds for macOS (Apple silicon and Intel, signed and notarized) and Linux are on their way with the first release.
+                            {studioPublic && <Fragment> Until then, <a href={`${studioUrl}#running-it`}>build it from source</a>.</Fragment>}
+                        </p>
+                    )}
                 </div>
             </section>
 
