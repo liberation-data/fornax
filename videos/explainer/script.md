@@ -59,7 +59,7 @@ Cards: endless-country 4s
 > Here's what these open models can make. This is Endless Country, episode two, made with ComfyUI. Every local step in
 > it can now run in Kiln, and episode three will.
 
-Clip: endless-country-ep2 (about 15 s including clip 13, the farm gate; with its own sound; the violin bed ducks under it)
+Clip: endless-country-ep2 (8 s from 2:15: "…what will the dog think?", the tear, the dog's stare; with its own sound; the violin bed ducks under it)
 
 ## 7. Close
 
