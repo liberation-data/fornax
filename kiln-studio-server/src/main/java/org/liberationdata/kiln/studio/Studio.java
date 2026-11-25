@@ -91,6 +91,8 @@ final class Studio implements AutoCloseable {
                 case song -> stubbed(m.kind()) ? Engines.stubSinger()
                         : m.engine().equals("yue2.cpp") ? Engines.yue2(m) : Engines.aceStep(m);
                 case video -> stubbed(m.kind()) ? Engines.stubFilmmaker(m.path("audio_vae") != null) : Engines.ltx(m);
+                case vision -> stubbed(m.kind()) ? Engines.stubSeer()
+                        : Engines.vision(m, (int) Json.num(m.defaults(), "contextSize", 8192));
             };
             loadSeconds.put(m.id(), (System.nanoTime() - t0) / 1e9);
             return model;

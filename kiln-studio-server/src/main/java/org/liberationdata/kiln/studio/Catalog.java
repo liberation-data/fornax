@@ -1,6 +1,7 @@
 package org.liberationdata.kiln.studio;
 
 import org.liberationdata.kiln.HfCache;
+import org.liberationdata.kiln.llama.LlamaModel;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -21,13 +22,15 @@ import java.util.stream.Stream;
  * <ul>
  *   <li><b>chat</b>: every GGUF language model in the cache (llama.cpp), found by scanning it;</li>
  *   <li><b>image</b>, <b>song</b> and <b>video</b>: the presets the Kiln examples use (stable-diffusion.cpp, ACE-Step,
- *       YuE2, LTX-2.5), each a set of files, available when all of them are downloaded.</li>
+ *       YuE2, LTX-2.5), each a set of files, available when all of them are downloaded;</li>
+ *   <li><b>vision</b>: the vision language models Kiln knows by name ({@link LlamaModel.Weights}), each a GGUF and its
+ *       mmproj (llama.cpp's mtmd), for the Inspect window.</li>
  * </ul>
  * Read afresh on each call, so a model downloaded while the studio runs shows up on the next refresh.
  */
 final class Catalog {
 
-    enum Kind { chat, image, song, video }
+    enum Kind { chat, image, song, video, vision }
 
     /** One file a model needs: which part it is, where on the Hub it comes from, and where it is now (or null). */
     record Part(String role, String repo, String file, Path path) {
@@ -68,8 +71,17 @@ final class Catalog {
     /** YuE2's weights' license, as Kiln's README and website say it. */
     static final String YUE2_LICENSE = "CC BY-NC 4.0: no commercial use of the weights or of what they make";
 
-    // GGUFs in the cache that aren't chat models: the song engines' own weights, embedders, VAEs and vision projectors.
-    private static final Set<String> NOT_CHAT_REPOS = Set.of("Serveurperso/ACE-Step-1.5-GGUF", YUE2);
+    /** MedGemma's weights' terms, as Kiln's README says them. */
+    static final String MEDGEMMA_LICENSE = "Health AI Developer Foundations terms: for research and development, not for clinical use";
+
+    /** The vision language models the Inspect window offers, as Kiln names them; the first is its default. */
+    static final List<LlamaModel.Weights> VISION = List.of(
+            LlamaModel.Weights.QWEN3_VL_4B, LlamaModel.Weights.PADDLEOCR_VL, LlamaModel.Weights.MEDGEMMA_4B);
+
+    // GGUFs in the cache that aren't chat models: the song engines' own weights, embedders, VAEs and vision projectors,
+    // and the vision models, which the Inspect window loads with their projectors.
+    private static final Set<String> NOT_CHAT_REPOS = Set.of("Serveurperso/ACE-Step-1.5-GGUF", YUE2,
+            LlamaModel.Weights.QWEN3_VL_4B.repo, LlamaModel.Weights.PADDLEOCR_VL.repo, LlamaModel.Weights.MEDGEMMA_4B.repo);
     private static final Pattern NOT_CHAT_FILE = Pattern.compile("(?i).*(embed|vae|mmproj|reranker).*");
     // Of a split GGUF, the first shard names the model (llama.cpp loads the rest beside it).
     private static final Pattern SHARD = Pattern.compile("(?i)(.*)-(\\d{5})-of-(\\d{5})\\.gguf");
@@ -101,6 +113,7 @@ final class Catalog {
         all.addAll(imagePresets());
         all.addAll(songPresets());
         all.addAll(videoPresets());
+        all.addAll(visionPresets());
         return all;
     }
 
@@ -215,6 +228,31 @@ final class Catalog {
         }
         return out;
     }
+
+    /**
+     * The vision models, each a GGUF and its mmproj. Greedy by default, as reading a document wants. PaddleOCR-VL takes
+     * a task prompt ("OCR:"), not a question, and doesn't fill a JSON schema well: its {@code ocr} default says so, and
+     * the backend then has another vision model fill the schema from the text it reads.
+     */
+    List<Model> visionPresets() {
+        List<Model> out = new ArrayList<>();
+        for (var w : VISION) {
+            boolean ocr = w == LlamaModel.Weights.PADDLEOCR_VL;
+            var defaults = Json.obj("maxTokens", 1024L, "temperature", 0.0, "contextSize", 8192L);
+            if (ocr) defaults.put("ocr", true);
+            var m = preset(visionId(w), Kind.vision, switch (w) {
+                        case QWEN3_VL_4B -> "Qwen3-VL 4B";
+                        case PADDLEOCR_VL -> "PaddleOCR-VL 1.6";
+                        case MEDGEMMA_4B -> "MedGemma 1.5 4B";
+                        default -> w.name();
+                    }, "llama.cpp", defaults, part("gguf", w.repo, w.modelFile), part("mmproj", w.repo, w.mmprojFile));
+            out.add(w == LlamaModel.Weights.MEDGEMMA_4B ? m.licensed(MEDGEMMA_LICENSE) : m);
+        }
+        return out;
+    }
+
+    /** "vision:qwen3-vl-4b", from QWEN3_VL_4B. */
+    static String visionId(LlamaModel.Weights w) { return "vision:" + w.name().toLowerCase().replace('_', '-'); }
 
     private static Model preset(String id, Kind kind, String name, String engine, Map<String, Object> defaults, Part... parts) {
         return new Model(id, kind, name, engine, List.of(parts), defaults, null);

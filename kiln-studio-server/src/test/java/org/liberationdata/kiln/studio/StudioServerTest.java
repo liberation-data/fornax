@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.liberationdata.kiln.llama.LlamaModel;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -41,6 +42,10 @@ class StudioServerTest {
                 "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors", "vae/ltx-2.5-video-vae-conv-bf16.safetensors",
                 "vae/ltx-2.5-audio-vae-bf16.safetensors", "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors")) {
             put(cache, "Lightricks/LTX-2.5", f);
+        }
+        for (var w : List.of(LlamaModel.Weights.QWEN3_VL_4B, LlamaModel.Weights.PADDLEOCR_VL)) {
+            put(cache, w.repo, w.modelFile);
+            put(cache, w.repo, w.mmprojFile);
         }
         studio = new Studio(new Catalog(cache), 1L << 30, null, EnumSet.allOf(Catalog.Kind.class), dir.resolve("outputs"));
         server = new StudioServer(studio, 0);
@@ -226,6 +231,55 @@ class StudioServerTest {
         return p;
     }
 
+    private static String pngDataUrl(int w, int h) throws Exception {
+        var img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var out = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", out);
+        return "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(out.toByteArray());
+    }
+
+    @Test void inspectStreamsAReplyAboutTheImage() throws Exception {
+        assertEquals(true, model("vision:qwen3-vl-4b").get("available"));
+        assertEquals(false, model("vision:medgemma-4b").get("available"));
+        assertTrue(model("vision:medgemma-4b").get("license").toString().contains("not for clinical use"));
+        // The vision models are the Inspect window's, not chat models.
+        var status = Json.object(call("GET", "/api/models", null).body());
+        assertFalse(Json.list(status, "models").stream().map(m -> ((Map<?, ?>) m).get("id").toString())
+                .anyMatch(id -> id.startsWith("chat:") && id.contains("VL")));
+        String s = call("POST", "/api/inspect", "{\"model\": \"vision:qwen3-vl-4b\", \"prompt\": \"What is this?\","
+                + "\"image\": \"" + pngDataUrl(2000, 1000) + "\"}").body();
+        assertTrue(s.contains("event: token"));
+        var done = event(s, "done");
+        // Scaled down to 1280 on its longest side before the model sees it.
+        assertEquals(1280L, done.get("width"));
+        assertEquals(640L, done.get("height"));
+        assertTrue(done.get("text").toString().contains("1280×640"), done.get("text").toString());
+        assertNull(done.get("json"));
+        assertTrue(((Number) done.get("generatedTokens")).intValue() > 0);
+    }
+
+    @Test void inspectWithASchemaGivesItsJson() throws Exception {
+        String schema = "{\"type\": \"object\", \"properties\": {\"vendor\": {\"type\": \"string\"}, \"total\": {\"type\": \"number\"},"
+                + "\"box\": {\"type\": \"array\", \"items\": {\"type\": \"integer\"}, \"minItems\": 4, \"maxItems\": 4}}}";
+        String s = call("POST", "/api/inspect", "{\"model\": \"vision:qwen3-vl-4b\", \"prompt\": \"Read it.\", \"schema\": " + schema
+                + ", \"image\": \"" + pngDataUrl(64, 48) + "\"}").body();
+        var json = (Map<?, ?>) event(s, "done").get("json");
+        assertEquals("(stub)", json.get("vendor"));
+        assertEquals(1L, json.get("total"));
+        assertEquals(List.of(250L, 250L, 500L, 500L), json.get("box"));
+    }
+
+    @Test void anOcrModelReadsThenAnotherFillsTheSchema() throws Exception {
+        String s = call("POST", "/api/inspect", "{\"model\": \"vision:paddleocr-vl\", \"prompt\": \"Read the invoice.\","
+                + "\"schema\": {\"type\": \"object\", \"properties\": {\"total\": {\"type\": \"number\"}}},"
+                + "\"image\": \"" + pngDataUrl(64, 48) + "\"}").body();
+        assertTrue(s.contains("\"state\":\"structuring\""), s);
+        var done = event(s, "done");
+        assertEquals("vision:qwen3-vl-4b", done.get("filledBy"));
+        assertTrue(done.get("read").toString().startsWith("(stub)"));
+        assertEquals(1L, ((Map<?, ?>) done.get("json")).get("total"));
+    }
+
     @Test void aSilentStreamIsKeptAlive() throws Exception {
         long was = Sse.keepAliveMillis;
         Sse.keepAliveMillis = 100;
@@ -249,6 +303,9 @@ class StudioServerTest {
         assertEquals(400, call("POST", "/api/video", "{\"model\": \"video:ltx-2.5-distilled\", \"prompt\": \"x\", \"width\": 100}").statusCode());
         assertEquals(400, call("POST", "/api/video", "{\"model\": \"video:ltx-2.5-distilled\", \"prompt\": \"x\", \"image\": \"bm90IGFuIGltYWdl\"}").statusCode());
         assertEquals(400, call("POST", "/api/video", "{\"model\": \"video:ltx-2.5-dev\", \"prompt\": \"x\"}").statusCode());
+        assertEquals(400, call("POST", "/api/inspect", "{\"model\": \"vision:qwen3-vl-4b\", \"prompt\": \"x\"}").statusCode());
+        assertEquals(400, call("POST", "/api/inspect", "{\"model\": \"vision:qwen3-vl-4b\", \"image\": \"" + pngDataUrl(8, 8) + "\"}").statusCode());
+        assertEquals(400, call("POST", "/api/inspect", "{\"model\": \"vision:medgemma-4b\", \"prompt\": \"x\"}").statusCode());
         assertEquals(405, call("GET", "/api/chat", null).statusCode());
         assertEquals(404, call("GET", "/api/outputs/..%2Fsecret.png", null).statusCode());
         assertEquals(404, call("GET", "/api/models/extra", null).statusCode());

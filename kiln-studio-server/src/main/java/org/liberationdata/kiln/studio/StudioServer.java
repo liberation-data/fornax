@@ -40,6 +40,7 @@ import java.util.regex.Pattern;
  * POST /api/image                  generates an image (status, progress, done | error)
  * POST /api/song                   generates a song, with ACE-Step or YuE2 (status, done | error)
  * POST /api/video                  generates a video clip with sound, with LTX-2.5 (status, progress, done | error)
+ * POST /api/inspect                asks a vision model about an image, free text or to a JSON schema (status, token, done | error)
  * GET  /api/outputs/{file}         an image, song or video made, from the studio's home
  * </pre>
  *
@@ -82,6 +83,7 @@ public final class StudioServer {
         route("/api/image", "POST", this::image);
         route("/api/song", "POST", this::song);
         route("/api/video", "POST", this::video);
+        route("/api/inspect", "POST", this::inspect);
         http.createContext("/api/outputs/", ex -> handle(ex, "GET", this::output));
     }
 
@@ -429,6 +431,119 @@ public final class StudioServer {
                 sse.send("error", Json.obj("message", message(e)));
             }
         }
+    }
+
+    /** An image's longest side, past which it is scaled down before a vision model sees it (its tokens grow with its area). */
+    static final int INSPECT_MAX_SIDE = 1280;
+    // A PaddleOCR-VL task prompt, as its model card lists them: "OCR:", "Table Recognition:", ...
+    private static final Pattern OCR_TASK = Pattern.compile("[A-Za-z ]{2,32}:");
+
+    /**
+     * {"model", "image" (a data: URL or base64 of a PNG or JPEG), "prompt", "schema" (a JSON Schema, optional),
+     * "maxTokens", "temperature"}: the preset's defaults for those left out. The reply streams as tokens; with a schema it
+     * is constrained to it, and done carries it parsed as "json". An OCR model (PaddleOCR-VL) reads the image with its task
+     * prompt ("OCR:" unless the prompt is one); with a schema, another vision model then fills it from the text read, as
+     * Kiln's Invoice example does, and the stream says so with a "structuring" status between the two.
+     */
+    @SuppressWarnings("unchecked")
+    private void inspect(HttpExchange ex) throws IOException {
+        Map<String, Object> req = body(ex);
+        var m = studio.model(Json.str(req, "model", ""), Catalog.Kind.vision);
+        var d = m.defaults();
+        BufferedImage picture = image(Json.str(req, "image", ""));
+        if (picture == null) throw new IllegalArgumentException("no image");
+        picture = fit(picture, INSPECT_MAX_SIDE);
+        String prompt = Json.str(req, "prompt", "").trim();
+        boolean ocr = Json.bool(d, "ocr", false);
+        Object rawSchema = req.get("schema");
+        Map<String, Object> schema = rawSchema instanceof Map<?, ?> given ? (Map<String, Object>) given
+                : rawSchema instanceof String text && !text.isBlank() ? Json.object(text) : null;
+        if (prompt.isEmpty() && !ocr) throw new IllegalArgumentException("no prompt: say what to look for");
+        long maxTokens = Json.num(req, "maxTokens", Json.num(d, "maxTokens", 1024));
+        double temperature = Json.dbl(req, "temperature", Json.dbl(d, "temperature", 0));
+        Catalog.Model filler = null;
+        if (ocr && schema != null) {
+            filler = studio.catalog().models().stream()
+                    .filter(v -> v.kind() == Catalog.Kind.vision && v.available() && !Json.bool(v.defaults(), "ocr", false))
+                    .findFirst().orElseThrow(() -> new IllegalArgumentException(m.name()
+                            + " reads text but doesn't fill a JSON schema well; download Qwen3-VL 4B to fill it from what it reads"));
+        }
+        // What the model is asked: an OCR model its task, and the text it reads then goes to the filler with the prompt.
+        String look = !ocr ? prompt : OCR_TASK.matcher(prompt).matches() ? prompt : "OCR:";
+        var images = List.of(LlamaModel.Image.of(picture));
+        var ask = Json.obj("messages", List.of(Json.obj("role", "user", "content", List.of(
+                        Json.obj("type", "image", "index", 0L), Json.obj("type", "text", "text", look)))),
+                "max_tokens", maxTokens, "temperature", temperature);
+        if (schema != null && filler == null) ask.put("json_schema", schema);
+        int width = picture.getWidth(), height = picture.getHeight();
+
+        try (var sse = new Sse(ex)) {
+            try {
+                String read = null;
+                double readSeconds = 0;
+                long t0 = System.nanoTime();
+                var first = new AtomicLong();
+                Map<String, Object> reply;
+                try (var lease = leaseSaying(sse, m, Engines.Seer.class)) {
+                    sse.send("status", Json.obj("state", "generating"));
+                    t0 = System.nanoTime();
+                    reply = Json.object(lease.model().look(Json.write(ask), images, piece -> {
+                        if (first.get() == 0) first.set(System.nanoTime());
+                        sse.send("token", Json.obj("text", piece));
+                    }));
+                }
+                if (filler != null) {
+                    read = content(reply);
+                    readSeconds = (System.nanoTime() - t0) / 1e9;
+                    String fill = prompt.isEmpty() || OCR_TASK.matcher(prompt).matches() ? "Fill in the fields from this text." : prompt;
+                    var structure = Json.obj("messages", List.of(Json.obj("role", "user", "content",
+                                    fill + "\n\nThe text, as read from the image:\n\n" + read)),
+                            "json_schema", schema, "max_tokens", maxTokens, "temperature", temperature);
+                    sse.send("status", Json.obj("state", "structuring", "model", filler.id(), "read", read, "readSeconds", readSeconds));
+                    try (var lease = leaseSaying(sse, filler, Engines.Seer.class)) {
+                        first.set(0);
+                        t0 = System.nanoTime();
+                        reply = Json.object(lease.model().look(Json.write(structure), List.of(), piece -> {
+                            if (first.get() == 0) first.set(System.nanoTime());
+                            sse.send("token", Json.obj("text", piece));
+                        }));
+                    }
+                }
+                var usage = reply.get("usage") instanceof Map<?, ?> u ? (Map<String, Object>) u : Map.<String, Object>of();
+                String text = content(reply);
+                Object parsed = null;
+                if (schema != null) {
+                    try { parsed = Json.parse(text); } catch (IllegalArgumentException cutOff) { parsed = null; }
+                }
+                sse.send("done", timing(t0, first.get(), Json.num(usage, "prompt_tokens", 0), Json.num(usage, "completion_tokens", 0),
+                        Json.obj("text", text, "json", parsed, "finishReason", reply.get("finish_reason"),
+                                "width", width, "height", height, "read", read, "readSeconds", read == null ? null : readSeconds,
+                                "filledBy", filler == null ? null : filler.id(), "stub", studio.stubbed(Catalog.Kind.vision))));
+            } catch (RuntimeException e) {
+                sse.send("error", Json.obj("message", message(e)));
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String content(Map<String, Object> reply) {
+        var message = reply.get("message") instanceof Map<?, ?> msg ? (Map<String, Object>) msg : Map.<String, Object>of();
+        return Json.str(message, "content", "");
+    }
+
+    /** The image, scaled down (keeping its shape) so its longest side is at most max; as it is when it fits. */
+    static BufferedImage fit(BufferedImage img, int max) {
+        int w = img.getWidth(), h = img.getHeight();
+        if (Math.max(w, h) <= max) return img;
+        double k = (double) max / Math.max(w, h);
+        int nw = Math.max(1, (int) Math.round(w * k)), nh = Math.max(1, (int) Math.round(h * k));
+        var out = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_RGB);
+        var g = out.createGraphics();
+        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+        g.drawImage(img, 0, 0, nw, nh, null);
+        g.dispose();
+        return out;
     }
 
     /** An image sent in a request, as a data: URL or bare base64 (null for none). */

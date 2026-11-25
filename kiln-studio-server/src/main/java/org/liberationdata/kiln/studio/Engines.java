@@ -59,6 +59,16 @@ final class Engines {
         @Override void close();
     }
 
+    /**
+     * A loaded vision language model: an OpenAI-style request through {@link LlamaModel#chatJson(String, List, Consumer)},
+     * in which {"type": "image", "index": i} parts stand for the images; "json_schema" constrains the reply.
+     */
+    interface Seer extends AutoCloseable {
+        String look(String requestJson, List<LlamaModel.Image> images, Consumer<String> onContent);
+
+        @Override void close();
+    }
+
     // ---- the real engines ----
 
     static Chat llama(Catalog.Model m, int contextSize) {
@@ -69,6 +79,18 @@ final class Engines {
             }
 
             @Override public String chatJson(String requestJson, Consumer<String> onContent) { return llm.chatJson(requestJson, onContent); }
+
+            @Override public void close() { llm.close(); }
+        };
+    }
+
+    /** A vision model with its mmproj, as {@code new LlamaModel(gguf, mmproj)} loads it. */
+    static Seer vision(Catalog.Model m, int contextSize) {
+        var llm = new LlamaModel(m.path("gguf").toString(), m.path("mmproj").toString(), -1, contextSize);
+        return new Seer() {
+            @Override public String look(String requestJson, List<LlamaModel.Image> images, Consumer<String> onContent) {
+                return llm.chatJson(requestJson, images, onContent);
+            }
 
             @Override public void close() { llm.close(); }
         };
@@ -174,6 +196,56 @@ final class Engines {
 
             @Override public void close() {}
         };
+    }
+
+    /**
+     * Says what it was shown a word at a time; asked for a JSON schema, it answers with the schema's shape filled with
+     * placeholders (a box of four numbers where a schema asks for one).
+     */
+    static Seer stubSeer() {
+        return new Seer() {
+            @Override public String look(String requestJson, List<LlamaModel.Image> images, Consumer<String> onContent) {
+                Map<String, Object> req = Json.object(requestJson);
+                String text = req.get("json_schema") instanceof Map<?, ?> schema
+                        ? Json.write(placeholder(schema))
+                        : "(stub) An image of " + images.stream().map(i -> i.width() + "×" + i.height()).toList() + " was shown.";
+                int n = 0;
+                for (String w : text.split("(?<=[ ,])")) {
+                    pause(15);
+                    if (onContent != null) onContent.accept(w);
+                    n++;
+                }
+                return Json.write(Json.obj("message", Json.obj("role", "assistant", "content", text),
+                        "finish_reason", "stop", "usage", Json.obj("prompt_tokens", 100L, "completion_tokens", (long) n)));
+            }
+
+            @Override public void close() {}
+        };
+    }
+
+    /** A value of a JSON schema's shape: "(stub)", 1, true; arrays of one item; four numbers for a box. */
+    static Object placeholder(Map<?, ?> schema) {
+        Object type = schema.get("type");
+        if (schema.get("enum") instanceof List<?> options && !options.isEmpty()) return options.getFirst();
+        if ("object".equals(type) || schema.get("properties") instanceof Map<?, ?>) {
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            if (schema.get("properties") instanceof Map<?, ?> props) {
+                for (var e : props.entrySet()) {
+                    out.put(e.getKey().toString(), e.getValue() instanceof Map<?, ?> sub ? placeholder(sub) : null);
+                }
+            }
+            return out;
+        }
+        if ("array".equals(type)) {
+            var items = schema.get("items") instanceof Map<?, ?> i ? i : Map.of();
+            if (schema.get("minItems") instanceof Number min && min.intValue() == 4 && !"object".equals(items.get("type"))) {
+                return List.of(250L, 250L, 500L, 500L);
+            }
+            return List.of(placeholder(items));
+        }
+        if ("number".equals(type) || "integer".equals(type)) return 1L;
+        if ("boolean".equals(type)) return true;
+        return "(stub)";
     }
 
     /** Takes a moment per step, then paints a gradient with the prompt on it, marked as a stub. */
