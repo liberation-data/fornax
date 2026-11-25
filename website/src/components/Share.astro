@@ -4,19 +4,21 @@
  * Worlds landing page (and drivine.org), in Kiln's colours.
  *
  * `url` is what is shared, the page's own address if none is given; `text` goes with it where the service takes some
- * (the page's title if none). `tone` is `light` on the page's paper, `dark` over the video.
+ * (the page's title if none). `tone` is `light` on the page's paper, `dark` over the video, `docs` in the docs'
+ * own colours in either theme; `icons` drops the label, for beside a heading.
  */
 interface Props {
     url?: string;
     text?: string;
     label?: string;
-    tone?: 'light' | 'dark';
+    tone?: 'light' | 'dark' | 'docs';
+    icons?: boolean;
     class?: string;
 }
-const { url = '', text = '', label = 'Share', tone = 'light', class: className = '' } = Astro.props;
+const { url = '', text = '', label = 'Share', tone = 'light', icons = false, class: className = '' } = Astro.props;
 ---
-<div class:list={['share', `share-${tone}`, className]} data-share-url={url} data-share-text={text}>
-    <span class="share-label">{label}</span>
+<div class:list={['share', `share-${tone}`, { 'share-icons': icons }, className]} data-share-url={url} data-share-text={text}>
+    {!icons && <span class="share-label">{label}</span>}
     <a data-share-to="x" href="https://x.com/" target="_blank" rel="noopener noreferrer" title="Share on X" aria-label="Share on X">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>
     </a>
@@ -44,6 +46,11 @@ const { url = '', text = '', label = 'Share', tone = 'light', class: className =
     .share-dark .share-label, .share-dark .share-said { color: #e6d3c4; }
     .share-dark a, .share-dark button { color: #f2e4d8; border-color: rgba(255, 255, 255, 0.28); background: rgba(23, 13, 8, 0.6); }
     .share-dark a:hover, .share-dark button:hover, .share-dark a:focus-visible, .share-dark button:focus-visible { color: #fff; border-color: var(--accent); background: rgba(243, 154, 61, 0.3); }
+    .share-docs a, .share-docs button { color: var(--sl-color-gray-3); border-color: var(--sl-color-gray-5); }
+    .share-docs a:hover, .share-docs button:hover, .share-docs a:focus-visible, .share-docs button:focus-visible { color: var(--sl-color-text-accent); border-color: var(--sl-color-text-accent); }
+    .share-docs .share-said { color: var(--sl-color-gray-3); }
+    .share-icons a, .share-icons button { width: 30px; height: 30px; border-color: transparent; }
+    .share-icons svg { width: 14px; height: 14px; }
     /* Out of the row while empty, but never display: none, which takes a live region out of the accessibility tree, so
        a screen reader would not say "Link copied". */
     .share-said:empty { position: absolute; margin: 0; }

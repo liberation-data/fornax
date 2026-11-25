@@ -1,0 +1,17 @@
+---
+/**
+ * Starlight's head (astro.config.mjs overrides Head with this), plus the landing page's share card as og:image, so a
+ * shared docs page previews with the logo, kiln4j and the tagline, under its own title and description.
+ */
+import Default from '@astrojs/starlight/components/Head.astro';
+import { getImage } from 'astro:assets';
+import shareCard from '../../assets/share-card.jpg';
+
+// The same encoding the landing page asks for, so both share one file.
+const card = await getImage({ src: shareCard, format: 'jpeg', width: 1200, quality: 85 });
+const cardUrl = new URL(card.src, Astro.site).href;
+---
+<Default />
+<meta property="og:image" content={cardUrl} />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />

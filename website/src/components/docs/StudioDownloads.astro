@@ -1,0 +1,36 @@
+---
+/**
+ * Kiln Studio's installers, for the docs: the same latest release the landing page's Studio section offers
+ * (src/lib/github.ts, read at build time). Without one, it says they are on their way, and links to the source once
+ * the repository is public.
+ */
+import { studioRelease, studioRepoPublic, studioUrl } from '../../lib/github';
+
+const [studio, studioPublic] = await Promise.all([studioRelease(), studioRepoPublic()]);
+const downloads = studio
+    ? [
+          ...(studio.mac.appleSilicon ? [{ ...studio.mac.appleSilicon, label: `macOS, Apple silicon (.dmg)` }] : []),
+          ...(studio.mac.intel ? [{ ...studio.mac.intel, label: `macOS, Intel (.dmg)` }] : []),
+          ...studio.linux.map((d) => ({ ...d, label: `Linux x64, ${d.label} (${d.url.endsWith('.rpm') ? '.rpm' : '.deb'})` }))
+      ]
+    : [];
+---
+{studio ? (
+    <div class="studio-downloads">
+        <p>The latest release is <a href={studio.url}>alpha {studio.version}</a>:</p>
+        <ul>
+            {downloads.map((d) => (
+                <li><a href={d.url}>{d.label}</a> <span class="size">{d.size}</span></li>
+            ))}
+        </ul>
+    </div>
+) : (
+    <p>
+        Builds for macOS (Apple silicon and Intel) and Linux come with Kiln Studio's first release.
+        {studioPublic && <Fragment> Until then, you can <a href={`${studioUrl}#running-it`}>build it from source</a>.</Fragment>}
+    </p>
+)}
+
+<style>
+    .size { color: var(--sl-color-gray-3); font-size: var(--sl-text-sm); }
+</style>
