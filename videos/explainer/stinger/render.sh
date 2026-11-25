@@ -28,10 +28,10 @@ if [ "$W" = 672 ]; then
 fi
 
 # The overdub: the Muse Sounds cue (music/out/stinger-cue.wav, its E♭ hit on the logo at 3.0 s) over LTX's fire,
-# the fire 9 dB down so it sits under the music.
+# the fire and its rumble at full level, the violin 2 dB under it, limited.
 cue="$here/../music/out/stinger-cue.wav"
 if [ "$W" = 672 ] && [ -f "$cue" ]; then
     ffmpeg -v error -y -i "$here/out/stinger-1344x768-hold.mp4" -i "$cue" -filter_complex \
-        "[0:a]volume=-9dB[fire];[1:a]aresample=48000[cue];[fire][cue]amix=inputs=2:normalize=0:duration=first[a]" \
+        "[0:a]volume=0dB[fire];[1:a]aresample=48000,volume=-2dB[cue];[fire][cue]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.95[a]" \
         -map 0:v -map "[a]" -c:v copy -c:a aac -b:a 256k "$here/out/stinger-1344x768-dub.mp4"
 fi
