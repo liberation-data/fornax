@@ -1,4 +1,7 @@
 // Follows llama.cpp's tools/tts/tts.cpp (the reference loop) and the server's process_tts_slots() (streaming).
+#include <cctype>
+#include <fstream>
+#include <iterator>
 #include "kiln_tts.h"
 #include "chat.h"
 #include "common.h"
@@ -120,10 +123,17 @@ int kiln_tts_speak(kiln_tts * h, const char * text, const char * voice_c, const 
     if (!text || !*text) return fail("no text to speak", 1);
     std::string voice = voice_c ? voice_c : "", lang = lang_c ? lang_c : "";
 
-    // A voice of "@<file>" is a reference clip to speak like (wav or mp3; VoxCPM2 and Qwen3-TTS clone it). Otherwise a
-    // model with predefined voices speaks with one (the first by default); others name the voice in the prompt.
+    // A voice of "@<file>" is a reference clip to speak like (wav or mp3; VoxCPM2 and Qwen3-TTS clone it). A
+    // "<file>.txt" beside it, holding what the clip says, lets the model continue that speaker rather than only
+    // imitate the sound, which keeps an accent much steadier. Otherwise a model with predefined voices speaks with
+    // one (the first by default); others name the voice in the prompt.
     mtmd::bitmap_ptr speaker;
+    std::string speaker_text;
     if (!voice.empty() && voice[0] == '@') {
+        if (std::ifstream said(voice.substr(1) + ".txt"); said) {
+            speaker_text.assign(std::istreambuf_iterator<char>(said), {});
+            while (!speaker_text.empty() && std::isspace((unsigned char) speaker_text.back())) speaker_text.pop_back();
+        }
         auto wrapper = mtmd_helper_bitmap_init_from_file(h->mctx, voice.c_str() + 1, false, mtmd_helper_init_opt_default());
         if (!wrapper.bitmap) return fail("failed to load the reference clip " + voice.substr(1), 2);
         speaker.reset(wrapper.bitmap);
@@ -160,6 +170,7 @@ int kiln_tts_speak(kiln_tts * h, const char * text, const char * voice_c, const 
     inp.prompt      = prompt.c_str();
     inp.prompt_len  = prompt.size();
     inp.speaker_ref = speaker.get();
+    inp.speaker_ref_text = speaker_text.empty() ? nullptr : speaker_text.c_str();
     inp.lang        = lang.empty() ? nullptr : lang.c_str();
     inp.top_k       = h->params.sampling.top_k;
     inp.top_p       = h->params.sampling.top_p;

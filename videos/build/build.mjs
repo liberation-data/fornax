@@ -23,6 +23,7 @@
  * A script's header may set `voice:`, `pace:`, `tail:` (silence after each scene's last word, 0.7 s), `opening:`
  * (silence before the first word, 0.5 s), `duck: on` and `outro: a.mp4 | b.mp4` (the first that exists).
  */
+import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -120,7 +121,10 @@ async function voiceScenes({ voice, voicePrompt, voiceSeed, scenes }) {
     for (const scene of scenes) {
         const mp3 = join(VIDEO, 'narration', `${scene.n}.mp3`);
         const said = join(VIDEO, 'narration', `${scene.n}.txt`);
-        const want = `${kiln ? `${voice} seed ${voiceSeed} ${voicePrompt}`.trim() : voice}\n${spoken(scene.words)}`;
+        /* A reference clip (`@file`) and its transcript (`file.txt`) are keyed by content, so changing either re-voices. */
+        const ref = kiln && voice.match(/:@(.+)$/)?.[1];
+        const refHash = ref ? ` ref ${createHash('sha256').update(readFileSync(ref)).update(existsSync(`${ref}.txt`) ? readFileSync(`${ref}.txt`) : '').digest('hex').slice(0, 16)}` : '';
+        const want = `${kiln ? `${voice}${refHash} seed ${voiceSeed} ${voicePrompt}`.trim() : voice}\n${spoken(scene.words)}`;
         if (existsSync(mp3) && existsSync(said) && readFileSync(said, 'utf8') === want) continue;
         if (args.has('--no-voice')) throw new Error(`scene ${scene.n} changed and --no-voice was given`);
         const key = process.env.DEEPGRAM_API_KEY;

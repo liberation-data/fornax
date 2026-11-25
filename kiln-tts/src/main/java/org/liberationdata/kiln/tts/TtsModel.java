@@ -81,7 +81,12 @@ public final class TtsModel implements AutoCloseable {
          * OpenBMB VoxCPM2 (2B): no predefined voices; a description in parentheses at the start of the text designs
          * one, e.g. "(A calm male narrator)Hello". Apache-2.0.
          */
-        VOXCPM2("ggml-org/VoxCPM2-GGUF", "VoxCPM2-Q8_0.gguf", "mmproj-VoxCPM2-BF16.gguf");
+        VOXCPM2("ggml-org/VoxCPM2-GGUF", "VoxCPM2-Q8_0.gguf", "mmproj-VoxCPM2-BF16.gguf"),
+        /**
+         * Qwen3-TTS-12Hz-1.7B-Base: clones a reference clip ("@clip.wav"), and with its transcript beside it
+         * ("clip.wav.txt") continues that speaker, which holds an accent far better than the sound alone. Apache-2.0.
+         */
+        QWEN3_TTS("ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF", "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf", "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf");
 
         public final String repo, modelFile, mmprojFile;
 
