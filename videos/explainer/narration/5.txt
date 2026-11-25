@@ -1,2 +1,2 @@
-aura-2-hyperion-en
+kiln:zonos3:Imogen_en-British_F_1 seed 1
 Pull a model from Hugging Face with one command, and try it in Kiln Studio. Kiln is plain Java with no dependencies, so it works in any app, and it's a great companion for Embaybel Agent: local models, in process.

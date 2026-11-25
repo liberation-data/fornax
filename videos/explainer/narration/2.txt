@@ -1,2 +1,2 @@
-aura-2-hyperion-en
+kiln:zonos3:Imogen_en-British_F_1 seed 1
 If you want a local language model or embeddings in Java, there are options. They work, though they're often slower than they should be. [pause] But what if you want to isolate the vocals from a track? Read a stack of invoices? Turn a storyboard into footage? Or any of a plethora of other capabilities? [pause] Until now, from the JVM, you were stuck. It meant a Python stack, or a tool like Comfy U.I. behind HTTP: another runtime, another process, and a network hop on every call. Kiln calls the native engines directly. No Python, no server, nothing in between.
