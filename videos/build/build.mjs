@@ -89,10 +89,12 @@ function readScript() {
             const cue = /@"([^"]+)"/.exec(c)?.[1] ?? null;
             const [card, secs, ...extra] = c.replace(/@"[^"]*"/, '').trim().split(/\s+/);
             if (extra.length) throw new Error(`script.md: scene ${n}: "${c}" is a card, its seconds and a cue; move notes to a line of their own`);
-            if (!existsSync(join(VIDEO, 'cards', `${card}.html`))) throw new Error(`script.md: scene ${n}: no card cards/${card}.html`);
+            /* A card is an HTML page in cards/, or silent footage in footage/<name>.mp4 (a screen recording, say). */
+            const footage = join(VIDEO, 'footage', `${card}.mp4`);
+            if (!existsSync(join(VIDEO, 'cards', `${card}.html`)) && !existsSync(footage)) throw new Error(`script.md: scene ${n}: no card cards/${card}.html or footage/${card}.mp4`);
             const seconds = secs ? Number(secs.replace(/s$/, '')) : null;
             if (seconds !== null && !(seconds > 0)) throw new Error(`script.md: scene ${n}: "${c}" needs its time as seconds, like "${card} 3s"`);
-            return { name: card, seconds, cue };
+            return { name: card, seconds, cue, footage: existsSync(join(VIDEO, 'cards', `${card}.html`)) ? null : footage };
         });
         /* `Clip: <name> (notes)` plays clips/<name>.mp4 after the scene's narration. */
         const clipName = /^Clip:\s*([\w.-]+)/im.exec(lines.join('\n'))?.[1] ?? null;
@@ -216,6 +218,21 @@ function cardClip(png, seconds, out) {
     ffmpeg('-loop', '1', '-i', png, '-vf',
         `scale=${FINAL ? '7680:4320' : '3840:2160'}:flags=lanczos,zoompan=z='1+0.04*on/${frames}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=${frames}:s=1920x1080:fps=${FPS},format=yuv420p`,
         '-frames:v', String(frames), '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', out);
+}
+
+/**
+ * Footage as a card: silent, scaled to 1920 × 1080, its first FOOTAGE_SKIP seconds dropped, and sped up (to at most
+ * FOOTAGE_MAX_SPEED×) so it plays through in the card's time; what still doesn't fit is cut from the start, so the card
+ * ends on the footage's last frame (a result, for a screen recording). A short take holds its last frame.
+ */
+const FOOTAGE_SKIP = 0.6, FOOTAGE_MAX_SPEED = 3;
+function footageCard(mp4, seconds, out) {
+    const length = duration(mp4) - FOOTAGE_SKIP;
+    const speed = Math.min(FOOTAGE_MAX_SPEED, Math.max(1, length / seconds));
+    const start = FOOTAGE_SKIP + Math.max(0, length - seconds * speed);
+    ffmpeg('-ss', start.toFixed(3), '-i', mp4, '-an', '-vf',
+        `setpts=(PTS-STARTPTS)/${speed.toFixed(4)},scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=${FPS},tpad=stop_mode=clone:stop_duration=${seconds},format=yuv420p`,
+        '-frames:v', String(Math.round(seconds * FPS)), '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', out);
 }
 
 /** Clips joined with a crossfade; every clip but the last is held for the overlap, so each card starts on time. */
@@ -461,7 +478,8 @@ async function cutScenes(script, cut, cards) {
         console.log(`  ${scene.n}: ${scene.cards.map((c, k) => { const at = from; from += lengths[k]; return `${c.name} ${at.toFixed(1)}s`; }).join(', ')}`);
         const clips = scene.cards.map((c, k) => {
             const file = join(OUT, `s${scene.n}-${k}.mp4`);
-            cardClip(join(cards, `${c.name}.png`), lengths[k], file);
+            if (c.footage) footageCard(c.footage, lengths[k], file);
+            else cardClip(join(cards, `${c.name}.png`), lengths[k], file);
             return file;
         });
         const pictures = join(OUT, `s${scene.n}-v.mp4`);
@@ -645,7 +663,7 @@ function writeTiming(cut) {
 }
 
 const script = readScript();
-const names = [...new Set(script.scenes.flatMap((s) => s.cards.map((c) => c.name)))];
+const names = [...new Set(script.scenes.flatMap((s) => s.cards.filter((c) => !c.footage).map((c) => c.name)))];
 
 if (args.has('--music')) {
     mkdirSync(OUT, { recursive: true });

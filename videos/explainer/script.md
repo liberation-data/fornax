@@ -41,11 +41,12 @@ Cards: code, models @"Weights load once"
 
 ## 4. Show me
 
-Cards: studio, numbers @"twice as fast"
+Cards: studio-invoice, studio-defects @"spot a defect", studio-review @"an X-ray", studio @"Or chat", numbers @"twice as fast"
 
-(studio is the two-window screenshot.)
+(studio is the two-window screenshot; studio-* are screen recordings of Studio's Inspect window, in footage/.)
 
-> In Kiln Studio, chat with a model and watch the tokens per second, paint an image, write a song, or render a clip.
+> In Kiln Studio, read an invoice into JSON, spot a defect on a part, or flag an X-ray for a doctor's review.
+> Or chat, paint an image, write a song, or render a clip.
 > On our test laptop, Kiln made a one-minute song up to twice as fast as ComfyUI, on the same GPU.
 
 (Backed by kiln-bench, ACE-Step 1.5 turbo, 60 s song: cold 17.3 s against 38.2 s (2.2×), warm 14.7 s against 23.0 s
