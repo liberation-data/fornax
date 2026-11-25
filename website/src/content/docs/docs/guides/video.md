@@ -1,0 +1,169 @@
+---
+title: Video
+description: Generate video with sound from Java with LTX-2.5 through stable-diffusion.cpp - a one-stage draft, the two-stage recipe, first and last frames, and long clips on HIP.
+---
+
+`DiffusionModel` makes video as well as [images](/docs/guides/images/), through stable-diffusion.cpp's video
+pipeline. This page covers **LTX-2.5**, which generates picture and sound together. The same API runs Wan and the
+other video models stable-diffusion.cpp supports.
+
+Video is the heaviest thing Kiln does. LTX-2.5 is a 22B model with a 12B text encoder, and a render takes minutes
+even at small sizes. Start small (see [Render small first](#render-small-first)).
+
+## The files
+
+Kiln's example uses ComfyUI's int8 build of LTX-2.5 from `Lightricks/LTX-2.5`:
+
+```sh
+hf download Lightricks/LTX-2.5 \
+    diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors \
+    text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors \
+    vae/ltx-2.5-video-vae-conv-bf16.safetensors \
+    vae/ltx-2.5-audio-vae-bf16.safetensors \
+    latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors
+```
+
+The upscaler is only for the [two-stage recipe](#the-two-stage-recipe). For the larger, slower `dev` model, swap
+`distilled` for `dev` in the first file name.
+
+## A clip with sound
+
+```java
+import org.liberationdata.kiln.HfCache;
+import org.liberationdata.kiln.sd.DiffusionModel;
+
+import java.util.Map;
+
+String ltx = "Lightricks/LTX-2.5";
+var config = DiffusionModel.Config.builder()
+        .diffusionModel(HfCache.require(ltx, "diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors").toString())
+        .llm(HfCache.require(ltx, "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors").toString())
+        .vae(HfCache.require(ltx, "vae/ltx-2.5-video-vae-conv-bf16.safetensors").toString())
+        .set("audio_vae_path", HfCache.require(ltx, "vae/ltx-2.5-audio-vae-bf16.safetensors").toString())
+        // ComfyUI's int8 LTX keeps biases, norms and embedders in bf16; widen them to f32 at load (see below).
+        .set("tensor_type_rules", ".*\\.bias=f32,.*_norm\\.weight=f32,.*to_gate_logits\\.weight=f32,"
+                + ".*adaln_single.*\\.weight=f32,.*(patchify_proj|proj_out)\\.weight=f32,"
+                + ".*(learnable_registers|keyframes_abs_pos_embedding)=f32")
+        .build();
+
+try (var model = new DiffusionModel(config)) {
+    //                                                    prompt, width, height, frames, fps, steps, cfg, seed
+    var request = new DiffusionModel.VideoRequest("a potter at a wheel, warm light, the hum of the wheel",
+            768, 448, 49, 24, 8, 1.0, 7)
+            .withExtra(Map.of("sample.method", "euler", "sample.scheduler", "ltx2"));
+    DiffusionModel.Video video = model.generateVideo(request);
+    System.out.printf("%d frames at %d fps (%.1f s)%s%n", video.frames().size(), video.fps(), video.seconds(),
+            video.audio() != null ? ", with sound" : "");
+}
+```
+
+`generateVideo` returns a `Video`: its `frames` as `BufferedImage`s, its `fps`, and its `audio` (an `Audio`, the same
+type the song and speech models return, or `null` for a model without sound). Kiln doesn't encode video files; write
+the frames and the audio out and join them with ffmpeg, as the example does.
+
+The distilled model takes 8 steps at CFG 1; `dev` takes about 20 at CFG 3.
+
+**Keep the audio VAE.** LTX-2.5 was trained to make sound and picture together. Leaving `audio_vae_path` out removes
+the soundtrack, but that isn't how the model was trained to run.
+
+**The `tensor_type_rules`** widen the few bf16 tensors in ComfyUI's int8 checkpoint (about 0.9 GB) to f32 when the
+model loads. ggml's Vulkan and CPU backends can't add bf16 to f32, so without them the run aborts on GPUs whose driver
+has no bf16 support. The int8 weights themselves are untouched.
+
+## First and last frames
+
+Pin the first frame, the last frame, or both, with an image:
+
+```java
+import javax.imageio.ImageIO;
+import java.io.File;
+
+var request = new DiffusionModel.VideoRequest("the vase turns slowly on the wheel", 768, 448, 49, 24, 8, 1.0, 7)
+        .withExtra(Map.of("sample.method", "euler", "sample.scheduler", "ltx2"))
+        .withInitImage(ImageIO.read(new File("first.png")))
+        .withEndImage(ImageIO.read(new File("last.png")));
+```
+
+The `VideoRequest` methods return a new request each time (it is a record), so chain them. `withRefAudio` passes a
+reference clip to models that are driven by speech (such as Wan2.2 S2V).
+
+LTX was trained on compressed frames. ComfyUI's LTX workflow passes each keyframe through H.264 at CRF 18 first, and
+Kiln's example can do the same (`-Ppreprocess=18`), though in tests it made no visible difference.
+
+## The two-stage recipe
+
+For a sharper result, render a draft at half size, upscale its latent with LTX's learned ×2 upscaler, then refine it
+at full size. This is ComfyUI's "Image to Video (LTX-2.5)" workflow, step for step:
+
+| ComfyUI | Kiln |
+|---|---|
+| Stage 1: half size, `ManualSigmas` 1.0 … 0.421875, 0, euler_ancestral, CFG 1 | `sample.sigmas`, `sample.method=euler_a` |
+| `LTXVImgToVideoInplace` strength 0.7 | `strength=0.7` |
+| `LTXVPreprocess` 18 | an ffmpeg H.264 round trip at CRF 18 |
+| `LTXVLatentUpsampler` with the ×2 model | `hires.upscaler=model` plus `hires.model_path` |
+| Stage 2: sigmas 0.85, 0.725, 0.4219, 0, first frame at 1.0 | `hires.sigmas`; stable-diffusion.cpp holds the first frame fully in the refine |
+| Tiled VAE decode | `vae_tiling.enabled` |
+
+In Java, that is a request with more options, at the draft size:
+
+```java
+import java.util.HashMap;
+
+var extra = new HashMap<String, Object>();
+extra.put("sample.method", "euler_a");
+extra.put("sample.scheduler", "ltx2");
+extra.put("sample.sigmas", new float[] {1.0f, 0.99375f, 0.9875f, 0.98125f, 0.975f, 0.909375f, 0.725f, 0.421875f, 0.0f});
+extra.put("strength", 0.7);
+extra.put("hires.enabled", true);
+extra.put("hires.upscaler", "model");
+extra.put("hires.model_path", HfCache.require(ltx, "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors").toString());
+extra.put("hires.sigmas", new float[] {0.85f, 0.725f, 0.4219f, 0.0f});
+extra.put("vae_tiling.enabled", true);    // short GPU dispatches stay under the driver's compute timeout
+
+var request = new DiffusionModel.VideoRequest("a potter at a wheel, warm light", 672, 448, 121, 24, 8, 1.0, 7)
+        .withInitImage(ImageIO.read(new File("first.png")))
+        .withExtra(extra);
+```
+
+The output is twice the draft's size: 1344×896 here.
+
+:::caution[`hires.model_path` needs `hires.upscaler = "model"`]
+stable-diffusion.cpp only runs a learned upscaler when `hires.upscaler` is `"model"`. Otherwise it interpolates the
+latent and silently ignores `hires.model_path`, and refining an interpolated video latent ghosts badly. Kiln selects
+the model for you when you give a model path without an upscaler, and refuses a model path with any other upscaler.
+:::
+
+To tell the stages' artifacts apart, render the draft alone with `"hires.enabled", false` (`-Phires=false` in the
+example).
+
+## Long clips: use HIP
+
+On Vulkan, a long clip can lose the GPU. A 13 s LTX clip (313 frames) refined at 1344×896 lost the device on its first
+refine step: one attention dispatch over about 47,000 tokens outlasts the amdgpu driver's compute timeout, and no
+setting can split a single dispatch.
+
+The HIP (ROCm) backend doesn't have that timeout: its work goes through user queues that the timeout doesn't cover.
+It was also about 2.7× faster per LTX step on the Radeon 8060S (44 s against 119 s at 672×448×313, after a slower
+first step). Build it with `native/build.sh hip`; see [Choosing a GPU backend](/docs/guides/gpu-backends/#hip-rocm).
+Kiln turns off ggml's HIP graphs by default, which would otherwise overflow a JVM thread's stack on LTX.
+
+For shorter clips on Vulkan, tiled VAE decoding and `-Dkiln.vulkan.maxNodesPerSubmit=8` keep each GPU submission
+short enough. See [Troubleshooting](/docs/troubleshooting/#long-gpu-work-loses-the-device).
+
+## Render small first
+
+336×224 and 49 frames took about 3 minutes, and showed every artifact that the 1344×896 renders did (those took 10 to
+30 minutes). Get the prompt, the keyframes and the settings right small, then render big.
+
+## Try it
+
+```sh
+./gradlew video --args='clip.mp4 "a potter at a wheel, warm light"'
+./gradlew video --args='clip.mp4 "the vase turns slowly" first.png last.png' -Pwidth=672 -Pheight=448 -Pframes=121
+./gradlew video --args='clip.mp4 "a potter at a wheel" first.png' -Precipe=two-stage
+./gradlew video --args='clip.mp4 "a potter at a wheel"' -Pmodel=dev -Paudio=false
+```
+
+The example writes the frames and the soundtrack beside the `.mp4` and joins them with ffmpeg (which must be on the
+`PATH` for the `.mp4`). `-Pltx.dir=<folder>` reads the files from a folder laid out like the repository
+(`diffusion_models/`, `text_encoders/`, `vae/`) instead of the Hugging Face cache.

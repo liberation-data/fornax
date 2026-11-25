@@ -1,0 +1,156 @@
+---
+title: Getting started
+description: Build Kiln's native libraries, fetch model weights with the Hugging Face CLI, run the all-in-one demo, and use Kiln from your own app.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import StudioDownloads from '../../../components/docs/StudioDownloads.astro';
+
+This page takes you from a fresh clone to a song, its lyrics and its cover art, made by three engines in one JVM.
+Then it shows what your own application needs.
+
+:::tip[Just want to try the models?]
+[Kiln Studio](#kiln-studio) is a desktop app around Kiln. It needs no build and no code.
+:::
+
+## What you need
+
+- **JDK 25.** Kiln uses the Foreign Function & Memory API, final since Java 22; it is built and tested on 25.
+- **CMake, Ninja and a C++17 compiler**, to build the engines.
+- **The SDK for your GPU backend.** For Vulkan, the Vulkan headers, `glslc` and SPIRV-Headers. On Fedora:
+
+  ```sh
+  sudo dnf install vulkan-headers vulkan-loader-devel glslc spirv-headers-devel
+  ```
+
+  [Choosing a GPU backend](/docs/guides/gpu-backends/) lists what HIP, CUDA and Metal need.
+- **The Hugging Face CLI** (`hf`), to download weights.
+
+## Build and run
+
+<Steps>
+
+1. **Build the native libraries.**
+
+   ```sh
+   git clone https://github.com/liberation-data/kiln.git && cd kiln
+   native/build.sh vulkan     # or hip | cuda | metal | cpu
+   ```
+
+   `native/build.sh` clones each engine at the commit pinned in `native/engines.properties` into `engines-src/`,
+   applies Kiln's patches, and writes one library per engine to `build/native/<os>-<arch>-<backend>/`, for example
+   `build/native/linux-x86_64-vulkan/libkiln_llama.so`. The first build takes a while.
+
+   To build only some engines, list them after the backend: `native/build.sh vulkan llama tts`. The engines are
+   `llama`, `tts`, `sd`, `acestep` and `yue2`.
+
+2. **Build the Java modules.**
+
+   ```sh
+   ./gradlew build
+   ```
+
+   The Gradle build points the examples and tests at `build/native/<os>-<arch>-vulkan/`. For another backend, add
+   `-Pkiln.backend=hip` (or `cuda`, `metal`, `cpu`) to any Gradle command.
+
+3. **Fetch the weights for the demo.**
+
+   ```sh
+   hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+   hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Embedding-0.6B-Q8_0.gguf \
+       acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
+   hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors
+   hf download Comfy-Org/flux2-dev split_files/vae/flux2-vae.safetensors
+   hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetensors
+   ```
+
+   Kiln never downloads anything itself. See [Finding weights](#finding-weights) for where it looks.
+
+4. **Run the demo.**
+
+   ```sh
+   ./gradlew single
+   ```
+
+   One Java program has Qwen3 4B write a short country song, ACE-Step 1.5 sing it, and FLUX.2 [klein] paint its
+   cover. It writes `single/single.wav`, `single/cover.png` and `single/lyrics.txt`. Pass your own idea with
+   `--args='out-dir "what the song is about"'`.
+
+</Steps>
+
+## More examples
+
+Each example is a Gradle task in `kiln-examples`. Model options are passed as `-P` properties.
+
+```sh
+./gradlew chat --args='"Write a haiku about a kiln"'
+./gradlew speak --args='out.wav "Hello from the JVM" bm_george'   # -Pmodel=zonos3|lfm3-audio|chatterbox-turbo|...
+./gradlew image --args='klein out.png "a neon sign that says KILN"' -Psteps=12 -Pwidth=768 -Pheight=768
+./gradlew song --args='song.wav'                                  # -Pdit=xl-turbo for the larger model
+./gradlew yue2 --args='yue2-song.wav'
+./gradlew video --args='clip.mp4 "a potter at a wheel, warm light"'
+```
+
+The song examples read the requests in `kiln-examples/src/main/resources/requests/`; pass your own JSON as a second
+argument. Each guide lists the weights its example needs.
+
+## Finding weights
+
+`HfCache` finds files that `hf download` has already put in the Hugging Face cache. It looks in `HF_HUB_CACHE`, then
+`$HF_HOME/hub`, then `~/.cache/huggingface/hub`.
+
+```java
+import org.liberationdata.kiln.HfCache;
+
+import java.nio.file.Path;
+import java.util.Optional;
+
+// The file inside any downloaded snapshot of the repository, if there is one.
+Optional<Path> maybe = HfCache.find("unsloth/Qwen3-4B-Instruct-2507-GGUF", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf");
+
+// The same, or an IllegalStateException that names the hf download command to run.
+Path gguf = HfCache.require("unsloth/Qwen3-4B-Instruct-2507-GGUF", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf");
+
+// The first of several (repository, path) pairs that is present.
+Path encoder = HfCache.requireAny(
+        "Comfy-Org/Qwen-Image_ComfyUI", "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        "Comfy-Org/HunyuanVideo_1.5_repackaged", "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors");
+```
+
+You don't have to use it: every model class takes plain file paths.
+
+## In your own application
+
+Your app needs the Kiln modules on its classpath, the native libraries where Kiln can find them, and permission to
+make native calls.
+
+```sh
+java -Dkiln.library.path=build/native/linux-x86_64-vulkan \
+     --enable-native-access=ALL-UNNAMED -jar your-app.jar
+```
+
+Kiln looks for each library (`libkiln_llama.so`, or `.dylib` on macOS) in this order:
+
+1. `-Dkiln.<name>.lib=<file>`: an exact file, for example `-Dkiln.kiln_llama.lib=/opt/kiln/libkiln_llama.so`;
+2. each directory in `-Dkiln.library.path` (separated by your platform's path separator);
+3. each directory in the `KILN_LIBRARY_PATH` environment variable;
+4. the platform loader's path (`LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH` and the system directories).
+
+If it finds none, the first use of that engine's model class fails with an `UnsatisfiedLinkError` that says where it
+looked.
+
+Set `KILN_VERBOSE=1` to see the engines' own logs; they are quiet by default, apart from errors.
+
+:::note[Coming in the next release]
+Kiln's modules and per-platform natives jars are on their way to Maven Central, so your app won't need a native
+build. See [Maven and Gradle](/docs/maven-and-gradle/).
+:::
+
+## Kiln Studio
+
+[Kiln Studio](https://github.com/liberation-data/kiln-studio) is a desktop app around Kiln: chat with a GGUF model
+and watch the tokens per second, watch it call tools, make an image or a song, and see what is loaded and how much
+memory it holds. It runs Kiln in a JVM of its own, with its own Java, and finds models in your Hugging Face cache.
+Models aren't included: fetch them with `hf download` as above.
+
+<StudioDownloads />

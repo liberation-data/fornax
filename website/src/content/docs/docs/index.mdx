@@ -1,0 +1,105 @@
+---
+title: Introduction
+description: What Kiln is, how it calls native inference engines from Java, what runs today and on which GPUs.
+prev: false
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+<p class="lede">Kiln lets you call open-weight models as plain Java methods, <em>on your GPU, inside your JVM</em>.</p>
+
+```java
+import org.liberationdata.kiln.llama.LlamaModel;
+import org.liberationdata.kiln.llama.LlamaModel.Message;
+import org.liberationdata.kiln.llama.LlamaModel.Options;
+
+import java.util.List;
+
+try (var llm = new LlamaModel("Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {   // weights load onto the GPU once
+    llm.chat(List.of(Message.user("Name a country song about a robot.")), Options.DEFAULT, System.out::print);
+}
+```
+
+That is a language model running in your own process. There is no Python, no model server, no HTTP and no second
+process. The weights stay loaded between calls, and tokens stream back to a Java callback as they are produced.
+
+## What you get
+
+Kiln binds the C and C++ inference engines that the open-model world already runs on. They are the same engines
+behind the popular command-line tools and servers, so you get their speed and their model support.
+
+| Module | Engine | What it runs |
+|---|---|---|
+| `kiln-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...), with chat, streaming, tool calls and JSON schemas |
+| `kiln-tts` | llama.cpp (`mtmd`) | text to speech: Kokoro, ZONOS3, LFM3-Audio, Chatterbox, VoxCPM2, Qwen3-TTS, ... |
+| `kiln-sd` | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) | images and video: FLUX.1 and FLUX.2, Qwen-Image and Qwen-Image-Edit, SD 1.x/2.x/XL/3, Wan, LTX |
+| `kiln-acestep` | [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) | ACE-Step 1.5 songs, with vocals and lyrics, up to several minutes |
+| `kiln-yue2` | [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp) | YuE2 songs |
+| `kiln-core` | | what the others share: native loading, `ModelPool`, `HfCache`, `Audio` |
+
+Every model class is `AutoCloseable`, and its weights are freed on `close()`. Instances aren't thread-safe: use one
+per thread, or borrow them through a [`ModelPool`](/docs/guides/model-pool/), which gives each model one user at a
+time.
+
+## How it works
+
+Kiln calls the engines through Java's **Foreign Function & Memory API** (Java 22 or newer; Kiln is built and tested
+on JDK 25). A Kiln call is a native function call, made directly from your thread.
+
+Each engine is built into **one self-contained shared library**, with its own copy of ggml (the tensor library
+under all four engines) linked in statically and kept private. The engines pin different ggml versions, so this is
+what lets several of them share one process: an LLM, a diffusion model and a song model can all be loaded in the same
+JVM at once.
+
+How each module binds its engine depends on what the engine offers:
+
+- `stable-diffusion.cpp` has a key/value C API, so `kiln-sd` binds it directly. Any option the engine documents can
+  be passed through.
+- `llama.cpp` has a C API too, but it passes structs by value and is moving to a new batch API, so `kiln-llama`
+  binds a small, stable C layer instead. `kiln-tts` is one more such layer, over llama.cpp's audio generation.
+- `acestep.cpp` and `yue2.cpp` are C++ only, so each gets a layer of about 100 lines: a JSON request in, PCM audio
+  out.
+
+Kiln doesn't download anything. You fetch weights with the Hugging Face CLI, and `HfCache` finds them in the cache,
+or you pass file paths directly.
+
+## Status
+
+Kiln is early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen AI Max+ 395 "Strix Halo",
+128 GB unified memory) using the **Vulkan** backend:
+
+| Model | Result |
+|---|---|
+| Qwen3 4B Instruct (Q4_K_M) | ~60 tokens/s, streamed through a Java callback |
+| ACE-Step 1.5 XL turbo | a 3 min 20 s song in 57 s |
+| ACE-Step 1.5 turbo | a 60 s song in ~15 s |
+| YuE2 3B (Q8_0) | a 60 s song in ~60 s |
+| FLUX.2 [klein] base 4B (fp8) | 768×768, 12 steps in ~130 s |
+| Qwen-Image 2512 (fp8) | 1024×1024, 20 steps in ~13 min |
+
+## Supported backends
+
+You choose a GPU backend when you build the native libraries; the Java code is the same for every backend.
+
+| Backend | GPUs | State |
+|---|---|---|
+| Vulkan | AMD, Intel, NVIDIA | what Kiln is tested on |
+| HIP (ROCm) | AMD | builds; has run LTX video on the 8060S, where it was faster than Vulkan |
+| CUDA | NVIDIA | builds from the same script; not tested yet |
+| Metal | Apple silicon and Intel Macs | builds from the same script; not tested yet |
+| CPU | any | no GPU; slow, but useful to check a setup |
+
+[Choosing a GPU backend](/docs/guides/gpu-backends/) covers each one and the settings that matter. Reports and fixes
+for the untested ones are welcome.
+
+## Where next
+
+<CardGrid>
+    <LinkCard title="Getting started" description="Build the engines, fetch weights and run the demo." href="/docs/getting-started/" />
+    <LinkCard title="Language models" description="Chat, streaming, JSON schemas and tool calls." href="/docs/guides/language-models/" />
+    <LinkCard title="Images" description="FLUX.2 [klein], Qwen-Image and Z-Image." href="/docs/guides/images/" />
+    <LinkCard title="Troubleshooting" description="What the engines do that surprises people, and how to debug a model that looks wrong." href="/docs/troubleshooting/" />
+</CardGrid>
+
+Kiln is Apache 2.0. The engines it builds against are MIT-licensed. Check each model's own license before you use
+what it makes: some are non-commercial (YuE2's weights are CC BY-NC 4.0, for example).
