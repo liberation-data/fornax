@@ -9,6 +9,7 @@ import org.liberationdata.fornax.hub.ModelStatus;
 import org.liberationdata.fornax.hub.PullPlan;
 import org.liberationdata.fornax.hub.PullProgress;
 import org.liberationdata.fornax.hub.PullTask;
+import org.liberationdata.fornax.hub.RepoIndex;
 
 import java.io.IOException;
 import java.net.URI;
@@ -55,8 +56,7 @@ final class Pulls {
 
     /** Fornax's catalogue, into the catalog's cache and model folders, from HF_ENDPOINT (or huggingface.co). */
     static Pulls standard(Catalog catalog) {
-        String e = System.getenv("HF_ENDPOINT");
-        URI endpoint = URI.create(e == null || e.isBlank() ? "https://huggingface.co" : e.trim());
+        URI endpoint = RepoIndex.endpoint();
         return new Pulls(ModelCatalog.all(), token -> {
             var b = FornaxHub.builder().cacheRoot(catalog.root()).modelFolders(new ModelFolders(catalog.folders())).endpoint(endpoint);
             if (token != null && !token.isBlank()) b.token(token);

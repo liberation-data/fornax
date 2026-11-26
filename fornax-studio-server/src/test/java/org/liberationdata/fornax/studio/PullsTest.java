@@ -305,5 +305,24 @@ class PullsTest {
         assertEquals(400, r.statusCode());
         assertTrue(r.body().contains("no model set named nothing"), r.body());
         assertEquals(400, call("POST", "/api/models/plan", "{}").statusCode());
+        assertEquals(400, call("POST", "/api/models/pull/cancel", "{\"id\": \"nothing\"}").statusCode());
+    }
+
+    @Test void aPlanTheHubCantAnswerIsABadGateway() throws Exception {
+        files.remove("o/tiny/vae.gguf");
+        var r = call("POST", "/api/models/plan", "{\"id\": \"tiny\"}");
+        assertEquals(502, r.statusCode(), r.body());
+        var error = Json.object(r.body());
+        assertEquals("NOT_FOUND", error.get("reason"));
+        assertNull(error.get("termsUrl"), error.toString());
+        assertNotNull(error.get("error"));
+    }
+
+    @Test void aPullThatCantReachTheHubSaysSo() throws Exception {
+        hub.stop(0);
+        var error = event(call("POST", "/api/models/pull", "{\"id\": \"tiny\"}").body(), "error");
+        assertEquals("IO", error.get("reason"), error.toString());
+        assertEquals("tiny", error.get("id"));
+        assertNotNull(error.get("message"));
     }
 }
