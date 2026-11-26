@@ -137,7 +137,7 @@ index a22ccec..6a41955 100644
      audio_shape = empty_audio_shape
  {% endif %}
 +{% if flags.held_audio %}
-+    held_audio_latent = audio_vae_encode(audio_vae, ref_audio_samples, sample_rate = ref_audio_rate)
++    held_audio_latent = audio_vae_encode(audio_vae, ref_audio_samples[:, :math::ceil(ref_audio_rate * frames / fps)], sample_rate = ref_audio_rate)
 +    held_audio = held_audio_latent[:, :audio_shape[1]]
 +{% endif %}
  {% if flags.conditioned %}

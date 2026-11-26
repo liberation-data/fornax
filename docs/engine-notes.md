@@ -49,8 +49,8 @@ surprises you.
   MiniMax-H3, and its LTX audio VAE had no encoder. `native/patches/stable-diffusion.cpp/0002` adds the encoder
   (host log-mel as ComfyUI's `MelSpectrogram`, torchaudio's sinc resampler to 16 kHz), puts the encoded track into the
   joint latent with denoise mask 0, and gives the audio stream its own timestep (0 when held). It also had to follow
-  LTX-2/ComfyUI's cross-modal timesteps: the video's scale/shift and prompt modulation follow the video's timestep and
-  the video-to-audio gate the video's largest one. sd.cpp fed all of them the audio's timestep, which is the same
+  LTX-2/ComfyUI's cross-modal timesteps: the video's cross-attention scale/shift follows the video's timestep, and its
+  prompt modulation and the video-to-audio gate the video's largest one. sd.cpp fed all of them the audio's timestep, which is the same
   thing until the two streams are at different noise levels. Checked against ComfyUI: the soundtrack of a Kiln render
   correlates 0.97 sample for sample with ComfyUI's own encode → decode of the same section.
 
