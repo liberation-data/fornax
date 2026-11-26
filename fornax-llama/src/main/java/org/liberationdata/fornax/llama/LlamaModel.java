@@ -337,8 +337,6 @@ public final class LlamaModel implements AutoCloseable {
      * @param gpuLayers -1 offloads every layer. @param contextSize 0 uses the model's trained context. In EMBED and
      *        RERANK it is also the batch: the most tokens one text (or query and document) can have, and how many
      *        go through the model at once.
-     * @throws UnsupportedOperationException for EMBED or RERANK under {@code -Dfornax.isolation=process}: those don't
-     *         run in a worker yet
      */
     public LlamaModel(String ggufPath, int gpuLayers, int contextSize, Mode mode) {
         this(ggufPath, null, mode, gpuLayers, contextSize, defaultWorker(ggufPath, mode), true);
@@ -349,11 +347,7 @@ public final class LlamaModel implements AutoCloseable {
 
     /** The worker fornax.isolation asks for, or null for in-process. */
     private static Worker defaultWorker(String ggufPath, Mode mode) {
-        if (Isolation.configured() != Isolation.PROCESS) return null;
-        if (mode != Mode.CHAT)
-            throw new UnsupportedOperationException(mode + " models don't run isolated yet (fornax.isolation=process): "
-                    + "load them in-process");
-        return workerFor(ggufPath);
+        return Isolation.configured() == Isolation.PROCESS ? workerFor(ggufPath) : null;
     }
 
     /** @param worker where to load it, or null for in-process. @param ownsWorker close the worker with the model */
@@ -362,14 +356,15 @@ public final class LlamaModel implements AutoCloseable {
         this.mode = Objects.requireNonNull(mode, "mode");
         if (mode != Mode.CHAT && mmprojPath != null)
             throw new IllegalArgumentException("an mmproj is for chat with images; " + mode + " takes none");
-        if (mode != Mode.CHAT && worker != null)
-            throw new UnsupportedOperationException(mode + " models don't run isolated yet");
         this.worker = worker;
         if (worker != null) {
             Worker.Instance r = null;
             try {
-                r = worker.open(LlamaService.class.getName(), LlamaService.config(ggufPath, mmprojPath, gpuLayers, contextSize));
-                vision = new Wire.In(r.invoke("vision", null)).bool();
+                r = worker.open(LlamaService.class.getName(),
+                        LlamaService.config(ggufPath, mmprojPath, mode, gpuLayers, contextSize));
+                Wire.In info = new Wire.In(r.invoke("info", null));
+                vision = info.bool();
+                embeddingSize = info.integer();
             } catch (RuntimeException | Error e) {
                 if (r != null) r.close();
                 if (ownsWorker) worker.close();
@@ -378,7 +373,6 @@ public final class LlamaModel implements AutoCloseable {
             Worker.Instance instance = r;
             remote = instance;
             handle = null;
-            embeddingSize = 0;
             thread = new ModelThread(name, () -> {
                 try { instance.close(); } finally { if (ownsWorker) worker.close(); }
             }, instance::cancel, null);
@@ -412,7 +406,8 @@ public final class LlamaModel implements AutoCloseable {
 
     /**
      * The model in a worker process of its own, behind the same API: chat, chatJson, extract, complete, streaming,
-     * the async methods, cancel and close all work as in-process. A native crash fails the call in flight with a
+     * the async methods, cancel and close all work as in-process (and embed and rerank, for a model isolated in
+     * {@link Mode#EMBED} or {@link Mode#RERANK}). A native crash fails the call in flight with a
      * {@link WorkerCrashedException}, and the next call restarts the worker and reloads the weights. Closing the model
      * stops its worker.
      */
@@ -426,6 +421,19 @@ public final class LlamaModel implements AutoCloseable {
         return new LlamaModel(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize, workerFor(ggufPath), true);
     }
 
+    /** {@link #isolated(String)} loaded for chat, embeddings or reranking, as {@link #LlamaModel(String, int, int, Mode)}. */
+    public static LlamaModel isolated(String ggufPath, int gpuLayers, int contextSize, Mode mode) {
+        return new LlamaModel(ggufPath, null, mode, gpuLayers, contextSize, workerFor(ggufPath), true);
+    }
+
+    /**
+     * {@link #isolated(Weights)} loaded for chat, embeddings or reranking, with 8192 tokens of context; for example
+     * {@code LlamaModel.isolated(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)}. The mmproj is loaded only for CHAT.
+     */
+    public static LlamaModel isolated(Weights w, Mode mode) {
+        return new LlamaModel(w.model(), mode == Mode.CHAT ? w.mmproj() : null, mode, -1, 8192, workerFor(w.model()), true);
+    }
+
     /**
      * The model in a worker you share among several models: they run in one process, so one crash takes them all
      * (each reloads on its next call), but they share one JVM's overhead. Closing the model frees it in the worker;
@@ -435,9 +443,14 @@ public final class LlamaModel implements AutoCloseable {
         return new LlamaModel(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize, java.util.Objects.requireNonNull(worker), false);
     }
 
+    /** {@link #isolated(Worker, String, String, int, int)} loaded for chat, embeddings or reranking. */
+    public static LlamaModel isolated(Worker worker, String ggufPath, int gpuLayers, int contextSize, Mode mode) {
+        return new LlamaModel(ggufPath, null, mode, gpuLayers, contextSize, java.util.Objects.requireNonNull(worker), false);
+    }
+
     /** In this JVM whatever fornax.isolation says: what a worker loads. */
-    static LlamaModel inProcess(String ggufPath, String mmprojPath, int gpuLayers, int contextSize) {
-        return new LlamaModel(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize, null, false);
+    static LlamaModel inProcess(String ggufPath, String mmprojPath, Mode mode, int gpuLayers, int contextSize) {
+        return new LlamaModel(ggufPath, mmprojPath, mode, gpuLayers, contextSize, null, false);
     }
 
     /** Whether this model runs in a worker process. */
@@ -780,10 +793,11 @@ public final class LlamaModel implements AutoCloseable {
         return thread.run(c -> embedOn(c, texts, o));
     }
 
-    private float[][] embedOn(Call call, List<String> texts, EmbedOptions o) {
+    float[][] embedOn(Call call, List<String> texts, EmbedOptions o) {
         requireMode(Mode.EMBED, "embed");
         int n = texts.size(), dim = embeddingSize;
         if (n == 0) return new float[0][];
+        if (remote != null) return LlamaService.decodeEmbeddings(remote(call, "embed", LlamaService.embedArgs(texts, o), null));
         try (Arena a = Arena.ofConfined()) {
             MemorySegment in = strings(a, texts, o.prefix());
             MemorySegment out = a.allocate(JAVA_FLOAT, (long) n * dim);
@@ -807,10 +821,11 @@ public final class LlamaModel implements AutoCloseable {
         return thread.run(c -> rerankOn(c, query, documents));
     }
 
-    private List<Scored> rerankOn(Call call, String query, List<String> documents) {
+    List<Scored> rerankOn(Call call, String query, List<String> documents) {
         requireMode(Mode.RERANK, "rerank");
         int n = documents.size();
         if (n == 0) return List.of();
+        if (remote != null) return LlamaService.decodeScores(remote(call, "rerank", LlamaService.rerankArgs(query, documents), null));
         try (Arena a = Arena.ofConfined()) {
             MemorySegment docs = strings(a, documents, null);
             MemorySegment out = a.allocate(JAVA_FLOAT, n);
