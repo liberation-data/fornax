@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
 /**
  * The Hugging Face Hub's file endpoints, as {@code huggingface_hub} uses them: a HEAD on
  * {@code /<repo>/resolve/<revision>/<path>} for a file's commit, etag and size, and a GET (with {@code Range} to resume)
- * that redirects to the CDN. The token goes to the Hub's own host only, never to the CDN it redirects to.
+ * that redirects to the CDN. The token goes to the Hub's own scheme, host and port only, never to the CDN it redirects to.
  */
 final class HubHttp {
     /**
@@ -184,9 +184,17 @@ final class HubHttp {
 
     private HttpRequest.Builder request(URI uri) {
         HttpRequest.Builder b = HttpRequest.newBuilder(uri).header("User-Agent", userAgent());
-        if (token != null && uri.getHost() != null && uri.getHost().equalsIgnoreCase(endpoint.getHost()) && uri.getPort() == endpoint.getPort())
-            b.header("Authorization", "Bearer " + token);
+        if (token != null && sendsToken(uri, endpoint)) b.header("Authorization", "Bearer " + token);
         return b;
+    }
+
+    /**
+     * Whether a request to {@code uri} may carry the token: only to the endpoint's own scheme, host and port, so a
+     * redirect to the CDN, or from https to http on the same host, never sends it elsewhere or in the clear.
+     */
+    static boolean sendsToken(URI uri, URI endpoint) {
+        return uri.getHost() != null && uri.getHost().equalsIgnoreCase(endpoint.getHost()) && uri.getPort() == endpoint.getPort()
+                && uri.getScheme() != null && uri.getScheme().equalsIgnoreCase(endpoint.getScheme());
     }
 
     private <T> HttpResponse<T> send(HttpRequest req, HttpResponse.BodyHandler<T> handler, Cancel cancel) throws IOException {
