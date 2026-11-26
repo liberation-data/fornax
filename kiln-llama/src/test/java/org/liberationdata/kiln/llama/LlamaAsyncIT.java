@@ -256,6 +256,16 @@ class LlamaAsyncIT {
     }
 
     @Test
+    void aCancelledExtractThrowsRatherThanReturningCutOffJson() throws Exception {
+        var f = model.extractAsync(COUNT, """
+                {"type": "object", "properties": {"numbers": {"type": "array", "items": {"type": "integer"}, "minItems": 300}},
+                 "required": ["numbers"]}""", GREEDY.withMaxTokens(2000));
+        Thread.sleep(500);
+        model.cancel();
+        assertThrows(CancellationException.class, () -> f.get(60, TimeUnit.SECONDS));  // get() throws it unwrapped
+    }
+
+    @Test
     void anAsyncCallerCanWaitForTheModelFromAVirtualThreadWhileBlockingCallersQueue() throws Exception {
         AtomicReference<Result> blocking = new AtomicReference<>();
         Thread b = Thread.ofVirtual().start(() -> blocking.set(model.chat(KILN, GREEDY.withMaxTokens(8))));

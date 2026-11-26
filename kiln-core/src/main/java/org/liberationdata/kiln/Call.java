@@ -1,7 +1,5 @@
 package org.liberationdata.kiln;
 
-import java.util.concurrent.CancellationException;
-
 /**
  * One call into a model's engine: whether it has been asked to stop, and the first exception a callback threw during
  * it. {@link ModelThread} makes one for each call; the engine bindings read it from their upcalls.
@@ -45,12 +43,6 @@ public final class Call {
         if (f instanceof RuntimeException e) throw e;
         if (f instanceof Error e) throw e;
         throw new RuntimeException(f);
-    }
-
-    /** For engines that fail a cancelled run: {@link #rethrow}, then a CancellationException if this call was stopped. */
-    public void throwIfStopped(String what) {
-        rethrow();
-        if (stop) throw new CancellationException(what + " was cancelled");
     }
 
     void markStopped() { stop = true; }

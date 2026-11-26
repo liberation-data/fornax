@@ -21,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
@@ -451,6 +452,8 @@ public final class LlamaModel implements AutoCloseable {
      * that thinks, is left out. Parse the result with any JSON library, or {@link Json#parse}.
      * @param jsonSchema a JSON Schema document, such as {@code {"type": "object", "properties": {...}, "required": [...]}}
      * @throws IllegalStateException if the reply ran out of tokens before the JSON was complete
+     * @throws CancellationException if {@link #cancel()} stopped it: unlike chat, the text so far is no use here,
+     *         because it is JSON cut off part way (and the engine still reports it as finished)
      */
     public String extract(List<Message> messages, String jsonSchema, Options o) {
         return thread.run(c -> extractOn(c, messages, jsonSchema, o));
@@ -460,6 +463,7 @@ public final class LlamaModel implements AutoCloseable {
         List<Image> images = new ArrayList<>();
         String request = ChatRequests.extract(messages, jsonSchema, o, images);
         Object response = Json.parse(chatJsonOn(call, request, images, null));
+        if (call.stopRequested()) throw new CancellationException("extract was cancelled");
         Object finish = Json.get(response, "finish_reason");
         if (!"stop".equals(finish)) throw new IllegalStateException("the reply was cut off (" + finish + "); raise maxTokens");
         return Json.get(response, "message", "content") instanceof String s ? s : "";

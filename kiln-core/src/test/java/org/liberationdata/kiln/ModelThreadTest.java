@@ -95,6 +95,24 @@ class ModelThreadTest {
         }
     }
 
+    /** How deep this thread can recurse before its stack overflows. */
+    static int depth() {
+        try { return 1 + depth(); } catch (StackOverflowError e) { return 0; }
+    }
+
+    @Test
+    void theModelThreadIsADaemonWithABigStack() throws Exception {
+        try (var t = new ModelThread("fake", () -> {})) {
+            assertTrue(t.submit(call -> Thread.currentThread().isDaemon()).get(10, TimeUnit.SECONDS),
+                    "an unclosed model must not keep the JVM alive");
+            int big = t.submit(call -> depth()).get(10, TimeUnit.SECONDS);
+            int[] small = new int[1];
+            Thread s = Thread.ofPlatform().stackSize(1L << 20).start(() -> small[0] = depth());
+            s.join();
+            assertTrue(big > 4 * small[0], "8 MB stack reached depth " + big + ", 1 MB reached " + small[0]);
+        }
+    }
+
     @Test
     void blockingAndAsyncCallsNeverOverlap() throws Exception {
         AtomicInteger inside = new AtomicInteger(), most = new AtomicInteger();

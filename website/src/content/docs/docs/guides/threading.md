@@ -73,8 +73,8 @@ try (var lease = pool.acquire("qwen3-4b", ModelPool.sizeOf(gguf), () -> new Llam
 }
 ```
 
-Await the future before the lease closes. Even if you don't, the model's thread keeps the calls apart, and the pool
-never unloads a model while it is leased.
+Await the future before the lease closes. The pool only unloads a model that isn't leased, so once the lease is
+closed it may unload this one while your call is still queued or running, and `close()` then cancels the call.
 
 ## Streaming
 
@@ -156,7 +156,7 @@ firing, stops that call only: if it is still queued, it never starts. Cancelling
 
 | Engine | Stops | What the call returns |
 |---|---|---|
-| `LlamaModel` | after the current token, in every call (with or without a callback), and during reasoning and tool calls in `chatJson` | the text so far |
+| `LlamaModel` | after the current token, in every call (with or without a callback), and during reasoning and tool calls in `chatJson` | the text so far (`extract` throws `CancellationException`: cut-off JSON is no use) |
 | `TtsModel` | between chunks, in a streaming call (with `onChunk` or a subscriber) | the audio so far |
 | `DiffusionModel` (images and video) | at the next step, through `sd_cancel_generation` | throws `CancellationException` |
 | `AceStepModel` | between LM tokens, DiT steps and VAE tiles | throws `CancellationException` |
@@ -185,4 +185,5 @@ An async call that is cancelled completes its future with a `CancellationExcepti
 4. The weights are freed, once. A second `close()`, even from another thread at the same moment, waits for that and
    returns.
 
-`ModelPool` closes models only when they aren't leased, so it never hits step 3.
+`ModelPool` closes models only when they aren't leased, so it never hits step 3 as long as you await async calls before
+closing the lease.
