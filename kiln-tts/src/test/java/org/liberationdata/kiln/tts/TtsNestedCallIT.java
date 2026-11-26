@@ -26,12 +26,14 @@ class TtsNestedCallIT {
         assumeTrue(W.downloaded(), "model not downloaded: hf download " + W.repo);
         try (var outerModel = new TtsModel(W); var innerModel = new TtsModel(W)) {
             String voice = outerModel.voices().isEmpty() ? null : outerModel.voices().getFirst();
-            List<Audio> outer = new ArrayList<>(), inner = new ArrayList<>();
+            List<Audio> outer = new ArrayList<>(), inner = new ArrayList<>(), innerResult = new ArrayList<>();
             Audio a = outerModel.speak(TEXT, voice, TtsModel.Options.DEFAULT.withSeed(1), chunk -> {
-                if (outer.isEmpty()) innerModel.speak("Hello.", voice, TtsModel.Options.DEFAULT, inner::add);
+                if (outer.isEmpty()) innerResult.add(innerModel.speak("Hello.", voice, TtsModel.Options.DEFAULT, inner::add));
                 outer.add(chunk);
             });
             assertFalse(inner.isEmpty(), "the inner call streamed");
+            assertEquals(innerResult.getFirst().left().length, inner.stream().mapToInt(c -> c.left().length).sum(),
+                    "the inner consumer got every chunk");
             assertEquals(a.left().length, outer.stream().mapToInt(c -> c.left().length).sum(),
                     "the outer consumer got every chunk");
 
