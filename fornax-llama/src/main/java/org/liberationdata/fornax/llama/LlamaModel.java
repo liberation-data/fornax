@@ -443,22 +443,28 @@ public final class LlamaModel implements AutoCloseable {
         Objects.requireNonNull(gguf, "ggufPath");
         try { if (Files.exists(Path.of(gguf))) return new String[]{gguf, mmproj}; }   // the usual case: no hub needed
         catch (java.nio.file.InvalidPathException notAPath) { /* a reference's ':' on Windows */ }
+        return locate(gguf, mmproj, mode, FornaxHub.standard());
+    }
+
+    /** {@link #locate(String, String, Mode)} with the given hub; anything that isn't a GGUF model is refused before downloading. */
+    static String[] locate(String gguf, String mmproj, Mode mode, FornaxHub hub) {
         if (ModelRef.urlHint(gguf).isPresent()) ModelRef.parse(gguf);   // throws, naming the reference to use instead
-        FornaxHub hub = FornaxHub.standard();
         if (!hub.isReference(gguf)) return new String[]{gguf, mmproj};
-        var set = ModelCatalog.byName(gguf.strip());   // refused before fetching: an image model's files are gigabytes
-        if (set.isPresent() && set.get().kind() != ModelSet.Kind.CHAT && set.get().kind() != ModelSet.Kind.VISION)
-            throw new IllegalArgumentException(gguf + " is a " + set.get().kind().name().toLowerCase(java.util.Locale.ROOT) + " model ("
-                    + set.get().engine() + "); LlamaModel loads language and vision models");
+        var alias = ModelCatalog.byName(gguf.strip());   // refused before fetching: an image model's files are gigabytes
+        if (alias.isPresent() && alias.get().kind() != ModelSet.Kind.CHAT && alias.get().kind() != ModelSet.Kind.VISION)
+            throw new IllegalArgumentException(gguf + " is a " + alias.get().kind().name().toLowerCase(java.util.Locale.ROOT) + " model ("
+                    + alias.get().engine() + "); LlamaModel loads language and vision models");
         Map<String, Path> files;
-        try { files = hub.fetch(gguf, PullListener.logging()); }
-        catch (IOException e) { throw new UncheckedIOException(gguf + ": " + e.getMessage(), e); }
-        Path model = files.get("gguf");
-        if (model == null)
-            throw new IllegalArgumentException(gguf + " isn't a GGUF language model (it has " + files.keySet() + ")");
+        try {
+            ModelSet set = alias.isPresent() ? alias.get() : hub.resolve(ModelRef.parse(gguf));   // fetch, checked first
+            if (set.parts().stream().noneMatch(p -> p.role().equals("gguf")))
+                throw new IllegalArgumentException(gguf + " isn't a GGUF language model (it names "
+                        + set.parts().stream().map(p -> p.primary().file()).toList() + ")");
+            files = hub.pull(set, PullListener.logging());
+        } catch (IOException e) { throw new UncheckedIOException(gguf + ": " + e.getMessage(), e); }
         String mm = mmproj != null || mode != Mode.CHAT ? mmproj
                 : files.containsKey("mmproj") ? files.get("mmproj").toString() : null;
-        return new String[]{model.toString(), mm};
+        return new String[]{files.get("gguf").toString(), mm};
     }
 
     /**
