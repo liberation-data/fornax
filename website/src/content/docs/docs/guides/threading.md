@@ -158,7 +158,7 @@ firing, stops that call only: if it is still queued, it never starts. Cancelling
 
 | Engine | Stops | What the call returns |
 |---|---|---|
-| `LlamaModel` | after the current token, in every call (with or without a callback), and during reasoning and tool calls in `chatJson` | the text so far (`extract` throws `CancellationException`: cut-off JSON is no use) |
+| `LlamaModel` | after the current token, in every call (with or without a callback), and during reasoning and tool calls in `chatJson`; `embed` and `rerank` between batches | the text so far (`extract`, `embed` and `rerank` throw `CancellationException`: cut-off JSON or a partial list is no use) |
 | `TtsModel` | between chunks, in a streaming call (with `onChunk` or a subscriber) | the audio so far |
 | `DiffusionModel` (images and video) | at the next step, through `sd_cancel_generation` | throws `CancellationException` |
 | `AceStepModel` | between LM tokens, DiT steps and VAE tiles | throws `CancellationException` |
