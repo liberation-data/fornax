@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Converts Qwen/Qwen3-TTS-12Hz-1.7B-Base to GGUF (backbone + mmproj) with the convert_hf_to_gguf.py of the llama.cpp
-# Kiln pins, so that the mmproj carries the reference encoder (the speech tokenizer's Mimi encoder, a.gen.enc.*).
+# Fornax pins, so that the mmproj carries the reference encoder (the speech tokenizer's Mimi encoder, a.gen.enc.*).
 # ggml-org's published mmproj lacks it, and without it llama.cpp clones from the speaker embedding only and ignores
 # the reference transcript. Load the output by path:
 #   ./gradlew speak --args='out.wav "text" @clip.wav' -Pmodel=<out>/Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf \
@@ -32,7 +32,7 @@ NAME=Qwen3-TTS-12Hz-1.7B-Base
 pin=$(grep '^llama.cpp.commit=' "$ROOT/native/engines.properties" | cut -d= -f2)
 [ -f "$LLAMA_CPP/convert_hf_to_gguf.py" ] || { echo "no llama.cpp at $LLAMA_CPP (run native/build.sh vulkan tts, or set LLAMA_CPP)" >&2; exit 1; }
 head=$(git -C "$LLAMA_CPP" rev-parse HEAD 2>/dev/null || echo "an unknown commit")
-[ "$head" = "$pin" ] || echo "warning: $LLAMA_CPP is at $head, Kiln pins $pin" >&2
+[ "$head" = "$pin" ] || echo "warning: $LLAMA_CPP is at $head, Fornax pins $pin" >&2
 
 # The snapshot hf download last fetched (refs/main), not whichever older one sorts first.
 cache=${HF_HUB_CACHE:-${HF_HOME:-$HOME/.cache/huggingface}/hub}/models--${REPO//\//--}

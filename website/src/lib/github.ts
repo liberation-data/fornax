@@ -1,9 +1,9 @@
 /**
- * Kiln Studio's latest release on GitHub, fetched when the site is built, as drivine.org does for Drivine Studio: a
+ * Fornax Studio's latest release on GitHub, fetched when the site is built, as drivine.org does for Drivine Studio: a
  * visitor's browser never calls GitHub, and the scheduled build keeps it fresh. What can't be fetched is left out, and
  * the page says the downloads are on their way instead.
  */
-export const STUDIO = { name: 'Kiln Studio', repo: 'liberation-data/kiln-studio' } as const;
+export const STUDIO = { name: 'Fornax Studio', repo: 'liberation-data/fornax-studio' } as const;
 export const studioUrl = `https://github.com/${STUDIO.repo}`;
 
 /** A GET of GitHub's API, with GITHUB_TOKEN if it's set, given up after 10 s. */
@@ -23,14 +23,14 @@ const githubJson = async (path: string): Promise<any> => {
     return response.json();
 };
 
-/** One downloadable build of Kiln Studio: a short label for its button, where GitHub serves the file, and its size. */
+/** One downloadable build of Fornax Studio: a short label for its button, where GitHub serves the file, and its size. */
 export interface Download {
     label: string;
     url: string;
     size: string;
 }
 
-/** Kiln Studio's latest release: its version, its release page, and the per-platform installers attached to it. */
+/** Fornax Studio's latest release: its version, its release page, and the per-platform installers attached to it. */
 export interface StudioRelease {
     version: string;
     url: string;
@@ -64,7 +64,7 @@ async function fetchStudioRelease(): Promise<StudioRelease | undefined> {
         const asset = assets.find((a) => match(a.name));
         return asset ? { label, url: asset.browser_download_url, size: megabytes(asset.size) } : undefined;
     };
-    // kiln-studio-mac-arm64.dmg, kiln-studio-mac-x64.dmg: package.json's mac.artifactName.
+    // fornax-studio-mac-arm64.dmg, fornax-studio-mac-x64.dmg: package.json's mac.artifactName.
     const mac = {
         appleSilicon: download((name) => name.endsWith('.dmg') && name.includes('arm64'), 'Apple Silicon'),
         intel: download((name) => name.endsWith('.dmg') && name.includes('x64'), 'Intel'),
@@ -85,7 +85,7 @@ async function fetchStudioRelease(): Promise<StudioRelease | undefined> {
 let studio: Promise<StudioRelease | undefined> | undefined;
 
 /**
- * Kiln Studio's latest release and the installers it attached, fetched once per build. If the fetch fails (the
+ * Fornax Studio's latest release and the installers it attached, fetched once per build. If the fetch fails (the
  * repository is still private, or GitHub can't be reached), or the release has no installers, there is none, and the
  * page says the downloads are coming.
  */
@@ -96,7 +96,7 @@ export function studioRelease(): Promise<StudioRelease | undefined> {
 
 let open: Promise<boolean> | undefined;
 
-/** Whether anyone can see Kiln Studio's repository, so the page links to it only once it is public. Asked once per build. */
+/** Whether anyone can see Fornax Studio's repository, so the page links to it only once it is public. Asked once per build. */
 export function studioRepoPublic(): Promise<boolean> {
     open ??= github(`repos/${STUDIO.repo}`)
         .then(async (response) => response.ok && (await response.json()).private === false)

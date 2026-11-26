@@ -1,10 +1,10 @@
-# Publishes Kiln to Maven Central as org.kiln4j:*: the Java modules (kiln-core, kiln-llama, kiln-tts, kiln-sd,
-# kiln-acestep, kiln-yue2, kiln-whisper, kiln-demucs) and one natives jar per platform and backend (kiln-natives-<os>-<arch>-<backend>).
+# Publishes Fornax to Maven Central as org.fornax4j:*: the Java modules (fornax-core, fornax-llama, fornax-tts, fornax-sd,
+# fornax-acestep, fornax-yue2, fornax-whisper, fornax-demucs) and one natives jar per platform and backend (fornax-natives-<os>-<arch>-<backend>).
 #
 # On a published GitHub Release tagged v<version> (v0.1.0 publishes 0.1.0). Run by hand for a dry run, which builds
 # and signs every jar exactly as a release does, and stops before the upload; the signed repository is left as an
 # artifact to look through. A run by hand that isn't a dry run must be on a v* tag.
-# After a release, verify-central waits for repo1.maven.org to serve it and builds samples/hello-kiln from there.
+# After a release, verify-central waits for repo1.maven.org to serve it and builds samples/hello-fornax from there.
 #
 # NO SECRETS WHERE THIRD-PARTY CODE BUILDS. The natives job builds llama.cpp, stable-diffusion.cpp, acestep.cpp,
 # yue2.cpp, whisper.cpp and stems.cpp (fetched by native/build.sh at the commits native/engines.properties pins), so it gets no
@@ -56,7 +56,7 @@ jobs:
           [[ "$version" != *-SNAPSHOT ]] || { echo "::error::a release can't be a snapshot: $version"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
-          echo "Kiln $version (dry run: $DRY_RUN)"
+          echo "Fornax $version (dry run: $DRY_RUN)"
 
   natives:
     name: Natives (${{ matrix.platform }})
@@ -109,7 +109,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/native/${{ matrix.dir }}
-          key: natives-${{ matrix.platform }}-${{ env.VULKAN_SDK_VERSION }}-${{ hashFiles('native/**', 'kiln-llama/native/**', 'kiln-tts/native/**', 'kiln-acestep/native/**', 'kiln-yue2/native/**', 'kiln-whisper/native/**', 'kiln-demucs/native/**') }}
+          key: natives-${{ matrix.platform }}-${{ env.VULKAN_SDK_VERSION }}-${{ hashFiles('native/**', 'fornax-llama/native/**', 'fornax-tts/native/**', 'fornax-acestep/native/**', 'fornax-yue2/native/**', 'fornax-whisper/native/**', 'fornax-demucs/native/**') }}
 
       - name: Build the native libraries
         if: steps.cache.outputs.cache-hit != 'true'
@@ -134,12 +134,12 @@ jobs:
         run: |
           set -euo pipefail
           ls -l "$DIR"
-          for lib in libkiln_llama libkiln_tts libstable-diffusion libkiln_acestep libkiln_yue2 libkiln_whisper libkiln_demucs; do
+          for lib in libfornax_llama libfornax_tts libstable-diffusion libfornax_acestep libfornax_yue2 libfornax_whisper libfornax_demucs; do
             [ -f "$DIR/$lib.so" ] || [ -f "$DIR/$lib.dylib" ] || { echo "::error::no $lib in $DIR"; exit 1; }
           done
-          # kiln-llama binds its vision functions when it loads, so a libkiln_llama built without mtmd fails every model.
+          # fornax-llama binds its vision functions when it loads, so a libfornax_llama built without mtmd fails every model.
           if [ "$RUNNER_OS" = Linux ]; then syms="nm -D --defined-only"; else syms="nm -gU"; fi
-          $syms "$DIR"/libkiln_llama.* | grep 'kiln_llama_create_mm$' > /dev/null || { echo "::error::libkiln_llama has no vision (mtmd)"; exit 1; }
+          $syms "$DIR"/libfornax_llama.* | grep 'fornax_llama_create_mm$' > /dev/null || { echo "::error::libfornax_llama has no vision (mtmd)"; exit 1; }
           if [ "$RUNNER_OS" = Linux ]; then
             sudo apt-get install -y -qq libvulkan1 > /dev/null
             for lib in "$DIR"/*.so; do
@@ -178,7 +178,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # 22 for the tests on the oldest Java Kiln supports; 25, the last, is JAVA_HOME and builds.
+      # 22 for the tests on the oldest Java Fornax supports; 25, the last, is JAVA_HOME and builds.
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -202,11 +202,11 @@ jobs:
 
       # The Java modules' unit tests; the engine tests skip themselves without models.
       - name: Build and test
-        run: ./gradlew --no-daemon build -Pversion="$VERSION" -Pkiln.natives.require=true
+        run: ./gradlew --no-daemon build -Pversion="$VERSION" -Pfornax.natives.require=true
 
       # The same tests on Java 22, which the jars are compiled for (options.release in build.gradle).
       - name: Test on Java 22
-        run: ./gradlew --no-daemon test -Pversion="$VERSION" -Pkiln.natives.require=true -Pkiln.testJdk=22 -Porg.gradle.java.installations.fromEnv=JAVA_HOME_22_X64
+        run: ./gradlew --no-daemon test -Pversion="$VERSION" -Pfornax.natives.require=true -Pfornax.testJdk=22 -Porg.gradle.java.installations.fromEnv=JAVA_HOME_22_X64
 
       # Everything signed, into a local repository: what a release uploads, and what a dry run stops at.
       - name: Sign into a local repository
@@ -215,10 +215,10 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
         run: |
           set -euo pipefail
-          ./gradlew --no-daemon publishToMavenLocal -Pversion="$VERSION" -Pkiln.natives.require=true -Dmaven.repo.local="$RUNNER_TEMP/m2"
-          repo="$RUNNER_TEMP/m2/org/kiln4j"
-          for a in kiln-core kiln-llama kiln-tts kiln-sd kiln-acestep kiln-yue2 kiln-whisper kiln-demucs \
-                   kiln-natives-linux-x86_64-vulkan kiln-natives-macos-aarch64-metal kiln-natives-macos-x86_64-metal; do
+          ./gradlew --no-daemon publishToMavenLocal -Pversion="$VERSION" -Pfornax.natives.require=true -Dmaven.repo.local="$RUNNER_TEMP/m2"
+          repo="$RUNNER_TEMP/m2/org/fornax4j"
+          for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs \
+                   fornax-natives-linux-x86_64-vulkan fornax-natives-macos-aarch64-metal fornax-natives-macos-x86_64-metal; do
             for f in "$a-$VERSION.pom" "$a-$VERSION.jar" "$a-$VERSION-sources.jar" "$a-$VERSION-javadoc.jar"; do
               [ -f "$repo/$a/$VERSION/$f" ] || { echo "::error::$f was not built"; exit 1; }
               [ -f "$repo/$a/$VERSION/$f.asc" ] || { echo "::error::$f was not signed"; exit 1; }
@@ -230,20 +230,20 @@ jobs:
           echo "Deployment: $((total / 1024 / 1024)) MB"
           [ "$total" -lt 1000000000 ] || { echo "::error::the deployment is over the Central Portal's 1 GB"; exit 1; }
 
-      # samples/hello-kiln, a standalone build, against what was just signed: the coordinates users will copy work.
+      # samples/hello-fornax, a standalone build, against what was just signed: the coordinates users will copy work.
       # Compiling alone never resolves the runtime-only natives jar, so Gradle installs the app and Maven resolves.
       - name: Build the sample against the signed repository
         run: |
           set -euo pipefail
-          samples/hello-kiln/gradlew --no-daemon -p samples/hello-kiln installDist -PkilnLocal=true -PkilnVersion="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
-          mvn -B -q -f samples/hello-kiln/pom.xml compile $RESOLVE -Dkiln.version="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
+          samples/hello-fornax/gradlew --no-daemon -p samples/hello-fornax installDist -PfornaxLocal=true -PfornaxVersion="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
+          mvn -B -q -f samples/hello-fornax/pom.xml compile $RESOLVE -Dfornax.version="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
 
       - name: Keep the signed repository (dry run)
         if: env.DRY_RUN == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: maven-repository-${{ env.VERSION }}
-          path: ${{ runner.temp }}/m2/org/kiln4j
+          path: ${{ runner.temp }}/m2/org/fornax4j
           retention-days: 3
 
       # Uploads one deployment, waits for the Central Portal to validate it, and publishes it.
@@ -258,10 +258,10 @@ jobs:
           set -euo pipefail
           # A re-run after an upload that went through (the job failed later, or while waiting): Central refuses a
           # version it already has, so go on to verify-central instead of failing here every time.
-          if curl -fsI -o /dev/null "https://repo1.maven.org/maven2/org/kiln4j/kiln-core/$VERSION/kiln-core-$VERSION.pom"; then
-            echo "::notice::Kiln $VERSION is already on Maven Central; not uploading it again"; exit 0
+          if curl -fsI -o /dev/null "https://repo1.maven.org/maven2/org/fornax4j/fornax-core/$VERSION/fornax-core-$VERSION.pom"; then
+            echo "::notice::Fornax $VERSION is already on Maven Central; not uploading it again"; exit 0
           fi
-          ./gradlew --no-daemon publishAndReleaseToMavenCentral -Pversion="$VERSION" -Pkiln.natives.require=true
+          ./gradlew --no-daemon publishAndReleaseToMavenCentral -Pversion="$VERSION" -Pfornax.natives.require=true
 
   # After a release: wait until Maven Central serves every artifact, then build the sample from Central alone, the
   # way a user would (built, not run: runners have no GPU to run it on).
@@ -286,10 +286,10 @@ jobs:
       - name: Wait for repo1.maven.org
         run: |
           set -euo pipefail
-          base=https://repo1.maven.org/maven2/org/kiln4j
+          base=https://repo1.maven.org/maven2/org/fornax4j
           files=()
-          for a in kiln-core kiln-llama kiln-tts kiln-sd kiln-acestep kiln-yue2 kiln-whisper kiln-demucs \
-                   kiln-natives-linux-x86_64-vulkan kiln-natives-macos-aarch64-metal kiln-natives-macos-x86_64-metal; do
+          for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs \
+                   fornax-natives-linux-x86_64-vulkan fornax-natives-macos-aarch64-metal fornax-natives-macos-x86_64-metal; do
             files+=("$base/$a/$VERSION/$a-$VERSION.pom" "$base/$a/$VERSION/$a-$VERSION.jar")
           done
           deadline=$(( $(date +%s) + 30 * 60 ))
@@ -305,5 +305,5 @@ jobs:
       - name: Build the sample from Maven Central
         run: |
           set -euo pipefail
-          samples/hello-kiln/gradlew --no-daemon -p samples/hello-kiln installDist --refresh-dependencies -PkilnVersion="$VERSION"
-          mvn -B -q -U -f samples/hello-kiln/pom.xml compile $RESOLVE -Dkiln.version="$VERSION"
+          samples/hello-fornax/gradlew --no-daemon -p samples/hello-fornax installDist --refresh-dependencies -PfornaxVersion="$VERSION"
+          mvn -B -q -U -f samples/hello-fornax/pom.xml compile $RESOLVE -Dfornax.version="$VERSION"

@@ -18,10 +18,10 @@ hf download Qwen/Qwen3-VL-4B-Instruct-GGUF Qwen3VL-4B-Instruct-Q4_K_M.gguf mmpro
 ```
 
 ```java
-import org.liberationdata.kiln.llama.LlamaModel;
-import org.liberationdata.kiln.llama.LlamaModel.Image;
-import org.liberationdata.kiln.llama.LlamaModel.Message;
-import org.liberationdata.kiln.llama.LlamaModel.Options;
+import org.liberationdata.fornax.llama.LlamaModel;
+import org.liberationdata.fornax.llama.LlamaModel.Image;
+import org.liberationdata.fornax.llama.LlamaModel.Message;
+import org.liberationdata.fornax.llama.LlamaModel.Options;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -51,9 +51,9 @@ Image b = Image.decode(bytes);                      // encoded bytes, from an up
 Image c = Image.of(bufferedImage);                  // any Java2D image
 ```
 
-## The models Kiln knows by name
+## The models Fornax knows by name
 
-`LlamaModel.Weights` names the models Kiln has been tried with. `new LlamaModel(Weights)` loads the model and, for a
+`LlamaModel.Weights` names the models Fornax has been tried with. `new LlamaModel(Weights)` loads the model and, for a
 vision model, its mmproj, from the Hugging Face cache. If they're missing it fails with the `hf download` command,
 which `downloadCommand()` also gives you.
 
@@ -95,13 +95,13 @@ try (var vlm = new LlamaModel(LlamaModel.Weights.QWEN3_VL_4B)) {
             List.of(Message.user("Extract this invoice's fields.", Image.read(Path.of("invoice.png")))),
             schema, Options.DEFAULT.withTemperature(0).withMaxTokens(1024));
 
-    Object invoice = org.liberationdata.kiln.llama.Json.parse(json);
-    System.out.println(org.liberationdata.kiln.llama.Json.get(invoice, "total"));
+    Object invoice = org.liberationdata.fornax.llama.Json.parse(json);
+    System.out.println(org.liberationdata.fornax.llama.Json.get(invoice, "total"));
 }
 ```
 
 If the reply runs out of tokens before the JSON is complete, `extract` throws an `IllegalStateException`; raise
-`maxTokens`. Use any JSON library to read the result, or the small `Json` helper that comes with `kiln-llama`:
+`maxTokens`. Use any JSON library to read the result, or the small `Json` helper that comes with `fornax-llama`:
 `Json.parse` gives maps, lists, strings, numbers, booleans and nulls, and `Json.get(doc, "a", "b", 0)` follows a
 path.
 

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# The explainer, for the page: from the video build's mp4 (arg 1, default the Kiln repo's out/explainer.mp4), writes
+# The explainer, for the page: from the video build's mp4 (arg 1, default the Fornax repo's out/explainer.mp4), writes
 # public/video/:
 #   explainer.mp4          the web copy: H.264 CRF 24, AAC 160k, moov first (faststart), the fallback where HLS can't play
 #   hls/                   the web copy cut into 4 s fmp4 segments (index.m3u8, init.mp4, 000.m4s...), copied, not
 #                          re-encoded, with the same settings as worlds-landing's scripts/pull-videos.mjs
 #   explainer-poster.jpg   the title card the video opens on (0 to 4 s), at 2 s
-#   explainer-end.jpg      the kiln4j logo the video holds at its end, 1.2 s before the end (after it, it fades to black)
+#   explainer-end.jpg      the fornax4j logo the video holds at its end, 1.2 s before the end (after it, it fades to black)
 #   explainer.vtt          the build's captions, where they are beside the mp4
 # public/video/ is gitignored: the video isn't cleared to publish yet, so none of this is committed. Run from website/.
 set -euo pipefail
 
-SRC=${1:-$HOME/projects/kiln/videos/explainer/out/explainer.mp4}
+SRC=${1:-$HOME/projects/fornax/videos/explainer/out/explainer.mp4}
 OUT=public/video
 [[ -f $SRC ]] || { echo "no video at $SRC" >&2; exit 1; }
 SRC=$(realpath "$SRC")

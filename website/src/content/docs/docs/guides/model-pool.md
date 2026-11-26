@@ -3,21 +3,21 @@ title: ModelPool and memory
 description: Keep models loaded between uses within a memory budget, share them safely between threads, and unload them when they sit idle.
 ---
 
-Loading a model means reading gigabytes of weights onto the GPU, so Kiln's models keep their weights loaded until
+Loading a model means reading gigabytes of weights onto the GPU, so Fornax's models keep their weights loaded until
 you `close()` them. Load each model once and reuse it.
 
 An app with several models (a chat model, an image model, a song model) can't always keep all of them loaded at once.
-`ModelPool`, in `kiln-core`, does what ComfyUI does: it keeps models loaded between uses, within a memory budget,
+`ModelPool`, in `fornax-core`, does what ComfyUI does: it keeps models loaded between uses, within a memory budget,
 and unloads the ones used least recently when it needs room.
 
 ## Borrowing a model
 
 ```java
-import org.liberationdata.kiln.HfCache;
-import org.liberationdata.kiln.ModelPool;
-import org.liberationdata.kiln.llama.LlamaModel;
-import org.liberationdata.kiln.llama.LlamaModel.Message;
-import org.liberationdata.kiln.llama.LlamaModel.Options;
+import org.liberationdata.fornax.HfCache;
+import org.liberationdata.fornax.ModelPool;
+import org.liberationdata.fornax.llama.LlamaModel;
+import org.liberationdata.fornax.llama.LlamaModel.Message;
+import org.liberationdata.fornax.llama.LlamaModel.Options;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -58,7 +58,7 @@ weight files, which is a reasonable estimate of what loading them takes. Add a m
 to.
 
 ```java
-import org.liberationdata.kiln.sd.DiffusionModel;
+import org.liberationdata.fornax.sd.DiffusionModel;
 
 Path flux = HfCache.require("black-forest-labs/FLUX.2-klein-base-4b-fp8", "flux-2-klein-base-4b-fp8.safetensors");
 Path vae = HfCache.require("Comfy-Org/flux2-dev", "split_files/vae/flux2-vae.safetensors");
@@ -66,7 +66,7 @@ Path qwen3 = HfCache.require("Comfy-Org/z_image_turbo", "split_files/text_encode
 
 try (var lease = pool.acquire("flux2-klein", ModelPool.sizeOf(flux, vae, qwen3), () -> new DiffusionModel(
         DiffusionModel.Config.builder().diffusionModel(flux.toString()).vae(vae.toString()).llm(qwen3.toString()).build()))) {
-    var img = lease.model().generate(new DiffusionModel.Request("a kiln at dusk", 768, 768, 12, 4.0, 7)).get(0);
+    var img = lease.model().generate(new DiffusionModel.Request("a fornax at dusk", 768, 768, 12, 4.0, 7)).get(0);
 }
 ```
 

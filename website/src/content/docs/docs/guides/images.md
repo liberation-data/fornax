@@ -3,7 +3,7 @@ title: Images
 description: Generate and edit images from Java with stable-diffusion.cpp - FLUX.2 [klein], Qwen-Image, Qwen-Image-Edit and Z-Image - and pass any engine option through.
 ---
 
-`kiln-sd` runs image (and [video](/docs/guides/video/)) diffusion models through
+`fornax-sd` runs image (and [video](/docs/guides/video/)) diffusion models through
 [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp): FLUX.1 and FLUX.2, Qwen-Image and
 Qwen-Image-Edit, Z-Image, SD 1.x, 2.x, XL and 3, and more. The class is `DiffusionModel`.
 
@@ -13,7 +13,7 @@ model loads all of them in its constructor and keeps them loaded across calls.
 
 ## FLUX.2 [klein]
 
-FLUX.2 [klein] base 4B is the model Kiln's demo paints its covers with, and a good first one to try.
+FLUX.2 [klein] base 4B is the model Fornax's demo paints its covers with, and a good first one to try.
 
 ```sh
 hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors
@@ -22,8 +22,8 @@ hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetens
 ```
 
 ```java
-import org.liberationdata.kiln.HfCache;
-import org.liberationdata.kiln.sd.DiffusionModel;
+import org.liberationdata.fornax.HfCache;
+import org.liberationdata.fornax.sd.DiffusionModel;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -37,13 +37,13 @@ var config = DiffusionModel.Config.builder()
 
 try (var images = new DiffusionModel(config)) {
     //                                              prompt, width, height, steps, cfg, seed
-    var request = new DiffusionModel.Request("a neon sign that says KILN", 768, 768, 12, 4.0, 7);
+    var request = new DiffusionModel.Request("a neon sign that says FORNAX", 768, 768, 12, 4.0, 7);
     BufferedImage img = images.generate(request).get(0);
-    ImageIO.write(img, "png", new File("kiln.png"));
+    ImageIO.write(img, "png", new File("fornax.png"));
 }
 ```
 
-`generate` returns a `List<BufferedImage>`, one image unless you ask for more (below). Kiln's examples use 20 steps
+`generate` returns a `List<BufferedImage>`, one image unless you ask for more (below). Fornax's examples use 20 steps
 at CFG 4.0 for klein; at 768×768 and 12 steps it took about 130 s on the Radeon 8060S with Vulkan.
 
 The text encoder here is Qwen3 4B, from Z-Image Turbo's repository: FLUX.2 [klein] 4B and Z-Image use the same one.
@@ -67,11 +67,11 @@ var config = DiffusionModel.Config.builder()
 
 try (var images = new DiffusionModel(config)) {
     BufferedImage img = images.generate(new DiffusionModel.Request(
-            "a hand-painted shop sign reading 'Kiln & Co. Pottery'", 1024, 1024, 20, 2.5, 7)).get(0);
+            "a hand-painted shop sign reading 'Fornax & Co. Pottery'", 1024, 1024, 20, 2.5, 7)).get(0);
 }
 ```
 
-Kiln's examples use 20 steps at CFG 2.5. At 1024×1024 that took about 13 minutes on the 8060S with Vulkan.
+Fornax's examples use 20 steps at CFG 2.5. At 1024×1024 that took about 13 minutes on the 8060S with Vulkan.
 
 ### Editing an image: Qwen-Image-Edit
 
@@ -161,7 +161,7 @@ The control image is fitted to the request's width and height. The ControlNet ha
 FLUX.1 Controls and Flex.2 take the control image directly and need no ControlNet file; they also ignore the control
 strength.
 
-Kiln has run SD 1.5 with the canny ControlNet (`comfyanonymous/ControlNet-v1-1_fp16_safetensors`); the example
+Fornax has run SD 1.5 with the canny ControlNet (`comfyanonymous/ControlNet-v1-1_fp16_safetensors`); the example
 below does the same:
 
 ```sh
@@ -171,7 +171,7 @@ below does the same:
 
 ### Settings that would be ignored are refused
 
-stable-diffusion.cpp silently ignores some settings that don't fit together. Kiln refuses them instead, with an
+stable-diffusion.cpp silently ignores some settings that don't fit together. Fornax refuses them instead, with an
 `IllegalArgumentException` when you call `generate`:
 
 - a strength without an init image (there is nothing to keep),
@@ -208,10 +208,10 @@ chooses for you.
 
 ### Qwen-Image-Edit with the Lightning LoRA
 
-The Lightning LoRAs cut Qwen-Image and Qwen-Image-Edit from 20 or more steps to 4, at CFG 1. Kiln compiles the same
+The Lightning LoRAs cut Qwen-Image and Qwen-Image-Edit from 20 or more steps to 4, at CFG 1. Fornax compiles the same
 program as sd-cli for this recipe, but hasn't rendered it on the Radeon 8060S: the bf16 Qwen-Image-Edit 2511 and
 its text encoder take about 51 GB of the 64 GB the Vulkan driver lets the GPU use, which leaves too little to
-compute with (see [engine notes](https://github.com/liberation-data/kiln/blob/main/docs/engine-notes.md)). A
+compute with (see [engine notes](https://github.com/liberation-data/fornax/blob/main/docs/engine-notes.md)). A
 smaller (fp8 or GGUF) file should fit. These are the
 settings ComfyUI's Qwen-Image-Edit 2511 workflow uses:
 
@@ -223,7 +223,7 @@ hf download lightx2v/Qwen-Image-Edit-2511-Lightning Qwen-Image-Edit-2511-Lightni
 var lightning = new DiffusionModel.Lora(HfCache.require("lightx2v/Qwen-Image-Edit-2511-Lightning",
         "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"), 1.0f);
 
-var request = new DiffusionModel.Request("make the sign say KILN", w, h, 4, 1.0, 1)
+var request = new DiffusionModel.Request("make the sign say FORNAX", w, h, 4, 1.0, 1)
         .withRefImages(List.of(photo))
         .withLoras(lightning)
         .withExtra(Map.of("sample.flow_shift", 3.1, "sample.method", "euler", "sample.scheduler", "simple"));
@@ -239,7 +239,7 @@ hf download Comfy-Org/Real-ESRGAN RealESRGAN_x4plus.safetensors
 ```
 
 ```java
-import org.liberationdata.kiln.sd.Upscaler;
+import org.liberationdata.fornax.sd.Upscaler;
 
 try (var up = new Upscaler(HfCache.require("Comfy-Org/Real-ESRGAN", "RealESRGAN_x4plus.safetensors"))) {
     BufferedImage big = up.upscale(img, 4);      // 512×512 -> 2048×2048
@@ -274,12 +274,12 @@ var config = DiffusionModel.Config.builder()
 
 try (var images = new DiffusionModel(config)) {
     BufferedImage img = images.generate(new DiffusionModel.Request(
-            "a rain-slicked street at night, neon reflections, a sign that says KILN", 1024, 1024, 8, 1.0, 7)).get(0);
+            "a rain-slicked street at night, neon reflections, a sign that says FORNAX", 1024, 1024, 8, 1.0, 7)).get(0);
 }
 ```
 
-:::caution[Not yet in Kiln's examples]
-Kiln's `image` example has no Z-Image preset yet. The settings above (8 steps, CFG 1.0, the FLUX.1 VAE) are
+:::caution[Not yet in Fornax's examples]
+Fornax's `image` example has no Z-Image preset yet. The settings above (8 steps, CFG 1.0, the FLUX.1 VAE) are
 stable-diffusion.cpp's own for Z-Image Turbo. If you try it, a report of how it went is welcome.
 :::
 
@@ -311,7 +311,7 @@ var config = DiffusionModel.Config.builder()
         .build();
 ```
 
-A key or value the engine rejects fails with an `Sd.SdException` that names the key. A Java type Kiln can't pass
+A key or value the engine rejects fails with an `Sd.SdException` that names the key. A Java type Fornax can't pass
 (anything but `Boolean`, `Integer`, `Long`, another `Number`, `String` or `float[]`) fails with an
 `IllegalArgumentException`.
 
@@ -327,23 +327,23 @@ DiffusionModel.onLog((level, text) -> System.err.print(text));    // levels: 0 d
 `modelVersion()` names the model stable-diffusion.cpp detected, which is a quick check that the files are the ones
 you meant.
 
-The engine is quiet by default, apart from errors. `KILN_VERBOSE=1` shows its info messages, and
-`KILN_VERBOSE=debug` everything, including the program it compiles for each generation.
+The engine is quiet by default, apart from errors. `FORNAX_VERBOSE=1` shows its info messages, and
+`FORNAX_VERBOSE=debug` everything, including the program it compiles for each generation.
 
 ## Try it
 
 ```sh
-./gradlew image --args='klein out.png "a neon sign that says KILN"' -Psteps=12 -Pwidth=768 -Pheight=768
+./gradlew image --args='klein out.png "a neon sign that says FORNAX"' -Psteps=12 -Pwidth=768 -Pheight=768
 ./gradlew image --args='qwen-image out.png "a hand-painted shop sign"'
 ./gradlew image --args='qwen-edit out.png "make the glaze cobalt blue" vase.png'
-./gradlew image --args='klein out.png "a kiln at night"' -Prepeat=2 -Pseed=3     # the second image reuses the loaded weights
+./gradlew image --args='klein out.png "a fornax at night"' -Prepeat=2 -Pseed=3     # the second image reuses the loaded weights
 
 # img2img, inpainting and LoRAs (klein by default; the size follows in.png)
 ./gradlew edit --args='in.png out.png "the same street in heavy snow"' -Pstrength=0.6
 ./gradlew edit --args='in.png out.png "a terracotta pot"' -Pstrength=1.0 -Pmask=mask.png
 ./gradlew edit --args='in.png out.png "PXART4. A pixel art shop"' -Pstrength=1.0 -Plora=pixelart_lora.safetensors:1.0
 # an instruction edit with Qwen-Image-Edit 2511 and the Lightning LoRA
-./gradlew edit --args='in.png out.png "make the sign say KILN"' -Pmodel=qwen-edit \
+./gradlew edit --args='in.png out.png "make the sign say FORNAX"' -Pmodel=qwen-edit \
     -Plora=Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors:1 -Psteps=4 -Pcfg=1 -Pshift=3.1 \
     -Psampler=euler -Pscheduler=simple
 

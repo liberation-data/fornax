@@ -3,7 +3,7 @@ title: Isolation
 description: Run a model in a worker process so that a native crash fails the call instead of killing your JVM, what it costs, and how it works with ModelPool.
 ---
 
-Kiln calls its engines in-process, through FFM. That is the default and the fast path: no copies, direct GPU access,
+Fornax calls its engines in-process, through FFM. That is the default and the fast path: no copies, direct GPU access,
 the engines' own builds. The catch is that a native crash, such as a failed `GGML_ASSERT`, a segfault, or a malformed
 or hostile GGUF, kills the whole JVM, and Java code can't catch it.
 
@@ -15,8 +15,8 @@ loads the model again.
 ## Turning it on
 
 ```java
-import org.liberationdata.kiln.WorkerCrashedException;
-import org.liberationdata.kiln.llama.LlamaModel;
+import org.liberationdata.fornax.WorkerCrashedException;
+import org.liberationdata.fornax.llama.LlamaModel;
 
 try (var llm = LlamaModel.isolated(gguf)) {           // the model loads in a worker process of its own
     llm.chat(messages, Options.DEFAULT, System.out::print);
@@ -30,7 +30,7 @@ It returns a `LlamaModel`, so everything in [Threading](/docs/guides/threading/)
 `cancel()`, which crosses to the worker and stops the generation there (a chat returns the text so far); cancelling a
 future; and `close()`, which also stops the worker.
 
-To isolate every `LlamaModel` without changing code, set `-Dkiln.isolation=process` (or `KILN_ISOLATION=process`).
+To isolate every `LlamaModel` without changing code, set `-Dfornax.isolation=process` (or `FORNAX_ISOLATION=process`).
 `new LlamaModel(...)` then loads in a worker too. The default is `inprocess`.
 
 `isolated(...)` also takes the constructor's other forms: `isolated(Weights)`, and
@@ -46,9 +46,9 @@ try (var worker = new Worker("chat-models", Worker.Options.DEFAULT)) {
 ```
 
 Isolation covers `LlamaModel` today. The worker itself is generic: other engines need a `WorkerService` each, as
-`kiln-llama`'s `LlamaService` is.
+`fornax-llama`'s `LlamaService` is.
 Within `LlamaModel` it covers chat and vision (`Mode.CHAT`). Embedding and reranking models don't run in a worker
-yet: under `kiln.isolation=process`, loading one fails with an `UnsupportedOperationException`, so load those in-process.
+yet: under `fornax.isolation=process`, loading one fails with an `UnsupportedOperationException`, so load those in-process.
 
 ## When to choose it
 
@@ -67,8 +67,8 @@ What isolation can't fix: a GPU driver hang or reset. That sits below both proce
 ## What it costs
 
 Measured on a Ryzen AI Max+ 395 (Radeon 8060S, Vulkan), with the GPU shared with other work. The numbers come from
-`./gradlew :kiln-core:workerBench` and
-`./gradlew :kiln-llama:isolationBench --args='Qwen3-0.6B-Q8_0.gguf 256 3'`.
+`./gradlew :fornax-core:workerBench` and
+`./gradlew :fornax-llama:isolationBench --args='Qwen3-0.6B-Q8_0.gguf 256 3'`.
 
 | | In-process | Isolated |
 |---|---|---|
@@ -97,8 +97,8 @@ Measured on a Ryzen AI Max+ 395 (Radeon 8060S, Vulkan), with the GPU shared with
 
 ## How it works
 
-- **The worker** is `java` from your JVM's `java.home`, with the same class path, every `-Dkiln.*` property, the same
-  environment (so every `KILN_*` variable) and `--enable-native-access=ALL-UNNAMED`. It finds the same natives your JVM
+- **The worker** is `java` from your JVM's `java.home`, with the same class path, every `-Dfornax.*` property, the same
+  environment (so every `FORNAX_*` variable) and `--enable-native-access=ALL-UNNAMED`. It finds the same natives your JVM
   would. Your JVM doesn't load the engine library at all for an isolated model. Workers start when the model loads.
 - **Calls** go over a Unix domain socket in a private temporary directory: the call, each streamed token, the result
   or the exception, and cancels. The worker's exceptions arrive as the same class where they can be rebuilt

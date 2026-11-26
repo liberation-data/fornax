@@ -1,29 +1,29 @@
 ---
 title: API overview
-description: The public classes of each Kiln module, what they're for, and how to build the Javadoc.
+description: The public classes of each Fornax module, what they're for, and how to build the Javadoc.
 ---
 
-Kiln's public API is small: one model class per engine, plus a few shared helpers. This page lists it by module.
+Fornax's public API is small: one model class per engine, plus a few shared helpers. This page lists it by module.
 For every method and parameter, build the Javadoc from a clone:
 
 ```sh
 ./gradlew javadoc        # one site per module, in <module>/build/docs/javadoc/index.html
 ```
 
-All packages are under `org.liberationdata.kiln`. Every model class is `AutoCloseable` (its weights are freed on
+All packages are under `org.liberationdata.fornax`. Every model class is `AutoCloseable` (its weights are freed on
 `close()`, which is idempotent). A model can be called from any thread, one call at a time; the `...Async` methods run
 on its own thread. See [Threading](/docs/guides/threading/).
 
-## kiln-core
+## fornax-core
 
-Package `org.liberationdata.kiln`. The engine modules depend on it.
+Package `org.liberationdata.fornax`. The engine modules depend on it.
 
 | Type | |
 |---|---|
 | `HfCache` | finds files in the Hugging Face cache: `root()`, `home()`, `find(repo, path)`, `require(repo, path)`, `requireAny(repo, path, ...)`, and the cache's contents: `repos(root)`, `files(root, repo)` |
-| `hub.KilnHub` | pulls, finds, reports and evicts model sets: `standard()`, `builder()`, `pull(set, listener)`, `pullAsync`, `plan`, `status`, `find`, `require`, `evict`. See [Downloading models](/docs/guides/models/) |
+| `hub.FornaxHub` | pulls, finds, reports and evicts model sets: `standard()`, `builder()`, `pull(set, listener)`, `pullAsync`, `plan`, `status`, `find`, `require`, `evict`. See [Downloading models](/docs/guides/models/) |
 | `hub.ModelSet` | a model as a set of files by role: `id`, `kind`, `title`, `engine`, `parts`, `license`, `gated`, `aliases`; `Part` (role and sources), `Source` (repo, file, revision) |
-| `hub.ModelCatalog` | the models Kiln's examples, CLI and Studio use: `all()`, `of(kind)`, `byName`, `require` |
+| `hub.ModelCatalog` | the models Fornax's examples, CLI and Studio use: `all()`, `of(kind)`, `byName`, `require` |
 | `hub.ModelFolders` | folders searched after the cache (a ComfyUI `models/`): `configured()`, `find(part)` |
 | `hub.PullProgress`, `PullTask`, `PullPlan`, `ModelStatus`, `Eviction`, `HubException`, `HubToken` | a pull's progress, a background pull, its sizes, what is on disk, what eviction did, failures by reason, and where the token comes from |
 | `ModelPool` | keeps models loaded within a memory budget: `acquire(key, sizeBytes, loader)` returns a `Lease`; `unload`, `unloadAll`, `entries`, `loadedBytes`, `sizeOf(Path...)`. See [ModelPool and memory](/docs/guides/model-pool/) |
@@ -37,9 +37,9 @@ Package `org.liberationdata.kiln`. The engine modules depend on it.
 | `Vectors` | search over embeddings in memory: `topK(query, vectors, k)` (by cosine), `cosine`, `dot`, `normalize`, `rank(scores)`. See [Embeddings and reranking](/docs/guides/embeddings/) |
 | `Scored` | an item's `index` and `score`; `BEST_FIRST` |
 
-## kiln-llama
+## fornax-llama
 
-Package `org.liberationdata.kiln.llama`. See [Language models](/docs/guides/language-models/).
+Package `org.liberationdata.fornax.llama`. See [Language models](/docs/guides/language-models/).
 
 | Type | |
 |---|---|
@@ -60,14 +60,14 @@ Package `org.liberationdata.kiln.llama`. See [Language models](/docs/guides/lang
 | `LlamaModel.EmbedOptions` | `prefix`, `normalize`; `DEFAULT`, `query(task)` (Qwen3-Embedding's instruction format), `withPrefix`, `withNormalize` |
 | `LlamaModel.Message` | `role`, `content` and `images`; `system(...)`, `user(...)`, `user(text, images...)`, `assistant(...)` |
 | `LlamaModel.Image` | packed RGB: `of(BufferedImage)`, `read(Path)`, `decode(bytes)` |
-| `LlamaModel.Weights` | the models Kiln knows by name: `QWEN3_4B`, `QWEN3_VL_4B`, `PADDLEOCR_VL`, `MEDGEMMA_4B`, `QWEN3_EMBEDDING_0_6B`, `QWEN3_RERANKER_0_6B`; `named(...)`, `vision()`, `model()`, `mmproj()`, `downloaded()`, `downloadCommand()` |
+| `LlamaModel.Weights` | the models Fornax knows by name: `QWEN3_4B`, `QWEN3_VL_4B`, `PADDLEOCR_VL`, `MEDGEMMA_4B`, `QWEN3_EMBEDDING_0_6B`, `QWEN3_RERANKER_0_6B`; `named(...)`, `vision()`, `model()`, `mmproj()`, `downloaded()`, `downloadCommand()` |
 | `Json` | just enough JSON to read `chatJson` replies: `parse`, `get(doc, path...)`, `quote` |
 | `LlamaModel.Options` | `maxTokens`, `temperature`, `topP`, `minP`, `seed`; `DEFAULT`, `withSeed`, `withMaxTokens`, `withTemperature` |
 | `LlamaModel.Result` | `text`, `promptTokens`, `generatedTokens` |
 
-## kiln-tts
+## fornax-tts
 
-Package `org.liberationdata.kiln.tts`. See [Speech](/docs/guides/speech/).
+Package `org.liberationdata.fornax.tts`. See [Speech](/docs/guides/speech/).
 
 | Type | |
 |---|---|
@@ -75,12 +75,12 @@ Package `org.liberationdata.kiln.tts`. See [Speech](/docs/guides/speech/).
 | `speak(text, voice)`, `(text, voice, onChunk)`, `(text, voice, options, onChunk)` | speech as `Audio`, optionally streamed in chunks; a voice of `@clip.wav` speaks like that clip |
 | `voices()`, `sampleRate()`, `cancel()` | the built-in voices (the default first), the output rate, and stopping a streaming call |
 | `speakAsync(text, voice, options[, subscriber])`, `speakStream(text, voice, options)` | `speak` on the model's own thread, optionally streaming chunks to a `Flow.Subscriber`; `streamOn(executor, bufferSize)` |
-| `TtsModel.Weights` | the models Kiln knows by name: `KOKORO`, `ZONOS3`, `LFM3_AUDIO`, `TINY_VOCA`, `CHATTERBOX_TURBO`, `SOPRANO`, `VOXCPM2`, `QWEN3_TTS`; `named(...)`, `vision()`, `model()`, `mmproj()`, `downloaded()`, `downloadCommand()` |
+| `TtsModel.Weights` | the models Fornax knows by name: `KOKORO`, `ZONOS3`, `LFM3_AUDIO`, `TINY_VOCA`, `CHATTERBOX_TURBO`, `SOPRANO`, `VOXCPM2`, `QWEN3_TTS`; `named(...)`, `vision()`, `model()`, `mmproj()`, `downloaded()`, `downloadCommand()` |
 | `TtsModel.Options` | `lang`, `temperature`, `seed`, `speed`, `maxFrames`; `DEFAULT` and a `with...` for each |
 
-## kiln-sd
+## fornax-sd
 
-Package `org.liberationdata.kiln.sd`. See [Images](/docs/guides/images/) and [Video](/docs/guides/video/).
+Package `org.liberationdata.fornax.sd`. See [Images](/docs/guides/images/) and [Video](/docs/guides/video/).
 
 | Type | |
 |---|---|
@@ -101,9 +101,9 @@ Package `org.liberationdata.kiln.sd`. See [Images](/docs/guides/images/) and [Vi
 Option keys are stable-diffusion.cpp's, from its
 [C API guide](https://github.com/leejet/stable-diffusion.cpp/blob/master/docs/guides/c_api.md).
 
-## kiln-acestep
+## fornax-acestep
 
-Package `org.liberationdata.kiln.acestep`. See [Songs](/docs/guides/songs/).
+Package `org.liberationdata.fornax.acestep`. See [Songs](/docs/guides/songs/).
 
 | Type | |
 |---|---|
@@ -112,9 +112,9 @@ Package `org.liberationdata.kiln.acestep`. See [Songs](/docs/guides/songs/).
 | `generateAsync(requestJson)`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops it between LM tokens, DiT steps and VAE tiles (it throws `CancellationException`) |
 | `AceStepModel.Result` | `audio` (48 kHz stereo) and `resolvedRequestJson` |
 
-## kiln-yue2
+## fornax-yue2
 
-Package `org.liberationdata.kiln.yue2`. See [Songs](/docs/guides/songs/#yue2).
+Package `org.liberationdata.fornax.yue2`. See [Songs](/docs/guides/songs/#yue2).
 
 | Type | |
 |---|---|
@@ -123,16 +123,16 @@ Package `org.liberationdata.kiln.yue2`. See [Songs](/docs/guides/songs/#yue2).
 | `generateAsync(requestJson)`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops it between LM tokens, diffusion steps and VAE tiles (it throws `CancellationException`) |
 | `Yue2Model.Result` | `audio` (48 kHz stereo), `resolvedRequestJson` and `abcScore` |
 
-## kiln-whisper
+## fornax-whisper
 
-Package `org.liberationdata.kiln.whisper`. See [Speech to text](/docs/guides/speech-to-text/).
+Package `org.liberationdata.fornax.whisper`. See [Speech to text](/docs/guides/speech-to-text/).
 
 | Type | |
 |---|---|
 | `WhisperModel` | a Whisper model: `new WhisperModel(Weights)`, `(path)`, `(path, alignment)` or `(path, alignment, gpu)` |
 | `transcribe(audio[, options][, listener])` | a `Transcript` from `Audio` at any rate, or from 16 kHz mono `float[]` |
 | `multilingual()`, `type()`, `cancel()` | English-only or not, the model size, and stopping a call from another thread |
-| `WhisperModel.Weights` | the models Kiln knows by name: `LARGE_V3_TURBO`, `LARGE_V3_TURBO_Q8_0`, `BASE_EN`; `named(...)`, `path()`, `downloaded()`, `alignment` |
+| `WhisperModel.Weights` | the models Fornax knows by name: `LARGE_V3_TURBO`, `LARGE_V3_TURBO_Q8_0`, `BASE_EN`; `named(...)`, `path()`, `downloaded()`, `alignment` |
 | `WhisperModel.Alignment` | the DTW alignment heads for a model size (`LARGE_V3_TURBO`, `BASE_EN`, ...), or `NONE` |
 | `WhisperModel.Options` | `language`, `translate`, `initialPrompt`, `threads`, `beamSize`, `temperature`, `conditionOnPreviousText`, `suppressNonSpeech`, `temperatureIncrement`, `entropyThreshold`, `logProbThreshold`, `noSpeechThreshold`, `vad`; `DEFAULT` and a `with...` for each |
 | `WhisperModel.Vad` | voice activity detection: `Vad.of(path)` or `Vad.of(VadWeights)`, then `withThreshold`, `withMinSpeechMs`, `withMinSilenceMs`, `withMaxSpeechSeconds`, `withSpeechPadMs`, `withOverlapSeconds` |
@@ -141,9 +141,9 @@ Package `org.liberationdata.kiln.whisper`. See [Speech to text](/docs/guides/spe
 | `Transcript` | `text`, `language`, `segments`; `words()`, `wordsTsv()`, `srt()`, `vtt()` |
 | `Transcript.Segment`, `Transcript.Word` | `start`, `end` (seconds), `text`; a segment's `words`, a word's `probability` |
 
-## kiln-demucs
+## fornax-demucs
 
-Package `org.liberationdata.kiln.demucs`. See [Stem separation](/docs/guides/stem-separation/).
+Package `org.liberationdata.fornax.demucs`. See [Stem separation](/docs/guides/stem-separation/).
 
 | Type | |
 |---|---|
@@ -151,14 +151,14 @@ Package `org.liberationdata.kiln.demucs`. See [Stem separation](/docs/guides/ste
 | `separate(audio[, options][, progress])` | `Stems` from `Audio` at any rate, at its rate and length |
 | `separateAsync(audio[, options, progress])`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops it between segments (it throws `CancellationException`) |
 | `name()`, `backend()`, `sources()`, `sampleRate()` | the checkpoint, the ggml backend, the stem names in order, and the model's own rate (44100) |
-| `DemucsModel.Weights` | the models Kiln knows by name: `HTDEMUCS`, `HTDEMUCS_F16`, `HTDEMUCS_6S`, `HTDEMUCS_FT`; `named(...)`, `path()`, `downloaded()` |
+| `DemucsModel.Weights` | the models Fornax knows by name: `HTDEMUCS`, `HTDEMUCS_F16`, `HTDEMUCS_6S`, `HTDEMUCS_FT`; `named(...)`, `path()`, `downloaded()` |
 | `DemucsModel.Options` | `shifts`, `overlap`, `seed`; `DEFAULT` and a `with...` for each |
 | `DemucsModel.Progress` | `update(done, total)`, segment passes, as the separation runs |
 | `Stems` | `names()`, `get(name)`, `vocals()`, `backing()` (every stem but the vocals), `mix()`, `asMap()`, `sampleRate()` |
 
-## kiln-examples
+## fornax-examples
 
-Package `org.liberationdata.kiln.examples`: runnable programs, each a Gradle task, and the best place to see the API
+Package `org.liberationdata.fornax.examples`: runnable programs, each a Gradle task, and the best place to see the API
 used end to end.
 
 | Task | Class | |
@@ -177,15 +177,15 @@ used end to end.
 
 | Name | |
 |---|---|
-| `-Dkiln.library.path`, `KILN_LIBRARY_PATH` | where to look for the native libraries |
-| `-Dkiln.<name>.lib` | one library's exact file; the names are `kiln_llama`, `kiln_tts`, `stable-diffusion`, `kiln_acestep`, `kiln_yue2`, `kiln_whisper` and `kiln_demucs` |
-| `-Dkiln.backend`, `KILN_BACKEND` | which natives jar's backend to load when several for this platform are on the classpath |
-| `-Dkiln.cache.dir`, `KILN_CACHE_DIR` | where natives jars' libraries are extracted to |
-| `-Dkiln.gpu.graphs` | ggml's CUDA and HIP graphs; `false` by default |
-| `-Dkiln.vulkan.maxNodesPerSubmit` | graph nodes per Vulkan submission |
-| `KILN_VERBOSE` | the engines' own logs; `debug` for everything from stable-diffusion.cpp |
-| `KILN_ACESTEP_VAE_CHUNK` | ACE-Step's VAE decode tile, in frames (512) |
-| `HF_HUB_CACHE`, `HF_HOME` | where `HfCache` and `KilnHub` look |
-| `-Dkiln.modelDirs`, `KILN_MODEL_DIRS` | model folders `KilnHub` searches after the cache |
-| `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`), `HF_TOKEN_PATH`, `HF_ENDPOINT`, `HF_HUB_OFFLINE` | `KilnHub`'s token for gated repos, the Hub to download from, and no network |
-| `KILN_JAVA`, `KILN_CLI_LIB` | the `kiln` launcher's Java and jars folder (see [The kiln command](/docs/guides/cli/#the-launcher)) |
+| `-Dfornax.library.path`, `FORNAX_LIBRARY_PATH` | where to look for the native libraries |
+| `-Dfornax.<name>.lib` | one library's exact file; the names are `fornax_llama`, `fornax_tts`, `stable-diffusion`, `fornax_acestep`, `fornax_yue2`, `fornax_whisper` and `fornax_demucs` |
+| `-Dfornax.backend`, `FORNAX_BACKEND` | which natives jar's backend to load when several for this platform are on the classpath |
+| `-Dfornax.cache.dir`, `FORNAX_CACHE_DIR` | where natives jars' libraries are extracted to |
+| `-Dfornax.gpu.graphs` | ggml's CUDA and HIP graphs; `false` by default |
+| `-Dfornax.vulkan.maxNodesPerSubmit` | graph nodes per Vulkan submission |
+| `FORNAX_VERBOSE` | the engines' own logs; `debug` for everything from stable-diffusion.cpp |
+| `FORNAX_ACESTEP_VAE_CHUNK` | ACE-Step's VAE decode tile, in frames (512) |
+| `HF_HUB_CACHE`, `HF_HOME` | where `HfCache` and `FornaxHub` look |
+| `-Dfornax.modelDirs`, `FORNAX_MODEL_DIRS` | model folders `FornaxHub` searches after the cache |
+| `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`), `HF_TOKEN_PATH`, `HF_ENDPOINT`, `HF_HUB_OFFLINE` | `FornaxHub`'s token for gated repos, the Hub to download from, and no network |
+| `FORNAX_JAVA`, `FORNAX_CLI_LIB` | the `fornax` launcher's Java and jars folder (see [The fornax command](/docs/guides/cli/#the-launcher)) |

@@ -3,39 +3,39 @@ title: Downloading models
 description: Pull a model's files into the Hugging Face cache, find weights you already have in a ComfyUI folder, see what is on disk, and evict what you no longer need.
 ---
 
-A Kiln model is often several files. FLUX.2 [klein] is a diffusion model, a VAE and a text encoder, from three
-Hugging Face repos; LTX-2.5 is five files. `KilnHub`, in `kiln-core`, handles a model's files as one **model set**:
+A Fornax model is often several files. FLUX.2 [klein] is a diffusion model, a VAE and a text encoder, from three
+Hugging Face repos; LTX-2.5 is five files. `FornaxHub`, in `fornax-core`, handles a model's files as one **model set**:
 it downloads what is missing, finds what is already on the machine, reports what is there, and removes it again.
 
 Files go into the Hugging Face cache, in the layout `huggingface_hub` uses. `hf`, transformers and diffusers see what
-Kiln downloads, and Kiln sees what they download. Nothing is stored twice.
+Fornax downloads, and Fornax sees what they download. Nothing is stored twice.
 
 ## From the command line
 
-The quickest way to fetch a model is the [`kiln` command](/docs/guides/cli/), which pulls through `KilnHub`:
+The quickest way to fetch a model is the [`fornax` command](/docs/guides/cli/), which pulls through `FornaxHub`:
 
 ```sh
-kiln pull flux2-klein     # an alias from the catalogue: all three files
-kiln list                 # what of each model is on disk
-kiln rm flux2-klein       # evict it again
+fornax pull flux2-klein     # an alias from the catalogue: all three files
+fornax list                 # what of each model is on disk
+fornax rm flux2-klein       # evict it again
 ```
 
-To get `kiln`, choose **Install kiln command** from Kiln Studio's menu (coming in the next Kiln Studio release), or
-build it from source with `./gradlew :kiln-cli:installDist`. The Hugging Face CLI is the alternative:
+To get `fornax`, choose **Install fornax command** from Fornax Studio's menu (coming in the next Fornax Studio release), or
+build it from source with `./gradlew :fornax-cli:installDist`. The Hugging Face CLI is the alternative:
 `hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors` and so on, one command
 per file, into the same cache. The rest of this page is the Java API.
 
 ## Pulling a model
 
 ```java
-import org.liberationdata.kiln.hub.KilnHub;
-import org.liberationdata.kiln.hub.ModelCatalog;
-import org.liberationdata.kiln.hub.ModelSet;
+import org.liberationdata.fornax.hub.FornaxHub;
+import org.liberationdata.fornax.hub.ModelCatalog;
+import org.liberationdata.fornax.hub.ModelSet;
 
 import java.nio.file.Path;
 import java.util.Map;
 
-KilnHub hub = KilnHub.standard();
+FornaxHub hub = FornaxHub.standard();
 ModelSet flux = ModelCatalog.require("flux2-klein");
 
 Map<String, Path> files = hub.pull(flux, p ->
@@ -61,11 +61,11 @@ A pull:
   pull fails with `HubException` (reason `CHECKSUM_MISMATCH`).
 - **checks free space first.** Before it downloads anything, the pull adds up what it still needs to fetch. If that
   would leave less than 1 GB free on the cache's disk, it fails with reason `DISK_SPACE`. Change the margin with
-  `KilnHub.builder().reserveBytes(...)`.
+  `FornaxHub.builder().reserveBytes(...)`.
 - **waits for another pull of the same file.** Each file is downloaded under a lock file,
   `.locks/models--org--name/<hash>.lock` in the cache. A second pull of the same file, from another thread or another
   process, waits until the first finishes and then uses its file. It does not download the file a second time.
-  `hf download` uses the same lock file but a different kind of lock, so the lock does not hold between Kiln and `hf`:
+  `hf download` uses the same lock file but a different kind of lock, so the lock does not hold between Fornax and `hf`:
   don't download the same file with both at once.
 - **sends a token for gated repos.** See [Gated repos](#gated-repos).
 
@@ -139,14 +139,14 @@ source when none of them is on disk.
 ### Model folders
 
 A machine that has run ComfyUI already has many of these weights in `ComfyUI/models/`. List such folders in the system
-property `kiln.modelDirs` or the environment variable `KILN_MODEL_DIRS`, separated by `:` (`;` on Windows). Kiln
-Studio's earlier setting, `KILN_STUDIO_MODEL_DIRS`, is still read.
+property `fornax.modelDirs` or the environment variable `FORNAX_MODEL_DIRS`, separated by `:` (`;` on Windows). Fornax
+Studio's earlier setting, `FORNAX_STUDIO_MODEL_DIRS`, is still read.
 
 ```sh
-export KILN_MODEL_DIRS=~/ComfyUI/models:/mnt/models
+export FORNAX_MODEL_DIRS=~/ComfyUI/models:/mnt/models
 ```
 
-For a part whose file is `split_files/vae/flux2-vae.safetensors`, Kiln looks in each folder for:
+For a part whose file is `split_files/vae/flux2-vae.safetensors`, Fornax looks in each folder for:
 
 1. `split_files/vae/flux2-vae.safetensors`, the file's path in the repo;
 2. `vae/flux2-vae.safetensors`, the same path without the `split_files/` prefix that Comfy-Org's repos use;
@@ -154,19 +154,19 @@ For a part whose file is `split_files/vae/flux2-vae.safetensors`, Kiln looks in 
    and `checkpoints/` for a diffusion model; `text_encoders/` and `clip/` for a text encoder; `vae/` for a VAE;
    `latent_upscale_models/` for an upscaler; `loras/` for a LoRA.
 
-A folder that contains a `models/` directory (the ComfyUI folder itself) is searched there too. Kiln only reads model
+A folder that contains a `models/` directory (the ComfyUI folder itself) is searched there too. Fornax only reads model
 folders. It never writes to them or deletes anything from them.
 
 ## Gated repos
 
 Some repos, such as `Lightricks/LTX-2.5`, ask you to accept their terms before you can download from them. Accept the
 terms on the repo's page while signed in to Hugging Face, then create a token (Settings, Access Tokens; read access is
-enough). Give the token to Kiln in one of these ways:
+enough). Give the token to Fornax in one of these ways:
 
-- set `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`, its older name, which Kiln reads after it, as `hf` does);
-- run `hf auth login`, which saves it where Kiln looks for it (`HF_TOKEN_PATH`, else `$HF_HOME/token`, else
+- set `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`, its older name, which Fornax reads after it, as `hf` does);
+- run `hf auth login`, which saves it where Fornax looks for it (`HF_TOKEN_PATH`, else `$HF_HOME/token`, else
   `$XDG_CACHE_HOME/huggingface/token`, else `~/.cache/huggingface/token`);
-- pass it to the builder: `KilnHub.builder().token("hf_...").build()`.
+- pass it to the builder: `FornaxHub.builder().token("hf_...").build()`.
 
 Without a token, or with a token that has not accepted the terms, the pull fails with `HubException` (reason
 `ACCESS_DENIED`). The message names the repo and the page where you accept its terms. `ModelSet.gated()` tells an app
@@ -197,7 +197,7 @@ When a repo has no snapshots or blobs left, its folder is removed. Files in mode
 
 ## The catalogue
 
-`ModelCatalog` lists the models Kiln's examples, the CLI and Kiln Studio use, so that all of them offer the same
+`ModelCatalog` lists the models Fornax's examples, the CLI and Fornax Studio use, so that all of them offer the same
 models with the same files:
 
 | Kind | Sets |
@@ -210,7 +210,7 @@ models with the same files:
 | `SONG` | `ace-step-turbo`, `ace-step` (turbo with the 4B lyric LM), `ace-step-xl-turbo`, `ace-step-xl`, `yue2` |
 | `VIDEO` | `ltx-2.5-distilled`, `ltx-2.5-dev` (gated) |
 
-`ModelCatalog.byName` also accepts Kiln Studio's ids, such as `image:flux2-klein`. A set's `license()` is filled in
+`ModelCatalog.byName` also accepts Fornax Studio's ids, such as `image:flux2-klein`. A set's `license()` is filled in
 where the weights' license limits what you may do with them or with what they make: YuE2 is CC BY-NC 4.0, and MedGemma
 comes with Google's Health AI Developer Foundations terms.
 
@@ -229,8 +229,8 @@ A `Source` can pin a revision: `new ModelSet.Source(repo, file, "<40-character c
 
 | Setting | |
 |---|---|
-| `HF_HUB_CACHE`, `HF_HOME` | where the cache is: `HF_HUB_CACHE`, else `$HF_HOME/hub`, else `$XDG_CACHE_HOME/huggingface/hub`, else `~/.cache/huggingface/hub`, as `hf` has it. `KilnHub.builder().cacheRoot(path)` overrides them |
-| `-Dkiln.modelDirs`, `KILN_MODEL_DIRS` | model folders searched after the cache |
+| `HF_HUB_CACHE`, `HF_HOME` | where the cache is: `HF_HUB_CACHE`, else `$HF_HOME/hub`, else `$XDG_CACHE_HOME/huggingface/hub`, else `~/.cache/huggingface/hub`, as `hf` has it. `FornaxHub.builder().cacheRoot(path)` overrides them |
+| `-Dfornax.modelDirs`, `FORNAX_MODEL_DIRS` | model folders searched after the cache |
 | `HF_TOKEN`, `HUGGING_FACE_HUB_TOKEN`, `HF_TOKEN_PATH` | the access token for gated repos |
 | `HF_ENDPOINT` | the Hub to download from (default `https://huggingface.co`), for a mirror |
 | `HF_HUB_OFFLINE` | when set to `1`, a pull that needs the network fails at once with reason `OFFLINE` |

@@ -1,9 +1,9 @@
 ---
 title: Threading
-description: What blocks, where callbacks run, how to call Kiln from virtual threads with the async API, how streaming handles a slow subscriber, and how cancel and close behave for each engine.
+description: What blocks, where callbacks run, how to call Fornax from virtual threads with the async API, how streaming handles a slow subscriber, and how cancel and close behave for each engine.
 ---
 
-A Kiln call is a native function call: a generation runs inside the engine, on some Java thread, for seconds or
+A Fornax call is a native function call: a generation runs inside the engine, on some Java thread, for seconds or
 minutes. This page covers which thread that is, what it means for virtual threads, and how to stop a call or close a
 model while one is running.
 
@@ -30,14 +30,14 @@ A virtual thread that makes a native call is pinned to its carrier thread for th
 carrier per core, so a few virtual threads each generating text can occupy all of them, and unrelated virtual-thread
 work (HTTP handlers, other agents) stalls until a generation finishes.
 
-The async methods avoid that. Each model has one platform thread, named `kiln-<model file>`, started on first use. It
+The async methods avoid that. Each model has one platform thread, named `fornax-<model file>`, started on first use. It
 owns the engine instance and makes every async call's downcall. A virtual thread that waits on the future unmounts, and
 its carrier goes on running other work:
 
 ```java
-import org.liberationdata.kiln.llama.LlamaModel;
-import org.liberationdata.kiln.llama.LlamaModel.Message;
-import org.liberationdata.kiln.llama.LlamaModel.Options;
+import org.liberationdata.fornax.llama.LlamaModel;
+import org.liberationdata.fornax.llama.LlamaModel.Message;
+import org.liberationdata.fornax.llama.LlamaModel.Options;
 
 try (var llm = new LlamaModel(gguf);
      var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
@@ -53,7 +53,7 @@ try (var llm = new LlamaModel(gguf);
 The calls still run one at a time on the model's thread, in submission order: one model generates one reply at a time.
 What changes is that the waiting threads cost nothing.
 
-Kiln's tests show the difference with the virtual-thread scheduler cut to one carrier
+Fornax's tests show the difference with the virtual-thread scheduler cut to one carrier
 (`-Djdk.virtualThreadScheduler.parallelism=1`) and a heartbeat virtual thread that wakes every 5 ms. With Qwen3 4B,
 two blocking `chat` calls from virtual threads stopped the heartbeat for the whole time they ran. With eight `chatAsync`
 calls from virtual threads, it kept its 5 ms beat throughout.
@@ -91,7 +91,7 @@ once for each subscription:
 ```java
 import java.util.concurrent.Flow;
 
-var done = llm.chatAsync(List.of(Message.user("Write a haiku about a kiln.")), Options.DEFAULT,
+var done = llm.chatAsync(List.of(Message.user("Write a haiku about a fornax.")), Options.DEFAULT,
         new Flow.Subscriber<String>() {
             public void onSubscribe(Flow.Subscription s) { s.request(Long.MAX_VALUE); }
             public void onNext(String piece) { System.out.print(piece); }
@@ -106,7 +106,7 @@ virtual thread. The generation never waits for the subscriber: a subscriber that
 leaves the generation running at full speed, and catches up afterwards.
 
 **Overflow.** A subscriber that falls a whole buffer behind (1024 pieces by default, or one that stops requesting)
-stops the generation. Its `onError` and the future both get a `StreamOverflowException`. Kiln doesn't wait, which would
+stops the generation. Its `onError` and the future both get a `StreamOverflowException`. Fornax doesn't wait, which would
 hold the GPU idle for the slowest consumer, and doesn't drop pieces, which would hand you a reply with holes in it.
 Change the buffer, or the executor the subscriber runs on, with `streamOn`:
 
@@ -138,7 +138,7 @@ also reports loading the weights through the progress sink, on the first run aft
 ## When a callback throws
 
 Before, an exception thrown from a token or chunk consumer escaped into the engine's native frames, and the JVM printed
-it and exited. Now every Kiln upcall catches it, tells the engine to stop, and returns normally. When the native call
+it and exited. Now every Fornax upcall catches it, tells the engine to stop, and returns normally. When the native call
 returns, the Java method throws that same exception:
 
 ```java
@@ -151,7 +151,7 @@ try {
 
 Checked exceptions (thrown sneakily) are wrapped in a `RuntimeException`. stable-diffusion.cpp's log and progress sinks
 work the same way during a `generate` call. Outside one, for example a log line while a model loads, there's no call to
-hand the exception to, so Kiln prints it to standard error.
+hand the exception to, so Fornax prints it to standard error.
 
 ## Cancel
 
@@ -171,7 +171,7 @@ firing, stops that call only: if it is still queued, it never starts. Cancelling
 Limits:
 
 - **TTS without streaming can't stop early.** Without a callback, llama.cpp's audio generation decodes in one go, as
-  `llama-tts` does, and Kiln leaves that path as it is.
+  `llama-tts` does, and Fornax leaves that path as it is.
 - **Kokoro speaks in one chunk.** It isn't autoregressive: it decodes the whole text in one step and streams it as a
   single chunk, so there's nothing left to stop by the time a subscriber sees it.
 - **An upscale can't stop early.** `Upscaler` has `upscaleAsync` but no `cancel()`, and `close()` waits for a pass

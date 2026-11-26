@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Writes kiln-llama/src/test/resources/embeddings/qwen3-embedding-0.6b.txt, the reference EmbeddingsIT compares Kiln's
+# Writes fornax-llama/src/test/resources/embeddings/qwen3-embedding-0.6b.txt, the reference EmbeddingsIT compares Fornax's
 # embeddings with: llama.cpp's own llama-embedding, built from the pinned llama.cpp (native/engines.properties), on
 # the same model and texts. One line per text: the text (with \n for a newline), a tab, then the normalised embedding.
 #
@@ -13,7 +13,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BIN=${1:-$ROOT/engines-src/llama.cpp/build-ref-vulkan/bin/llama-embedding}
 MODEL=$(ls "${HF_HUB_CACHE:-${HF_HOME:-$HOME/.cache/huggingface}/hub}"/models--Qwen--Qwen3-Embedding-0.6B-GGUF/snapshots/*/Qwen3-Embedding-0.6B-Q8_0.gguf | head -1)
-OUT=$ROOT/kiln-llama/src/test/resources/embeddings/qwen3-embedding-0.6b.txt
+OUT=$ROOT/fornax-llama/src/test/resources/embeddings/qwen3-embedding-0.6b.txt
 SEP='<#kiln#>'
 
 # The texts EmbeddingsIT embeds; keep the two in step.

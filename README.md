@@ -1,8 +1,14 @@
-# Kiln
+# Fornax
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
 **Call open-weight models (language, vision, speech, images, songs, video) as plain Java methods, running on your GPU, inside your JVM.**
+
+> Fornax was called **Kiln** until 0.1.0. Here's what changed:
+> - **Maven:** `org.kiln4j:kiln-*` is now `org.fornax4j:fornax-*`.
+> - **Packages:** `org.liberationdata.kiln` is now `org.liberationdata.fornax`.
+> - **Settings:** `kiln.*` properties are now `fornax.*`, and `KILN_*` environment variables are now `FORNAX_*`.
+> - **Studio:** Fornax Studio keeps using an existing `~/.kiln-studio`.
 
 ```java
 try (var llm = new LlamaModel("Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {   // weights load onto the GPU once
@@ -12,25 +18,25 @@ try (var llm = new LlamaModel("Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {   // weig
 
 **Why:** no overhead between your code and the model.
 
-- **The native runners themselves.** Kiln calls llama.cpp, stable-diffusion.cpp, acestep.cpp, yue2.cpp,
+- **The native runners themselves.** Fornax calls llama.cpp, stable-diffusion.cpp, acestep.cpp, yue2.cpp,
   whisper.cpp and stems.cpp directly. These are the same C/C++ engines the CLIs and servers use, so you get their speed and their model
   support.
 - **On the GPU.** Vulkan today (AMD, Intel, NVIDIA). ROCm, CUDA and Metal builds come from the same script.
-- **Nothing in between.** A Kiln call is a native function call through Java's Foreign Function & Memory API.
+- **Nothing in between.** A Fornax call is a native function call through Java's Foreign Function & Memory API.
   There is no Python, no model server, no HTTP, no JSON round trip and no second process. Weights stay resident
   between calls, and tokens stream back to a Java callback as they are produced.
 
-Kiln binds native inference engines with Java's Foreign Function & Memory API (Java 22+; Kiln 0.1.0 itself needs 25):
+Fornax binds native inference engines with Java's Foreign Function & Memory API (Java 22+; Kiln 0.1.0 itself needs 25):
 
 | Module | Engine | Models |
 |---|---|---|
-| `kiln-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (with `mtmd` for images) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...); vision language models (Qwen3-VL, PaddleOCR-VL, MedGemma, ...); embedding and reranker models (Qwen3-Embedding, Qwen3-Reranker) |
-| `kiln-tts` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`mtmd`) | text to speech: Kokoro, ZONOS3, LFM3-Audio, Chatterbox, VoxCPM2, ... |
-| `kiln-sd` | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) | FLUX.1/FLUX.2, Qwen-Image and Qwen-Image-Edit, SD 1.x/2.x/XL/3, Wan, LTX |
-| `kiln-acestep` | [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) | ACE-Step 1.5 songs (vocals, lyrics, up to several minutes) |
-| `kiln-yue2` | [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp) | YuE2 songs |
-| `kiln-whisper` | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) | speech to text with word timings: Whisper large-v3-turbo, base.en, any ggml Whisper |
-| `kiln-demucs` | [stems.cpp](https://github.com/betweentwomidnights/stems.cpp) | stem separation (vocals and backing, or drums, bass, other, vocals): HTDemucs v4, 6-stem and fine-tuned |
+| `fornax-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (with `mtmd` for images) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...); vision language models (Qwen3-VL, PaddleOCR-VL, MedGemma, ...); embedding and reranker models (Qwen3-Embedding, Qwen3-Reranker) |
+| `fornax-tts` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`mtmd`) | text to speech: Kokoro, ZONOS3, LFM3-Audio, Chatterbox, VoxCPM2, ... |
+| `fornax-sd` | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) | FLUX.1/FLUX.2, Qwen-Image and Qwen-Image-Edit, SD 1.x/2.x/XL/3, Wan, LTX |
+| `fornax-acestep` | [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) | ACE-Step 1.5 songs (vocals, lyrics, up to several minutes) |
+| `fornax-yue2` | [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp) | YuE2 songs |
+| `fornax-whisper` | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) | speech to text with word timings: Whisper large-v3-turbo, base.en, any ggml Whisper |
+| `fornax-demucs` | [stems.cpp](https://github.com/betweentwomidnights/stems.cpp) | stem separation (vocals and backing, or drums, bass, other, vocals): HTDemucs v4, 6-stem and fine-tuned |
 
 Images and songs work the same way, and a vision language model takes images in:
 
@@ -52,41 +58,41 @@ try (var vlm = new LlamaModel(LlamaModel.Weights.QWEN3_VL_4B)) {   // the GGUF p
 
 `DiffusionModel` also edits: a `Request` can carry reference images (Qwen-Image-Edit, FLUX.2), an init image and
 strength (img2img), a mask (inpainting), a ControlNet hint and LoRAs. `Upscaler` runs ESRGAN models. See the
-[images guide](https://kiln4j.org/docs/guides/images/).
+[images guide](https://fornax4j.org/docs/guides/images/).
 
 ## Getting started
 
-Kiln is on Maven Central as `org.kiln4j`. Add an engine module (`kiln-llama`, `kiln-tts`, `kiln-sd`, `kiln-acestep`,
-`kiln-yue2`, `kiln-whisper` or `kiln-demucs`) and the **natives jar** for your platform, which holds the engines' native libraries.
+Fornax is on Maven Central as `org.fornax4j`. Add an engine module (`fornax-llama`, `fornax-tts`, `fornax-sd`, `fornax-acestep`,
+`fornax-yue2`, `fornax-whisper` or `fornax-demucs`) and the **natives jar** for your platform, which holds the engines' native libraries.
 
-The quickest start is [`samples/hello-kiln`](samples/hello-kiln): a standalone app for Gradle and Maven that streams
+The quickest start is [`samples/hello-fornax`](samples/hello-fornax): a standalone app for Gradle and Maven that streams
 a chat reply from Qwen3 4B. Copy it out and run `./gradlew run` or `mvn -q compile exec:java`.
 
 The natives jars:
 
 | Natives artifact | Platform | GPU backend |
 |---|---|---|
-| `kiln-natives-linux-x86_64-vulkan` | Linux x86-64 (glibc 2.39+: Ubuntu 24.04, Fedora 40 or newer) | Vulkan (AMD, Intel, NVIDIA) |
-| `kiln-natives-macos-aarch64-metal` | macOS 13.3+ on Apple silicon | Metal |
-| `kiln-natives-macos-x86_64-metal` | macOS 13.3+ on Intel | Metal |
+| `fornax-natives-linux-x86_64-vulkan` | Linux x86-64 (glibc 2.39+: Ubuntu 24.04, Fedora 40 or newer) | Vulkan (AMD, Intel, NVIDIA) |
+| `fornax-natives-macos-aarch64-metal` | macOS 13.3+ on Apple silicon | Metal |
+| `fornax-natives-macos-x86_64-metal` | macOS 13.3+ on Intel | Metal |
 
 On Linux, the GPU's Vulkan driver must be installed (it usually is; if not, see
-[Installing GPU drivers](https://kiln4j.org/docs/gpu-drivers/)). With no GPU, Kiln stops rather than run on the CPU,
-unless `-Dkiln.allowCpu=true` (or `KILN_ALLOW_CPU=true`).
+[Installing GPU drivers](https://fornax4j.org/docs/gpu-drivers/)). With no GPU, Fornax stops rather than run on the CPU,
+unless `-Dfornax.allowCpu=true` (or `FORNAX_ALLOW_CPU=true`).
 
 Gradle (`build.gradle.kts`), choosing the natives jar for the machine that builds:
 
 ```kotlin
-val kilnVersion = "0.1.0"
-val kilnNatives = when {
+val fornaxVersion = "0.2.0"
+val fornaxNatives = when {
     !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
     System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
     else -> "macos-x86_64-metal"
 }
 
 dependencies {
-    implementation("org.kiln4j:kiln-llama:$kilnVersion")
-    runtimeOnly("org.kiln4j:kiln-natives-$kilnNatives:$kilnVersion")
+    implementation("org.fornax4j:fornax-llama:$fornaxVersion")
+    runtimeOnly("org.fornax4j:fornax-natives-$fornaxNatives:$fornaxVersion")
 }
 ```
 
@@ -94,70 +100,70 @@ Maven, with a profile per platform that the OS activates and that names the nati
 
 ```xml
 <properties>
-    <kiln.version>0.1.0</kiln.version>
+    <fornax.version>0.2.0</fornax.version>
 </properties>
 
 <dependencies>
     <dependency>
-        <groupId>org.kiln4j</groupId>
-        <artifactId>kiln-llama</artifactId>
-        <version>${kiln.version}</version>
+        <groupId>org.fornax4j</groupId>
+        <artifactId>fornax-llama</artifactId>
+        <version>${fornax.version}</version>
     </dependency>
     <dependency>
-        <groupId>org.kiln4j</groupId>
-        <artifactId>kiln-natives-${kiln.natives}</artifactId>
-        <version>${kiln.version}</version>
+        <groupId>org.fornax4j</groupId>
+        <artifactId>fornax-natives-${fornax.natives}</artifactId>
+        <version>${fornax.version}</version>
         <scope>runtime</scope>
     </dependency>
 </dependencies>
 
 <profiles>
     <profile>
-        <id>kiln-linux-x86_64</id>
+        <id>fornax-linux-x86_64</id>
         <activation><os><name>Linux</name><arch>amd64</arch></os></activation>
-        <properties><kiln.natives>linux-x86_64-vulkan</kiln.natives></properties>
+        <properties><fornax.natives>linux-x86_64-vulkan</fornax.natives></properties>
     </profile>
     <profile>
-        <id>kiln-macos-aarch64</id>
+        <id>fornax-macos-aarch64</id>
         <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
-        <properties><kiln.natives>macos-aarch64-metal</kiln.natives></properties>
+        <properties><fornax.natives>macos-aarch64-metal</fornax.natives></properties>
     </profile>
     <profile>
-        <id>kiln-macos-x86_64</id>
+        <id>fornax-macos-x86_64</id>
         <activation><os><family>mac</family><arch>x86_64</arch></os></activation>
-        <properties><kiln.natives>macos-x86_64-metal</kiln.natives></properties>
+        <properties><fornax.natives>macos-x86_64-metal</fornax.natives></properties>
     </profile>
 </profiles>
 ```
 
-Run with `--enable-native-access=ALL-UNNAMED`. The first time an engine loads, Kiln extracts its library from the
-natives jar into a per-version cache (`~/.cache/kiln/<version>/` on Linux, `~/Library/Caches/kiln/<version>/` on
-macOS; move it with `-Dkiln.cache.dir`) and loads it from there.
+Run with `--enable-native-access=ALL-UNNAMED`. The first time an engine loads, Fornax extracts its library from the
+natives jar into a per-version cache (`~/.cache/fornax/<version>/` on Linux, `~/Library/Caches/fornax/<version>/` on
+macOS; move it with `-Dfornax.cache.dir`) and loads it from there.
 
 **Choosing a backend.** Each natives jar is one platform and one GPU backend, so the jar you add is the choice.
 Natives jars for different platforms can sit side by side (to ship one build for every platform, add all three);
-Kiln loads the one for the machine it runs on. If jars for several backends of the same platform are on the
-classpath, `-Dkiln.backend=vulkan` (or `KILN_BACKEND`) picks one; otherwise Kiln prefers Metal, then CUDA, HIP and
+Fornax loads the one for the machine it runs on. If jars for several backends of the same platform are on the
+classpath, `-Dfornax.backend=vulkan` (or `FORNAX_BACKEND`) picks one; otherwise Fornax prefers Metal, then CUDA, HIP and
 Vulkan. For ROCm (HIP), CUDA or anything else, build the libraries yourself (see [Building](#building)) and point
-`-Dkiln.library.path` at them, which always wins over a natives jar.
+`-Dfornax.library.path` at them, which always wins over a natives jar.
 
 ## Quick start (from source)
 
-The fastest way to see Kiln work: build the engines, fetch three models, and run the demo. One Java program
+The fastest way to see Fornax work: build the engines, fetch three models, and run the demo. One Java program
 has Qwen3 4B write a country song, ACE-Step 1.5 sing it and FLUX.2 [klein] paint its cover, all in one JVM.
 
 ```sh
 native/build.sh vulkan            # or hip | cuda | metal | cpu (see Building)
-./gradlew :kiln-cli:installDist   # the kiln command (see The kiln command)
-export PATH="$PWD/kiln-cli/build/install/kiln-cli/bin:$PATH"
-kiln pull qwen3-4b                # Qwen3 4B Instruct
-kiln pull ace-step                # ACE-Step 1.5 turbo with its 4B lyric LM: four files
-kiln pull flux2-klein             # FLUX.2 [klein]: three files, from three repos
+./gradlew :fornax-cli:installDist   # the fornax command (see The fornax command)
+export PATH="$PWD/fornax-cli/build/install/fornax-cli/bin:$PATH"
+fornax pull qwen3-4b                # Qwen3 4B Instruct
+fornax pull ace-step                # ACE-Step 1.5 turbo with its 4B lyric LM: four files
+fornax pull flux2-klein             # FLUX.2 [klein]: three files, from three repos
 ./gradlew single                  # writes single/single.wav, single/cover.png and single/lyrics.txt
 ```
 
 `hf download` works too (the files are listed under [Models](#models)); both use the Hugging Face cache.
-To try models without writing code, use [Kiln Studio](https://github.com/liberation-data/kiln-studio).
+To try models without writing code, use [Fornax Studio](https://github.com/liberation-data/fornax-studio).
 
 ## Status
 
@@ -181,7 +187,7 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 
 The build script also knows the **ROCm (HIP)**, **CUDA** and **Metal** backends of the underlying engines. HIP has
 run LTX-2.5 video on the same machine (about 2.7× faster per step than Vulkan, and the way to render long clips; see
-[engine notes](docs/engine-notes.md)), and Kiln Studio's CI builds Metal for macOS. CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
+[engine notes](docs/engine-notes.md)), and Fornax Studio's CI builds Metal for macOS. CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
 build the native libraries. Reports and fixes welcome.
 
 ## How it works
@@ -189,15 +195,15 @@ build the native libraries. Reports and fixes welcome.
 Each engine is built into **one self-contained shared library** with its ggml linked in statically and kept
 private. The engines pin different ggml versions, so this is what lets several of them share one process.
 
-- `stable-diffusion.cpp` has a key/value C API, so `kiln-sd` binds it directly.
+- `stable-diffusion.cpp` has a key/value C API, so `fornax-sd` binds it directly.
 - `llama.cpp` has a C API too, but it passes structs by value and is mid-migration to a new batch API, so
-  `kiln-llama` binds a small stable C layer (`kiln-llama/native`) instead.
+  `fornax-llama` binds a small stable C layer (`fornax-llama/native`) instead.
 - `acestep.cpp` and `yue2.cpp` are C++ only, so each gets a ~100-line C layer: JSON request in, PCM audio out.
-- `whisper.cpp` has a C API, but it passes two large parameter structs by value, so `kiln-whisper` binds a small C
-  layer (`kiln-whisper/native`) that takes plain arguments and a small struct of its own, and reads results back token
+- `whisper.cpp` has a C API, but it passes two large parameter structs by value, so `fornax-whisper` binds a small C
+  layer (`fornax-whisper/native`) that takes plain arguments and a small struct of its own, and reads results back token
   by token.
-- `stems.cpp` has a C ABI of size-tagged structs in a function table, so `kiln-demucs` binds a small C layer
-  (`kiln-demucs/native`) over it: planar audio in, planar stems out.
+- `stems.cpp` has a C ABI of size-tagged structs in a function table, so `fornax-demucs` binds a small C layer
+  (`fornax-demucs/native`) over it: planar audio in, planar stems out.
 
 Engine quirks and how to debug them: [docs/engine-notes.md](docs/engine-notes.md).
 
@@ -206,13 +212,13 @@ A model takes calls from any thread and runs them one at a time. The blocking me
 `...Async` ones (`chatAsync`, `speakAsync`, `generateAsync`, ...) run on the model's own platform thread and return a
 `CompletableFuture`, so virtual threads never pin a carrier through a generation, and streaming goes to a
 `Flow.Subscriber` through a bounded buffer. `cancel()` works for every engine, and a callback that throws stops the
-call and rethrows instead of crashing the JVM. See [Threading](https://kiln4j.org/docs/guides/threading/).
+call and rethrows instead of crashing the JVM. See [Threading](https://fornax4j.org/docs/guides/threading/).
 
-A native crash (a failed `GGML_ASSERT`, a segfault, a malformed GGUF) still takes the JVM down in-process, so Kiln
-can also run a model in a **worker process**, opt-in: `LlamaModel.isolated(gguf)`, or `-Dkiln.isolation=process` for
+A native crash (a failed `GGML_ASSERT`, a segfault, a malformed GGUF) still takes the JVM down in-process, so Fornax
+can also run a model in a **worker process**, opt-in: `LlamaModel.isolated(gguf)`, or `-Dfornax.isolation=process` for
 every `LlamaModel`. It is the same `LlamaModel`, with the same blocking, async, streaming and cancel API. A crash fails
 the call in flight with a `WorkerCrashedException`, and the next call restarts the worker and reloads the model. It
-costs about 15 µs a call and a microsecond a streamed token. See [Isolation](https://kiln4j.org/docs/guides/isolation/).
+costs about 15 µs a call and a microsecond a streamed token. See [Isolation](https://fornax4j.org/docs/guides/isolation/).
 
 `ModelPool` keeps models resident between uses, the way ComfyUI does: it unloads idle models least recently used
 first to stay within a memory budget, optionally unloads after an idle timeout, and gives each model one user at a
@@ -222,7 +228,7 @@ For servers, `Dispatch` serves many models from a few worker processes: it route
 already has its model loaded, loads models on demand within one memory budget (least recently used out first), queues
 requests as `INTERACTIVE` or `BATCH` with aging so batch work can't starve, and reloads a crashed worker's models
 elsewhere. `qwen.submit(QoS.INTERACTIVE, llm -> llm.chatAsync(messages, options))`. See
-[Dispatch](https://kiln4j.org/docs/guides/dispatch/).
+[Dispatch](https://fornax4j.org/docs/guides/dispatch/).
 
 `LlamaModel.chatJson` does OpenAI-style chat with **tool calling**, using the model's own chat template and
 tool-call format (the same templates and parsers as llama-server): messages and tools in OpenAI's format in, a
@@ -232,11 +238,11 @@ to that schema.
 Loaded with an mmproj GGUF, a `LlamaModel` is a vision language model, through llama.cpp's `mtmd` (as `llama-mtmd-cli`
 and `llama-server --mmproj` run them): `Message.user(text, images...)` with `Image.of(BufferedImage)`,
 `Image.read(Path)` or `Image.decode(bytes)`; `chat`, `chatJson` and `extract` (a reply constrained to a JSON schema)
-all take images. `LlamaModel.Weights` names the models Kiln has been tried with.
+all take images. `LlamaModel.Weights` names the models Fornax has been tried with.
 
 Loaded in `Mode.EMBED` or `Mode.RERANK`, a `LlamaModel` is an embedding model or a reranker, through llama.cpp's
 pooled embeddings output (as `llama-embedding` and `llama-server --embedding` / `--reranking` run them), for search
-over your own documents (RAG) with no vector database: `kiln-core`'s `Vectors.topK` scans the vectors in memory.
+over your own documents (RAG) with no vector database: `fornax-core`'s `Vectors.topK` scans the vectors in memory.
 
 ```java
 try (var emb = new LlamaModel(LlamaModel.Weights.QWEN3_EMBEDDING_0_6B, LlamaModel.Mode.EMBED)) {
@@ -260,44 +266,44 @@ native/build.sh vulkan            # or hip | cuda | metal | cpu; optionally list
 ```
 
 `native/build.sh` clones the engines at the commits pinned in `native/engines.properties` into `engines-src/`,
-applies Kiln's patches from `native/patches/` (when a pin or a patch changes, it first resets that engine's tracked
+applies Fornax's patches from `native/patches/` (when a pin or a patch changes, it first resets that engine's tracked
 files, so keep no edits of your own there), and writes the libraries to `build/native/<os>-<arch>-<backend>/`.
-The Gradle build points the examples and tests at that folder; pick another backend with `-Pkiln.backend=hip`.
+The Gradle build points the examples and tests at that folder; pick another backend with `-Pfornax.backend=hip`.
 
-To use your own build in an application, put the libraries on `-Dkiln.library.path=<dir>` (or `KILN_LIBRARY_PATH`,
+To use your own build in an application, put the libraries on `-Dfornax.library.path=<dir>` (or `FORNAX_LIBRARY_PATH`,
 or the platform loader path) and run with `--enable-native-access=ALL-UNNAMED`; an explicit path wins over a
-natives jar. Set `KILN_VERBOSE=1` to see the
+natives jar. Set `FORNAX_VERBOSE=1` to see the
 engines' own logs.
 
 On a power-limited GPU (for example a laptop on battery), a single long GPU dispatch can exceed the driver's
-compute timeout and lose the device. Kiln decodes ACE-Step audio in 512-frame tiles to avoid that; tune it with
-`KILN_ACESTEP_VAE_CHUNK`.
+compute timeout and lose the device. Fornax decodes ACE-Step audio in 512-frame tiles to avoid that; tune it with
+`FORNAX_ACESTEP_VAE_CHUNK`.
 
 ## Models
 
-Fetch a model with `kiln pull <alias>`. To get the `kiln` command, install Kiln Studio and choose
-**Install kiln command** from its menu (coming in the next Kiln Studio release), or build it from source (see
-[The kiln command](#the-kiln-command)).
+Fetch a model with `fornax pull <alias>`. To get the `fornax` command, install Fornax Studio and choose
+**Install fornax command** from its menu (coming in the next Fornax Studio release), or build it from source (see
+[The fornax command](#the-fornax-command)).
 
 ```sh
-kiln pull qwen3-4b        # chat
-kiln pull flux2-klein     # an image model: diffusion model, VAE and text encoder, from three repos
-kiln list                 # every alias, what is downloaded, and other GGUF models in the cache
+fornax pull qwen3-4b        # chat
+fornax pull flux2-klein     # an image model: diffusion model, VAE and text encoder, from three repos
+fornax list                 # every alias, what is downloaded, and other GGUF models in the cache
 ```
 
-The aliases are Kiln's model catalogue (`ModelCatalog`): `qwen3-0.6b`, `qwen3-4b`, `qwen3-vl-4b`, `paddleocr-vl`,
+The aliases are Fornax's model catalogue (`ModelCatalog`): `qwen3-0.6b`, `qwen3-4b`, `qwen3-vl-4b`, `paddleocr-vl`,
 `medgemma-4b`, `kokoro`, `whisper-large-v3-turbo`, `whisper-base.en`, `flux2-klein`, `qwen-image`, `qwen-image-edit`,
 `ace-step-turbo`, `ace-step`, `ace-step-xl-turbo`, `ace-step-xl`, `yue2`, `ltx-2.5-distilled` and `ltx-2.5-dev`.
-`kiln pull` also takes a repo (`kiln pull unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M`, or file names and globs).
+`fornax pull` also takes a repo (`fornax pull unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M`, or file names and globs).
 
 Files go to the Hugging Face cache (`HF_HUB_CACHE`, `HF_HOME/hub` or `~/.cache/huggingface/hub`), in the layout
-`hf download` uses. There is one cache: `kiln`, `hf`, Kiln Studio and your own app all see the same files, and nothing
-is downloaded twice. Kiln also finds weights in a ComfyUI models folder (`KILN_MODEL_DIRS`).
+`hf download` uses. There is one cache: `fornax`, `hf`, Fornax Studio and your own app all see the same files, and nothing
+is downloaded twice. Fornax also finds weights in a ComfyUI models folder (`FORNAX_MODEL_DIRS`).
 
-From Java, the same thing is `KilnHub`, in `kiln-core`: `KilnHub.standard().pull(ModelCatalog.require("flux2-klein"),
+From Java, the same thing is `FornaxHub`, in `fornax-core`: `FornaxHub.standard().pull(ModelCatalog.require("flux2-klein"),
 listener)` fetches a model's missing files with resume, SHA-256 checks, progress, and a token for gated repos; it also
 reports what is on disk and evicts a model's files. Or pass file paths directly. See
-[Downloading models](https://kiln4j.org/docs/guides/models/).
+[Downloading models](https://fornax4j.org/docs/guides/models/).
 
 Or fetch the files with the Hugging Face CLI:
 
@@ -317,41 +323,41 @@ hf download Comfy-Org/flux2-dev split_files/vae/flux2-vae.safetensors
 hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetensors
 ```
 
-## The kiln command
+## The fornax command
 
-`kiln` fetches models and tries them without writing any code:
+`fornax` fetches models and tries them without writing any code:
 
 ```sh
-kiln pull qwen3-4b                              # an alias: every file the model needs
-kiln pull unsloth/Qwen3-4B-Instruct-2507-GGUF   # lists the repo's GGUF models and asks which
-kiln pull bartowski/google_gemma-3-4b-it-GGUF:Q4_K_M
-kiln list                                       # the catalogue, what is downloaded, sizes
-kiln rm flux2-klein                             # delete a model's files from the cache
-kiln chat qwen3-4b "Write a haiku about a kiln"
-kiln chat qwen3-4b                              # interactive; /reset, /exit
-kiln test flux2-klein                           # load, generate a little, report speed
-kiln info                                       # Java, native libraries, cache, token
+fornax pull qwen3-4b                              # an alias: every file the model needs
+fornax pull unsloth/Qwen3-4B-Instruct-2507-GGUF   # lists the repo's GGUF models and asks which
+fornax pull bartowski/google_gemma-3-4b-it-GGUF:Q4_K_M
+fornax list                                       # the catalogue, what is downloaded, sizes
+fornax rm flux2-klein                             # delete a model's files from the cache
+fornax chat qwen3-4b "Write a haiku about a fornax"
+fornax chat qwen3-4b                              # interactive; /reset, /exit
+fornax test flux2-klein                           # load, generate a little, report speed
+fornax info                                       # Java, native libraries, cache, token
 ```
 
-A reasoning model's `<think>` blocks (Qwen3's) are hidden in `kiln chat`; `--think` shows them. A gated repo
+A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--think` shows them. A gated repo
 (LTX-2.5) needs its terms accepted on huggingface.co and `HF_TOKEN` (or `hf auth login`); the error says so.
 
-**Installing it.** Kiln Studio installs `kiln` onto your `PATH` from its menu, **Install kiln command**, using
-Studio's own Java and engines (coming in the next Kiln Studio release). On a machine without a desktop, such as a
+**Installing it.** Fornax Studio installs `fornax` onto your `PATH` from its menu, **Install fornax command**, using
+Studio's own Java and engines (coming in the next Fornax Studio release). On a machine without a desktop, such as a
 server, build it from source: it needs JDK 25 to build and Java 22 or newer to run (`JAVA_HOME`, or `java` on
 `PATH`).
 
 ```sh
-native/build.sh vulkan                          # the engines (or -Pkiln.cli.nativesVersion=0.1.0, below)
-./gradlew :kiln-cli:installDist                 # -> kiln-cli/build/install/kiln-cli/{bin,lib}
-export PATH="$PWD/kiln-cli/build/install/kiln-cli/bin:$PATH"
+native/build.sh vulkan                          # the engines (or -Pfornax.cli.nativesVersion=0.2.0, below)
+./gradlew :fornax-cli:installDist                 # -> fornax-cli/build/install/fornax-cli/{bin,lib}
+export PATH="$PWD/fornax-cli/build/install/fornax-cli/bin:$PATH"
 ```
 
 The distribution's `lib/` holds the natives jar of each platform built in `build/native/`; with
-`-Pkiln.cli.nativesVersion=0.1.0` it takes this platform's from Maven Central instead. `KILN_LIBRARY_PATH` points it
-at other native libraries. The launcher, `bin/kiln`, takes its Java, its jars and its natives from `KILN_JAVA`,
-`KILN_CLI_LIB` and `KILN_LIBRARY_PATH`, or from placeholders an installer fills in; see
-[The kiln command](https://kiln4j.org/docs/guides/cli/).
+`-Pfornax.cli.nativesVersion=0.2.0` it takes this platform's from Maven Central instead. `FORNAX_LIBRARY_PATH` points it
+at other native libraries. The launcher, `bin/fornax`, takes its Java, its jars and its natives from `FORNAX_JAVA`,
+`FORNAX_CLI_LIB` and `FORNAX_LIBRARY_PATH`, or from placeholders an installer fills in; see
+[The fornax command](https://fornax4j.org/docs/guides/cli/).
 
 Check each model's license before you use what it makes. Some are non-commercial: YuE2's weights are
 CC BY-NC 4.0, for example.
@@ -360,53 +366,53 @@ CC BY-NC 4.0, for example.
 
 ```sh
 ./gradlew single    # three engines, one JVM: an LLM writes a song, ACE-Step sings it, FLUX.2 klein paints the cover
-./gradlew chat --args='"Write a haiku about a kiln"'
+./gradlew chat --args='"Write a haiku about a fornax"'
 ./gradlew song --args='song.wav'                         # -Pdit=xl-turbo for the larger model
 ./gradlew yue2 --args='yue2-song.wav'
 ./gradlew speak --args='out.wav "Hello from the JVM" bm_george'   # -Pmodel=zonos3|lfm3-audio|chatterbox-turbo|...
 ./gradlew transcribe --args='audio.wav'                  # prints the text; writes audio.words.tsv and audio.srt
 ./gradlew separate --args='song.wav'                     # writes song-vocals.wav and song-backing.wav; --all for every stem
-./gradlew image --args='klein out.png "a neon sign that says KILN"' -Psteps=12 -Pwidth=768 -Pheight=768
+./gradlew image --args='klein out.png "a neon sign that says FORNAX"' -Psteps=12 -Pwidth=768 -Pheight=768
 ./gradlew see --args='photo.jpg "What is in this picture?"'      # -Pmodel=qwen3-vl-4b|paddleocr-vl|medgemma-4b
 ./gradlew see --args='form.png "Fill in the fields."' -Pschema=schema.json   # a reply that follows a JSON schema
 ./gradlew invoice   # draws a made-up invoice and reads it into JSON; -Pmodel=paddleocr-vl reads it with OCR first
 ./gradlew defects   # a tray of parts with a dented one: Qwen3-VL boxes the defects (out/defects-found.png)
 ./gradlew edit --args='in.png out.png "the same street in snow"' -Pstrength=0.6   # img2img; -Pmask=m.png inpaints
-./gradlew edit --args='in.png out.png "make the sign say KILN"' -Pmodel=qwen-edit -Plora=lightning.safetensors:1 -Psteps=4 -Pcfg=1
+./gradlew edit --args='in.png out.png "make the sign say FORNAX"' -Pmodel=qwen-edit -Plora=lightning.safetensors:1 -Psteps=4 -Pcfg=1
 ./gradlew upscale --args='in.png out.png'                # RealESRGAN_x4plus: 4x
 ./gradlew search --args='docs "Why does a long video lose the GPU on Vulkan?"'   # embed, find and rerank passages in a folder
 ```
 
-The song examples use the requests in `kiln-examples/src/main/resources/requests/`; pass your own JSON as a
+The song examples use the requests in `fornax-examples/src/main/resources/requests/`; pass your own JSON as a
 second argument. The request formats are the engines' own (see
 [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) and [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp)).
 
-## Kiln Studio
+## Fornax Studio
 
-`kiln-studio-server` is the backend of [Kiln Studio](https://github.com/liberation-data/kiln-studio), a desktop app for
+`fornax-studio-server` is the backend of [Fornax Studio](https://github.com/liberation-data/fornax-studio), a desktop app for
 trying models: a JDK-only HTTP server on localhost (`com.sun.net.httpserver`, replies streamed as server-sent events)
-that lists what in the Hugging Face cache Kiln can run, keeps models in a `ModelPool`, and serves chat (with a
+that lists what in the Hugging Face cache Fornax can run, keeps models in a `ModelPool`, and serves chat (with a
 tool-calling demo through `chatJson`), images, songs (ACE-Step and YuE2), video clips with sound (LTX-2.5, whose .mp4
 needs ffmpeg) and questions about an image for a vision model (Qwen3-VL, PaddleOCR-VL, MedGemma), as text or held to a
 JSON schema. The app starts it; to run it on its own:
 
 ```sh
 ./gradlew studioServer                    # http://127.0.0.1:5191; -Pport=, -Pbudget=<GB>, -Pstub=image,song,video
-./gradlew :kiln-studio-server:studioJar   # one runnable jar, which the app ships
+./gradlew :fornax-studio-server:studioJar   # one runnable jar, which the app ships
 ```
 
-On Linux, as with every Kiln engine, a GPU build refuses to load a model on a machine with no usable GPU (the request's
-error says what to install) unless `KILN_ALLOW_CPU=true` is set in the server's environment.
+On Linux, as with every Fornax engine, a GPU build refuses to load a model on a machine with no usable GPU (the request's
+error says what to install) unless `FORNAX_ALLOW_CPU=true` is set in the server's environment.
 
 ## Roadmap
 
 - Test and document the HIP, CUDA and Metal builds; natives jars for HIP and CUDA.
 - Video through stable-diffusion.cpp (`sd_generate_video`: Wan, LTX).
-- `kiln-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `kiln-llama`).
+- `fornax-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `fornax-llama`).
 - An optional OpenAI-compatible server.
 - An MLX module for Apple silicon, through `mlx-c`.
 - A Kotlin layer with coroutine `Flow` streaming.
 
 ## License
 
-Apache 2.0. The engines Kiln builds against are MIT-licensed; see [NOTICE](NOTICE).
+Apache 2.0. The engines Fornax builds against are MIT-licensed; see [NOTICE](NOTICE).

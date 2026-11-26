@@ -3,7 +3,7 @@ title: Speech (text to speech)
 description: Speak text from Java with Kokoro, ZONOS3, LFM3-Audio, VoxCPM2, Qwen3-TTS and the other models llama.cpp's audio generation runs, with built-in voices or a reference clip.
 ---
 
-`kiln-tts` turns text into speech through llama.cpp's audio generation (its `mtmd` library). One engine runs every
+`fornax-tts` turns text into speech through llama.cpp's audio generation (its `mtmd` library). One engine runs every
 text-to-speech model llama.cpp supports. Each model is two GGUF files: the backbone, and an **mmproj** that holds the
 audio decoder and the model's built-in voices. The class is `TtsModel`.
 
@@ -14,8 +14,8 @@ hf download ggml-org/Kokoro-82M-GGUF Kokoro-82M-F32.gguf mmproj-Kokoro-82M-F16.g
 ```
 
 ```java
-import org.liberationdata.kiln.Audio;
-import org.liberationdata.kiln.tts.TtsModel;
+import org.liberationdata.fornax.Audio;
+import org.liberationdata.fornax.tts.TtsModel;
 
 import java.io.File;
 
@@ -33,9 +33,9 @@ lists them.
 `Audio` is stereo float PCM in [-1, 1] (`left`, `right`, `sampleRate`); a mono model plays on both sides.
 `writeWav` writes a 16-bit stereo WAV.
 
-## The models Kiln knows by name
+## The models Fornax knows by name
 
-`TtsModel.Weights` names the models Kiln has been tried with, with their Hugging Face repository and files.
+`TtsModel.Weights` names the models Fornax has been tried with, with their Hugging Face repository and files.
 `new TtsModel(Weights)` finds both files in the Hugging Face cache; if they aren't there, it fails with the
 `hf download` command that fetches them. `Weights.named("zonos3")` finds one by name, and `downloaded()` says whether
 its files are there.
@@ -68,7 +68,7 @@ VoxCPM2 has no built-in voices. Instead, a description in parentheses at the sta
 ```java
 try (var tts = new TtsModel(TtsModel.Weights.VOXCPM2)) {
     var options = TtsModel.Options.DEFAULT.withSeed(1);
-    tts.speak("(A calm male narrator)Kiln runs open models inside your JVM.", null, options, null)
+    tts.speak("(A calm male narrator)Fornax runs open models inside your JVM.", null, options, null)
        .writeWav(new File("narrator.wav"));
 }
 ```
@@ -122,7 +122,7 @@ Audio all = tts.speak("A longer passage to read aloud.", null,
 whole text in one step, streams a single chunk, so it has nothing to stop). If the callback throws, speech stops and
 `speak` throws that exception. `speakAsync` runs on the model's own thread and returns a `CompletableFuture`, with or
 without a `Flow.Subscriber` for the chunks: see [Threading](/docs/guides/threading/). Without a callback, `speak`
-runs exactly as llama.cpp's `llama-tts` does. At the same seed, Kiln's output matches `llama-tts` to within 16-bit
+runs exactly as llama.cpp's `llama-tts` does. At the same seed, Fornax's output matches `llama-tts` to within 16-bit
 rounding for Kokoro, ZONOS3 and LFM3-Audio.
 
 ## Try it

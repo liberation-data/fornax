@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds Kiln's native libraries: one self-contained shared library per engine, with ggml linked in
+# Builds Fornax's native libraries: one self-contained shared library per engine, with ggml linked in
 # statically and its symbols kept private, so several engines can share one JVM even though each
 # pins a different ggml.
 #
@@ -28,19 +28,19 @@ fetch() {  # fetch <dir-name>
     # When the pin or any patch changed since the last fetch, drop the old patches (tracked files only: the build
     # dirs stay) so the new ones apply to a clean checkout.
     want="$commit $({ cat "$ROOT/native/patches/$1"/*.patch 2>/dev/null || true; } | git hash-object --stdin)"
-    [ "$(cat "$dir/.git/kiln-patches" 2>/dev/null)" = "$want" ] || git -C "$dir" reset -q --hard
+    [ "$(cat "$dir/.git/fornax-patches" 2>/dev/null)" = "$want" ] || git -C "$dir" reset -q --hard
     if [ "$(git -C "$dir" rev-parse HEAD)" != "$commit" ]; then
         git -C "$dir" fetch -q origin "$commit" 2>/dev/null || git -C "$dir" fetch -q origin
         git -C "$dir" checkout -q "$commit"
     fi
     git -C "$dir" submodule update -q --init --recursive
-    # Kiln's patches to the engine (native/patches/<engine>/*.patch), each applied once.
+    # Fornax's patches to the engine (native/patches/<engine>/*.patch), each applied once.
     for p in "$ROOT/native/patches/$1"/*.patch; do
         [ -e "$p" ] || continue
         if git -C "$dir" apply --reverse --check "$p" 2>/dev/null; then continue; fi
         git -C "$dir" apply "$p" || { echo "patch failed: $p" >&2; exit 1; }
     done
-    echo "$want" > "$dir/.git/kiln-patches"
+    echo "$want" > "$dir/.git/fornax-patches"
 }
 
 # ggml backend switches, plus the system libraries a static ggml backend needs at link time.
@@ -86,7 +86,7 @@ build_llama() {  # text and vision: links libmtmd (images in, through an mmproj)
     mkdir -p "$b"
     cmake_build "$s" "$b" "llama llama-common mtmd" $GGML -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF \
         -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_MTMD=ON
-    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_llama.$EXT" "$ROOT/kiln-llama/native/kiln_llama.cpp" \
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libfornax_llama.$EXT" "$ROOT/fornax-llama/native/fornax_llama.cpp" \
         -I"$s/include" -I"$s/ggml/include" -I"$s/common" -I"$s/vendor" -I"$s/tools/mtmd" \
         $(group "$(find "$b" -name libmtmd.a)" "$(find "$b" -name libllama-common.a)" "$(find "$b" -name libllama-common-base.a)" \
                 $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(find "$b" -name libllama.a)") $(ggml_archives "$b") \
@@ -99,7 +99,7 @@ build_tts() {  # llama.cpp's text to speech (libmtmd's audio generation), in the
     mkdir -p "$b"
     cmake_build "$s" "$b" "llama llama-common mtmd" $GGML -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF \
         -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_MTMD=ON
-    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_tts.$EXT" "$ROOT/kiln-tts/native/kiln_tts.cpp" \
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libfornax_tts.$EXT" "$ROOT/fornax-tts/native/fornax_tts.cpp" \
         -I"$s/include" -I"$s/ggml/include" -I"$s/common" -I"$s/vendor" -I"$s/tools/mtmd" \
         $(group "$(find "$b" -name libmtmd.a)" "$(find "$b" -name libllama-common.a)" "$(find "$b" -name libllama-common-base.a)" \
                 $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(find "$b" -name libllama.a)") $(ggml_archives "$b") \
@@ -120,7 +120,7 @@ build_acestep() {
     local s=$SRC/acestep.cpp b=$SRC/acestep.cpp/build-$BACKEND
     mkdir -p "$b"
     cmake_build "$s" "$b" "acestep-core yyjson" $GGML
-    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_acestep.$EXT" "$ROOT/kiln-acestep/native/kiln_acestep.cpp" \
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libfornax_acestep.$EXT" "$ROOT/fornax-acestep/native/fornax_acestep.cpp" \
         -I"$s/src" -I"$s" -I"$s/ggml/include" -I"$s/vendor/yyjson" \
         $(whole "$(find "$b" -name libacestep-core.a)") "$(find "$b" -name libyyjson.a)" $(ggml_archives "$b") \
         $PRIVATE $OMP $LIBS -lpthread
@@ -131,7 +131,7 @@ build_yue2() {
     local s=$SRC/yue2.cpp b=$SRC/yue2.cpp/build-$BACKEND
     mkdir -p "$b"
     cmake_build "$s" "$b" ggml $GGML
-    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_yue2.$EXT" "$ROOT/kiln-yue2/native/kiln_yue2.cpp" \
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libfornax_yue2.$EXT" "$ROOT/fornax-yue2/native/fornax_yue2.cpp" \
         "$s/src/request.cpp" "$s/src/model-store.cpp" "$s/vendor/yyjson/yyjson.c" \
         -I"$s/src" -I"$s" -I"$b" -I"$s/ggml/include" -I"$s/vendor/yyjson" -I"$s/vendor" \
         $(ggml_archives "$b") $PRIVATE $OMP $LIBS -lpthread
@@ -142,7 +142,7 @@ build_whisper() {
     local s=$SRC/whisper.cpp b=$SRC/whisper.cpp/build-$BACKEND
     mkdir -p "$b"
     cmake_build "$s" "$b" whisper $GGML -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=OFF -DWHISPER_BUILD_SERVER=OFF
-    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_whisper.$EXT" "$ROOT/kiln-whisper/native/kiln_whisper.cpp" \
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libfornax_whisper.$EXT" "$ROOT/fornax-whisper/native/fornax_whisper.cpp" \
         -I"$s/include" -I"$s/ggml/include" \
         "$(find "$b" -name libwhisper.a)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS -lpthread
 }
@@ -152,7 +152,7 @@ build_demucs() {  # stems.cpp's HTDemucs, through its libstems C ABI (src/libste
     local s=$SRC/stems.cpp b=$SRC/stems.cpp/build-$BACKEND
     mkdir -p "$b"
     cmake_build "$s" "$b" stems $GGML -DSTEMS_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF
-    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_demucs.$EXT" "$ROOT/kiln-demucs/native/kiln_demucs.cpp" \
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libfornax_demucs.$EXT" "$ROOT/fornax-demucs/native/fornax_demucs.cpp" \
         "$s/src/libstems.cpp" -DSTEMS_VERSION_STRING="\"$(sed -n 's/^project(stems_cpp VERSION \([^ ]*\).*/\1/p' "$s/CMakeLists.txt")\"" \
         -I"$s/src" -I"$s/ggml/include" \
         "$(find "$b" -name libstems_core.a)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS -ldl -lpthread

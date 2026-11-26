@@ -6,7 +6,7 @@ surprises you.
 ## How to debug a model that looks wrong
 
 1. **Compare against the engine's own tool first.** Before you guess at causes, run the same settings through the
-   engine's CLI (`sd-cli` for stable-diffusion.cpp). If the CLI is right and Kiln is wrong, it's Kiln.
+   engine's CLI (`sd-cli` for stable-diffusion.cpp). If the CLI is right and Fornax is wrong, it's Fornax.
    `scripts/compare-with-sdcli.sh` diffs the program stable-diffusion.cpp compiles for each side, in seconds and
    without rendering.
 2. **Render small first.** 336×224 and 49 frames took about 3 minutes and showed every artifact the
@@ -26,7 +26,7 @@ surprises you.
   rule widen any tensor.
 - **Long GPU submissions hit the amdgpu compute timeout.** ggml-vulkan puts up to 100 graph nodes in each
   submission. One big decode (LTX's audio VAE at full size) can exceed the kernel's timeout and lose the device.
-  `GGML_VK_MAX_NODES_PER_SUBMIT=8` (`-Dkiln.vulkan.maxNodesPerSubmit=8`) fixed it. ComfyUI never hit this, because PyTorch on ROCm launches many small
+  `GGML_VK_MAX_NODES_PER_SUBMIT=8` (`-Dfornax.vulkan.maxNodesPerSubmit=8`) fixed it. ComfyUI never hit this, because PyTorch on ROCm launches many small
   kernels.
 - **Long video on Vulkan hits the timeout even at 8 nodes per submission.** A 13 s LTX clip (313 frames) refined at
   1344×896 lost the device on the first refine step: a single attention dispatch over ~47k tokens outlasts the
@@ -35,7 +35,7 @@ surprises you.
   about 2.7× faster per LTX step than Vulkan on the 8060S (44 s against 119 s at 672×448×313, after a slower first step).
 - **HIP graphs overflow a JVM thread's stack.** ggml's HIP backend captures the graph as a HIP graph, and ROCm's
   `hip::Graph::ScheduleOneNode` recurses once per node. On a JVM thread (smaller stack than a CLI's 8 MB main
-  thread) LTX segfaults in libamdhip64 during text encoding. `GGML_CUDA_DISABLE_GRAPHS=1` fixes it, and Kiln sets it by default (`-Dkiln.gpu.graphs=true` turns graphs back on).
+  thread) LTX segfaults in libamdhip64 during text encoding. `GGML_CUDA_DISABLE_GRAPHS=1` fixes it, and Fornax sets it by default (`-Dfornax.gpu.graphs=true` turns graphs back on).
 - **Image options the engine ignores without a word.** `strength` only reaches the program when there is an
   `init_image`, and `control_strength` only with a `control_image`; otherwise both are accepted and dropped. (A
   `mask_image` without an init image does fail, but only once generation starts.) LoRAs flagged `is_high_noise`
@@ -44,7 +44,7 @@ surprises you.
 - **sd-cli and the C API take LoRAs differently.** sd-cli wants `--lora-model-dir` and `<lora:name:weight>` tags in
   the prompt, which it strips; the C API takes a `loras` array of paths and weights. The compiled program is the
   same (`scripts/compare-with-sdcli.sh` showed it for FLUX.2 klein and Qwen-Image-Edit 2511), so compare with the
-  tag in sd-cli's prompt and without it in Kiln's.
+  tag in sd-cli's prompt and without it in Fornax's.
 - **A LoRA on fp8 weights aborted the process.** The default `lora_apply_mode=auto` merged the LoRA into fp8
   weights (FLUX.2 klein's `-fp8` files) "immediately", which needs a copy into F8_E4M3 that Vulkan can't run:
   `ggml-backend.cpp: pre-allocated tensor ... cannot run the operation (CPY)`, then SIGABRT. sd-cli does the same.
@@ -63,32 +63,32 @@ surprises you.
   mask's threshold at 0.5 falls on the same pixels.
 - **Fedora's ROCm lives in `/usr`**, not `/opt/rocm`; `native/build.sh hip` falls back to `/usr/lib64`.
 - **Cancel only reaches a run that has started.** `sd_cancel_generation` is thread-safe, but an idle context ignores
-  it, so a cancel that lands just before `sd_generate_image` begins is lost. Kiln asks again from the progress callback.
+  it, so a cancel that lands just before `sd_generate_image` begins is lost. Fornax asks again from the progress callback.
   A cancelled run returns `SD_STATUS_CANCELLED` (10) and no images.
 - **The progress callback also reports loading.** sd.cpp loads weights on the first run after `sd_ctx_create`, and the
   process-wide progress callback counts the tensors it loads (hundreds of "steps") before the sampling steps. Loading
   doesn't check for a cancel; sampling does, at every step.
 - **LTX audio is part of the model.** LTX-2.5 generates sound and picture together. Leaving out
   `audio_vae_path` removes the audio stream; that didn't cause the ghosting, but it isn't how the model was trained.
-- **LTX audio to video is a Kiln patch.** At the pinned commit sd.cpp's `ref_audios` only drove Wan2.2 S2V and
+- **LTX audio to video is a Fornax patch.** At the pinned commit sd.cpp's `ref_audios` only drove Wan2.2 S2V and
   MiniMax-H3, and its LTX audio VAE had no encoder. `native/patches/stable-diffusion.cpp/0002` adds the encoder
   (host log-mel as ComfyUI's `MelSpectrogram`, torchaudio's sinc resampler to 16 kHz), puts the encoded track into the
   joint latent with denoise mask 0, and gives the audio stream its own timestep (0 when held). It also had to follow
   LTX-2/ComfyUI's cross-modal timesteps: the video's cross-attention scale/shift follows the video's timestep, and its
   prompt modulation and the video-to-audio gate the video's largest one. sd.cpp fed all of them the audio's timestep, which is the same
-  thing until the two streams are at different noise levels. Checked against ComfyUI: the soundtrack of a Kiln render
+  thing until the two streams are at different noise levels. Checked against ComfyUI: the soundtrack of a Fornax render
   correlates 0.97 sample for sample with ComfyUI's own encode → decode of the same section.
 
 ## acestep.cpp
 
 - **It can stop mid-run.** At the pinned commit, `ace_lm_generate`, `ace_synth_job_run_dit` and
   `ace_synth_job_run_vae` take a `bool (*cancel)(void *)` polled between LM tokens, DiT steps and VAE tiles. The shim
-  passes one that reads a flag `kiln_acestep_set_cancel` sets. yue2.cpp's `pipeline_generate` takes the same kind of
+  passes one that reads a flag `fornax_acestep_set_cancel` sets. yue2.cpp's `pipeline_generate` takes the same kind of
   callback (AR tokens, NAR steps, VAE tiles), and its shim does the same.
 - **Decode in 512-frame VAE tiles.** The default 1024-frame tiles hung the GPU on battery (the same compute
-  timeout). The shim defaults to 512 and reads `KILN_ACESTEP_VAE_CHUNK`.
+  timeout). The shim defaults to 512 and reads `FORNAX_ACESTEP_VAE_CHUNK`.
 
-## whisper.cpp (kiln-whisper)
+## whisper.cpp (fornax-whisper)
 
 - **DTW needs flash attention off.** whisper.cpp quietly drops DTW token timestamps when flash attention is on (its
   default), so the shim turns flash attention off whenever an alignment preset is given. On 55 s of narration with
@@ -101,7 +101,7 @@ surprises you.
   moves word edges onto the voice where there is silence to go by: sentence starts went from 0.16 s to 0.03 s off on
   average, ends from 0.76 s to 0.08 s (synthesized narration with known gaps). Whisper's timestamp tokens (no DTW)
   were worse: starts up to 0.5 s early or late, and ends that ran into the next sentence.
-- **large-v3-turbo's segment times are coarse**, often whole seconds. Kiln fits each segment to its words.
+- **large-v3-turbo's segment times are coarse**, often whole seconds. Fornax fits each segment to its words.
 - **`no_context` is per call, not per window.** It only clears the text a previous `whisper_full` call left in the
   state (and is on by default). Each 30 s window within a call is still prompted with the text before it, up to
   `n_max_text_ctx` tokens; OpenAI's `condition_on_previous_text=False` is `n_max_text_ctx = 0`. The shim always sets
@@ -120,29 +120,29 @@ surprises you.
   headers must be on the compiler's include path. Fedora's `spirv-headers-devel` puts them in `/usr/include`; for a
   private install, pass `CMAKE_EXTRA="-DCMAKE_CXX_FLAGS=-I<prefix>/include"`.
 
-## stems.cpp (kiln-demucs)
+## stems.cpp (fornax-demucs)
 
 - **Why stems.cpp.** It runs HTDemucs v4 on ggml (so on the GPU, through the same build as the other engines), its
   published GGUFs match PyTorch demucs sample for sample (71-126 dB SNR per stem on its parity clip), and it has
   progress and cancel callbacks in a stable C ABI. sevagh/demucs.cpp, the older port, is Eigen on the CPU only and
   says it trades speed for memory. Both are MIT.
 - **It does demucs' whole separate path,** not just the network: normalise by the mono mix's mean and deviation,
-  7.8 s segments with 25% overlap and demucs' triangular cross-fade, then scale back. So there is nothing for Kiln to
+  7.8 s segments with 25% overlap and demucs' triangular cross-fade, then scale back. So there is nothing for Fornax to
   add around it. torchaudio's `HDEMUCS_HIGH_MUSDB_PLUS` (Hybrid Demucs v3, which Endless Country episode 2 used, with
-  10 s chunks and a 1 s linear cross-fade) is a different model: on that song, Kiln's HTDemucs vocals measured
+  10 s chunks and a 1 s linear cross-fade) is a different model: on that song, Fornax's HTDemucs vocals measured
   13.5 dB SDR against torchaudio's (15.8 dB on a 20 s excerpt), its backing 14.8 dB, and the stems add back up to
   the mix to -35 dB.
 - **Its ggml is a fork** (betweentwomidnights/ggml, shared with sa3.cpp and audiocraft.cpp). The fork carries a fix
   for ggml-vulkan rounding F32 matmul operands to fp16 (betweentwomidnights/ggml#7), without which HTDemucs failed
   stems.cpp's parity check on Vulkan. It is linked statically and kept private like every engine's ggml.
-- **It prints its backend** (`[stems] backend: Vulkan0 ...`) on stderr when a model loads, whatever `KILN_VERBOSE`
+- **It prints its backend** (`[stems] backend: Vulkan0 ...`) on stderr when a model loads, whatever `FORNAX_VERBOSE`
   says. ggml's own logs are quiet as usual.
 - **Cancel lands between segments.** stems.cpp polls the cancel callback before each 7.8 s segment, under a second
   apart on the 8060S. The progress callback comes at the same points.
 
 ## ComfyUI parity for LTX-2.5 (Endless Country episode 2)
 
-| ComfyUI | Kiln (`VideoClip -Drecipe=two-stage`) |
+| ComfyUI | Fornax (`VideoClip -Drecipe=two-stage`) |
 |---|---|
 | Stage 1: half size, `ManualSigmas` 1.0 … 0.421875, 0, euler_ancestral, CFG 1 | `sample.sigmas`, `sample.method=euler_a` |
 | `LTXVImgToVideoInplace` strength 0.7 | `strength=0.7` |
@@ -152,7 +152,7 @@ surprises you.
 | Tiled VAE decode | `vae_tiling.enabled` |
 | `LTXVAudioVAEEncode` + `SetLatentNoiseMask` 0 in place of `LTXVEmptyLatentAudio` (`ltx_a2v.py`) | `VideoRequest.withAudio(song, start)` (`-Psong=… -Psong.start=…`) |
 
-## llama.cpp text to speech (kiln-tts)
+## llama.cpp text to speech (fornax-tts)
 
 - **Kokoro streams one chunk.** It isn't autoregressive: in stream mode the whole text decodes in one step and arrives
   as a single chunk, so cancel and backpressure have nothing to act on. The autoregressive models (ZONOS3, LFM3-Audio,
@@ -162,15 +162,15 @@ surprises you.
   the arguments; without it the threadpool is sized from -1 and ggml tries to allocate 2^64 bytes. See
   [tts-notes.md](tts-notes.md) for the rest (models, voices, licences).
 
-## llama.cpp language models (kiln-llama)
+## llama.cpp language models (fornax-llama)
 
 - **`chatJson`'s stream callback only fires on content.** Reasoning and tool-call tokens add no content, so a callback
   that only sees content can't stop them. The shim calls it with an empty piece for those tokens, which LlamaModel
   doesn't pass on but uses to check for a cancel.
 - **Upcalls must not throw.** An exception that escapes an FFM upcall can't unwind through C++ frames: the JVM prints
-  "Unrecoverable uncaught exception encountered" and exits. Every Kiln upcall catches it and stops the engine instead.
+  "Unrecoverable uncaught exception encountered" and exits. Every Fornax upcall catches it and stops the engine instead.
 
-## llama.cpp vision (kiln-llama with an mmproj)
+## llama.cpp vision (fornax-llama with an mmproj)
 
 - **One path for every chat with images.** The shim converts image parts to media markers, renders the chat with the
   model's own Jinja template (`common_chat_session`, as llama-server does), splits the rendered prompt on the
@@ -187,7 +187,7 @@ surprises you.
   through `llama_batch_ext_set_pos`. So the shim counts context cells apart from positions: a ~1200-token image
   takes ~40 positions, and checking the position against `n_ctx` would overrun the KV cache.
 - **Non-causal image attention needs the whole image in one ubatch.** Gemma 3 (MedGemma) attends over an image
-  non-causally. Like `llama-mtmd-cli`, `kiln_llama_create_mm` caps the image's tokens at `n_ubatch` (512 by default)
+  non-causally. Like `llama-mtmd-cli`, `fornax_llama_create_mm` caps the image's tokens at `n_ubatch` (512 by default)
   for such models, using `mtmd_get_memory_usage` (an unstable mtmd API that may move).
 - **PaddleOCR-VL takes task prompts, not instructions.** It answers "OCR:", "Table Recognition:", "Chart
   Recognition:" and so on, and ignores a request to fill a schema: a grammar-constrained reply comes back as
@@ -200,7 +200,7 @@ surprises you.
 - **Images are cheap on the GPU.** A 1000×1300 invoice is ~1200 Qwen3-VL tokens and is read (encoded and prefilled)
   in ~1.6 s; a 720×480 picture in ~0.4 s.
 
-## llama.cpp embeddings and reranking (kiln-llama, Mode.EMBED and Mode.RERANK)
+## llama.cpp embeddings and reranking (fornax-llama, Mode.EMBED and Mode.RERANK)
 
 - **Set up as llama-embedding does.** A pooled handle has `embeddings` on, the GGUF's own pooling type (Qwen3-Embedding:
   last; Qwen3-Reranker: rank), one unified KV cache, and `n_batch = n_ubatch = n_ctx`: pooling needs every token of a
@@ -212,7 +212,7 @@ surprises you.
 - **Batching moves the numbers a little.** A text embedded with others comes out at cosine ~0.9999 to the same text
   embedded alone, and a borderline rerank score moved from 0.598 alone to 0.626 in a batch of four. `llama-embedding`
   gives the same numbers both ways on the same build, so it is the GPU kernels' shapes, not leakage between sequences.
-  Kiln's batched embeddings match `llama-embedding`'s batched ones to cosine 1.000000 (`EmbeddingsIT`;
+  Fornax's batched embeddings match `llama-embedding`'s batched ones to cosine 1.000000 (`EmbeddingsIT`;
   `scripts/embedding-reference.sh` regenerates the reference).
 - **The rerank prompt is the GGUF's.** Qwen3-Reranker's GGUF carries a `tokenizer.chat_template.rerank` with
   `{query}` and `{document}`; the shim fills it in and tokenizes it whole with special tokens parsed, as llama-server's

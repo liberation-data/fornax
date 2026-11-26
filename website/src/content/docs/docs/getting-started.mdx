@@ -1,6 +1,6 @@
 ---
 title: Getting started
-description: Build Kiln's native libraries, fetch model weights with kiln pull (or the Hugging Face CLI), run the all-in-one demo, and use Kiln from your own app.
+description: Build Fornax's native libraries, fetch model weights with fornax pull (or the Hugging Face CLI), run the all-in-one demo, and use Fornax from your own app.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
@@ -10,13 +10,13 @@ This page takes you from a fresh clone to a song, its lyrics and its cover art, 
 Then it shows what your own application needs.
 
 :::tip[Just want to try the models?]
-[Kiln Studio](#kiln-studio) is a desktop app around Kiln. It needs no build and no code, and it can install the
-[`kiln` command](/docs/guides/cli/) for fetching models.
+[Fornax Studio](#fornax-studio) is a desktop app around Fornax. It needs no build and no code, and it can install the
+[`fornax` command](/docs/guides/cli/) for fetching models.
 :::
 
 ## What you need
 
-- **JDK 25**, to build Kiln. Apps that use Kiln need Java 22 or newer, where the Foreign Function & Memory API is
+- **JDK 25**, to build Fornax. Apps that use Fornax need Java 22 or newer, where the Foreign Function & Memory API is
   final (Kiln 0.1.0 itself needs 25).
 - **CMake, Ninja and a C++17 compiler**, to build the engines.
 - **The SDK for your GPU backend.** For Vulkan, the Vulkan headers, `glslc` and SPIRV-Headers. On Fedora:
@@ -28,8 +28,8 @@ Then it shows what your own application needs.
   [Choosing a GPU backend](/docs/guides/gpu-backends/) lists what HIP, CUDA and Metal need.
 - **A GPU driver.** On Linux, your GPU's Vulkan driver: desktop Fedora and Ubuntu have it already. If not, follow
   [Installing GPU drivers](/docs/gpu-drivers/). Macs need nothing.
-- **A way to download weights:** the [`kiln` command](/docs/guides/cli/) (built in step 3 below, or installed by
-  Kiln Studio), or the Hugging Face CLI (`hf`). Both use the Hugging Face cache.
+- **A way to download weights:** the [`fornax` command](/docs/guides/cli/) (built in step 3 below, or installed by
+  Fornax Studio), or the Hugging Face CLI (`hf`). Both use the Hugging Face cache.
 
 ## Build and run
 
@@ -38,13 +38,13 @@ Then it shows what your own application needs.
 1. **Build the native libraries.**
 
    ```sh
-   git clone https://github.com/liberation-data/kiln.git && cd kiln
+   git clone https://github.com/liberation-data/fornax.git && cd fornax
    native/build.sh vulkan     # or hip | cuda | metal | cpu
    ```
 
    `native/build.sh` clones each engine at the commit pinned in `native/engines.properties` into `engines-src/`,
-   applies Kiln's patches, and writes one library per engine to `build/native/<os>-<arch>-<backend>/`, for example
-   `build/native/linux-x86_64-vulkan/libkiln_llama.so`. The first build takes a while.
+   applies Fornax's patches, and writes one library per engine to `build/native/<os>-<arch>-<backend>/`, for example
+   `build/native/linux-x86_64-vulkan/libfornax_llama.so`. The first build takes a while.
 
    To build only some engines, list them after the backend: `native/build.sh vulkan llama tts`. The engines are
    `llama`, `tts`, `sd`, `acestep`, `yue2`, `whisper` and `demucs`.
@@ -56,19 +56,19 @@ Then it shows what your own application needs.
    ```
 
    The Gradle build points the examples and tests at `build/native/<os>-<arch>-vulkan/`. For another backend, add
-   `-Pkiln.backend=hip` (or `cuda`, `metal`, `cpu`) to any Gradle command.
+   `-Pfornax.backend=hip` (or `cuda`, `metal`, `cpu`) to any Gradle command.
 
 3. **Fetch the weights for the demo.**
 
    ```sh
-   ./gradlew :kiln-cli:installDist      # the kiln command
-   export PATH="$PWD/kiln-cli/build/install/kiln-cli/bin:$PATH"
-   kiln pull qwen3-4b                   # Qwen3 4B Instruct
-   kiln pull ace-step                   # ACE-Step 1.5 turbo and its 4B lyric LM: four files
-   kiln pull flux2-klein                # FLUX.2 [klein]: three files, from three repos
+   ./gradlew :fornax-cli:installDist      # the fornax command
+   export PATH="$PWD/fornax-cli/build/install/fornax-cli/bin:$PATH"
+   fornax pull qwen3-4b                   # Qwen3 4B Instruct
+   fornax pull ace-step                   # ACE-Step 1.5 turbo and its 4B lyric LM: four files
+   fornax pull flux2-klein                # FLUX.2 [klein]: three files, from three repos
    ```
 
-   If Kiln Studio has installed `kiln` for you, skip the first two lines. Or fetch the same files with the Hugging
+   If Fornax Studio has installed `fornax` for you, skip the first two lines. Or fetch the same files with the Hugging
    Face CLI:
 
    ```sh
@@ -81,7 +81,7 @@ Then it shows what your own application needs.
    ```
 
    Both put the files in the Hugging Face cache, so either can fetch what the other started, and nothing is stored
-   twice. See [Finding weights](#finding-weights) for where Kiln looks.
+   twice. See [Finding weights](#finding-weights) for where Fornax looks.
 
 4. **Run the demo.**
 
@@ -97,28 +97,28 @@ Then it shows what your own application needs.
 
 ## More examples
 
-Each example is a Gradle task in `kiln-examples`. Model options are passed as `-P` properties.
+Each example is a Gradle task in `fornax-examples`. Model options are passed as `-P` properties.
 
 ```sh
-./gradlew chat --args='"Write a haiku about a kiln"'
+./gradlew chat --args='"Write a haiku about a fornax"'
 ./gradlew speak --args='out.wav "Hello from the JVM" bm_george'   # -Pmodel=zonos3|lfm3-audio|chatterbox-turbo|...
-./gradlew image --args='klein out.png "a neon sign that says KILN"' -Psteps=12 -Pwidth=768 -Pheight=768
+./gradlew image --args='klein out.png "a neon sign that says FORNAX"' -Psteps=12 -Pwidth=768 -Pheight=768
 ./gradlew song --args='song.wav'                                  # -Pdit=xl-turbo for the larger model
 ./gradlew yue2 --args='yue2-song.wav'
 ./gradlew video --args='clip.mp4 "a potter at a wheel, warm light"'
 ```
 
-The song examples read the requests in `kiln-examples/src/main/resources/requests/`; pass your own JSON as a second
+The song examples read the requests in `fornax-examples/src/main/resources/requests/`; pass your own JSON as a second
 argument. Each guide lists the weights its example needs.
 
 ## Finding weights
 
-`HfCache` finds files that `kiln pull` or `hf download` has already put in the Hugging Face cache. It looks in
+`HfCache` finds files that `fornax pull` or `hf download` has already put in the Hugging Face cache. It looks in
 `HF_HUB_CACHE`, then `$HF_HOME/hub`, then `~/.cache/huggingface/hub`. To download from Java as well, or to find a
-whole model set's files at once, use `KilnHub` (see [Downloading models](/docs/guides/models/)).
+whole model set's files at once, use `FornaxHub` (see [Downloading models](/docs/guides/models/)).
 
 ```java
-import org.liberationdata.kiln.HfCache;
+import org.liberationdata.fornax.HfCache;
 
 import java.nio.file.Path;
 import java.util.Optional;
@@ -139,39 +139,39 @@ You don't have to use it: every model class takes plain file paths.
 
 ## In your own application
 
-Your app needs the Kiln modules on its classpath, the native libraries where Kiln can find them, and permission to
+Your app needs the Fornax modules on its classpath, the native libraries where Fornax can find them, and permission to
 make native calls.
 
 ```sh
-java -Dkiln.library.path=build/native/linux-x86_64-vulkan \
+java -Dfornax.library.path=build/native/linux-x86_64-vulkan \
      --enable-native-access=ALL-UNNAMED -jar your-app.jar
 ```
 
-Kiln looks for each library (`libkiln_llama.so`, or `.dylib` on macOS) in this order:
+Fornax looks for each library (`libfornax_llama.so`, or `.dylib` on macOS) in this order:
 
-1. `-Dkiln.<name>.lib=<file>`: an exact file, for example `-Dkiln.kiln_llama.lib=/opt/kiln/libkiln_llama.so`;
-2. each directory in `-Dkiln.library.path` (separated by your platform's path separator);
-3. each directory in the `KILN_LIBRARY_PATH` environment variable;
-4. a Kiln natives jar on the classpath (see [Maven and Gradle](/docs/maven-and-gradle/));
+1. `-Dfornax.<name>.lib=<file>`: an exact file, for example `-Dfornax.fornax_llama.lib=/opt/fornax/libfornax_llama.so`;
+2. each directory in `-Dfornax.library.path` (separated by your platform's path separator);
+3. each directory in the `FORNAX_LIBRARY_PATH` environment variable;
+4. a Fornax natives jar on the classpath (see [Maven and Gradle](/docs/maven-and-gradle/));
 5. the platform loader's path (`LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH` and the system directories).
 
 If it finds none, the first use of that engine's model class fails with an `UnsatisfiedLinkError` that says where it
 looked.
 
-Set `KILN_VERBOSE=1` to see the engines' own logs; they are quiet by default, apart from errors.
+Set `FORNAX_VERBOSE=1` to see the engines' own logs; they are quiet by default, apart from errors.
 
 :::tip[Or just add the dependency]
-Kiln is on Maven Central as `org.kiln4j`, with a natives jar per platform, so your app doesn't need a native
+Fornax is on Maven Central as `org.fornax4j`, with a natives jar per platform, so your app doesn't need a native
 build. See [Maven and Gradle](/docs/maven-and-gradle/).
 :::
 
-## Kiln Studio
+## Fornax Studio
 
-[Kiln Studio](https://github.com/liberation-data/kiln-studio) is a desktop app around Kiln: chat with a GGUF model
+[Fornax Studio](https://github.com/liberation-data/fornax-studio) is a desktop app around Fornax: chat with a GGUF model
 and watch the tokens per second, watch it call tools, make an image or a song, and see what is loaded and how much
-memory it holds. It runs Kiln in a JVM of its own, with its own Java, and finds models in your Hugging Face cache.
-Models aren't included. Choose **Install kiln command** from Studio's menu to put [`kiln`](/docs/guides/cli/) on your
-`PATH` (coming in the next Kiln Studio release), then fetch them with `kiln pull <alias>`, such as
-`kiln pull qwen3-4b`. Or use `hf download` as above: Studio, `kiln` and `hf` share the one cache.
+memory it holds. It runs Fornax in a JVM of its own, with its own Java, and finds models in your Hugging Face cache.
+Models aren't included. Choose **Install fornax command** from Studio's menu to put [`fornax`](/docs/guides/cli/) on your
+`PATH` (coming in the next Fornax Studio release), then fetch them with `fornax pull <alias>`, such as
+`fornax pull qwen3-4b`. Or use `hf download` as above: Studio, `fornax` and `hf` share the one cache.
 
 <StudioDownloads />

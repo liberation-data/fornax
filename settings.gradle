@@ -7,27 +7,27 @@ pluginManagement {
     }
 }
 
-rootProject.name = 'kiln'
+rootProject.name = 'fornax'
 
-include 'kiln-core'     // native library loading, Hugging Face cache lookup, audio
-include 'kiln-llama'    // llama.cpp: GGUF language models
-include 'kiln-tts'      // llama.cpp text to speech: Kokoro, ZONOS3, LFM3-Audio, ...
-include 'kiln-sd'       // stable-diffusion.cpp: FLUX, Qwen-Image, SD, Wan, LTX
-include 'kiln-acestep'  // acestep.cpp: ACE-Step 1.5 songs
-include 'kiln-yue2'     // yue2.cpp: YuE2 songs
-include 'kiln-whisper'  // whisper.cpp: speech to text with word timings
-include 'kiln-demucs'   // stems.cpp: HTDemucs stem separation (vocals and backing)
-include 'kiln-cli'      // the kiln command: pull, list, chat, test, info
-include 'kiln-examples' // runnable demos (not published)
-include 'kiln-bench'    // A/B against ComfyUI's HTTP API (not published)
-include 'kiln-studio-server' // the local HTTP backend Kiln Studio (the desktop app) starts (not published)
+include 'fornax-core'     // native library loading, Hugging Face cache lookup, audio
+include 'fornax-llama'    // llama.cpp: GGUF language models
+include 'fornax-tts'      // llama.cpp text to speech: Kokoro, ZONOS3, LFM3-Audio, ...
+include 'fornax-sd'       // stable-diffusion.cpp: FLUX, Qwen-Image, SD, Wan, LTX
+include 'fornax-acestep'  // acestep.cpp: ACE-Step 1.5 songs
+include 'fornax-yue2'     // yue2.cpp: YuE2 songs
+include 'fornax-whisper'  // whisper.cpp: speech to text with word timings
+include 'fornax-demucs'   // stems.cpp: HTDemucs stem separation (vocals and backing)
+include 'fornax-cli'      // the fornax command: pull, list, chat, test, info
+include 'fornax-examples' // runnable demos (not published)
+include 'fornax-bench'    // A/B against ComfyUI's HTTP API (not published)
+include 'fornax-studio-server' // the local HTTP backend Fornax Studio (the desktop app) starts (not published)
 
-// Natives jars, org.kiln4j:kiln-natives-<os>-<arch>-<backend>: the engines' libraries from build/native/ (see
+// Natives jars, org.fornax4j:fornax-natives-<os>-<arch>-<backend>: the engines' libraries from build/native/ (see
 // native/build.sh), one jar per platform and backend. A platform is included only when its libraries have been built,
-// unless -Pkiln.natives.require=true (the release build), which fails on a missing one. -Pkiln.natives=... lists others.
-def nativePlatforms = providers.gradleProperty('kiln.natives')
+// unless -Pfornax.natives.require=true (the release build), which fails on a missing one. -Pfornax.natives=... lists others.
+def nativePlatforms = providers.gradleProperty('fornax.natives')
         .getOrElse('linux-x86_64-vulkan,macos-aarch64-metal,macos-x86_64-metal').split(',')*.trim()
-def requireNatives = providers.gradleProperty('kiln.natives.require').getOrElse('false').toBoolean()
+def requireNatives = providers.gradleProperty('fornax.natives.require').getOrElse('false').toBoolean()
 gradle.ext.nativesDirs = [:]  // platform -> its build/native/ directory, for the natives jars in build.gradle
 nativePlatforms.each { platform ->
     // native/build.sh names a directory by `uname -m`, which is arm64 on macOS
@@ -37,9 +37,9 @@ nativePlatforms.each { platform ->
         return
     }
     gradle.ext.nativesDirs[platform] = built
-    def name = "kiln-natives-$platform"
+    def name = "fornax-natives-$platform"
     include name
-    def dir = file("build/kiln-natives/$platform")  // a project needs a directory; this one has nothing in it
+    def dir = file("build/fornax-natives/$platform")  // a project needs a directory; this one has nothing in it
     dir.mkdirs()
     project(":$name").projectDir = dir
 }

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- hello-fornax for Maven: mvn -q compile exec:java   (.mvn/jvm.config allows Fornax's native access) -->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.fornax4j.samples</groupId>
+    <artifactId>hello-fornax</artifactId>
+    <version>1.0</version>
+
+    <properties>
+        <!-- The Fornax release to build against (Gradle: gradle.properties). Override with -Dfornax.version=... -->
+        <fornax.version>0.2.0</fornax.version>
+        <maven.compiler.release>25</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.fornax4j</groupId>
+            <artifactId>fornax-llama</artifactId>
+            <version>${fornax.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.fornax4j</groupId>
+            <artifactId>fornax-natives-${fornax.natives}</artifactId>
+            <version>${fornax.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.15.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.6.3</version>
+                <configuration>
+                    <mainClass>hello.HelloFornax</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!-- The natives jar for this OS and arch -->
+    <profiles>
+        <profile>
+            <id>fornax-linux-x86_64</id>
+            <activation><os><name>Linux</name><arch>amd64</arch></os></activation>
+            <properties><fornax.natives>linux-x86_64-vulkan</fornax.natives></properties>
+        </profile>
+        <profile>
+            <id>fornax-macos-aarch64</id>
+            <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
+            <properties><fornax.natives>macos-aarch64-metal</fornax.natives></properties>
+        </profile>
+        <profile>
+            <id>fornax-macos-x86_64</id>
+            <activation><os><family>mac</family><arch>x86_64</arch></os></activation>
+            <properties><fornax.natives>macos-x86_64-metal</fornax.natives></properties>
+        </profile>
+    </profiles>
+</project>

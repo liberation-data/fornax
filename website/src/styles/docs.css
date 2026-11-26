@@ -1,16 +1,16 @@
 /* The docs in the landing page's palette (src/pages/index.astro's :root): firelight browns, ember and the accent's
    orange, Ubuntu and JetBrains Mono. Dark is the abyss and char of the splash; light is the page's paper. */
 :root {
-    --kiln-abyss: #170d08;
-    --kiln-char: #22140d;
-    --kiln-ink: #2a1a12;
-    --kiln-muted: #6a5146;
-    --kiln-paper: #fbf7f2;
-    --kiln-line: #ecdfd3;
-    --kiln-tint: #f6ebe0;
-    --kiln-ember: #b4410f;
-    --kiln-accent: #f39a3d;
-    --kiln-glow: #ffcf7a;
+    --fornax-abyss: #170d08;
+    --fornax-char: #22140d;
+    --fornax-ink: #2a1a12;
+    --fornax-muted: #6a5146;
+    --fornax-paper: #fbf7f2;
+    --fornax-line: #ecdfd3;
+    --fornax-tint: #f6ebe0;
+    --fornax-ember: #b4410f;
+    --fornax-accent: #f39a3d;
+    --fornax-glow: #ffcf7a;
 
     --sl-font: 'Ubuntu', system-ui, sans-serif;
     --sl-font-mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -21,42 +21,42 @@
     --sl-color-gray-3: #b09d91;
     --sl-color-gray-4: #7a6256;
     --sl-color-gray-5: #45321f;
-    --sl-color-gray-6: var(--kiln-char);
-    --sl-color-black: var(--kiln-abyss);
+    --sl-color-gray-6: var(--fornax-char);
+    --sl-color-black: var(--fornax-abyss);
 
     --sl-color-accent-low: #4a2410;
-    --sl-color-accent: var(--kiln-accent);
+    --sl-color-accent: var(--fornax-accent);
     --sl-color-accent-high: #ffc98f;
 
     --sl-color-backdrop-overlay: rgba(23, 13, 8, 0.7);
 
     /* Notes (and the "Next" badges) in the accent's orange rather than Starlight's blue; cautions keep its amber. */
     --sl-color-blue-low: #3d1e0d;
-    --sl-color-blue: var(--kiln-accent);
+    --sl-color-blue: var(--fornax-accent);
     --sl-color-blue-high: #ffd8ad;
 }
 
 :root[data-theme='light'] {
-    --sl-color-white: var(--kiln-ink);
+    --sl-color-white: var(--fornax-ink);
     --sl-color-gray-1: #3a261c;
     --sl-color-gray-2: #4a3328;
-    --sl-color-gray-3: var(--kiln-muted);
+    --sl-color-gray-3: var(--fornax-muted);
     --sl-color-gray-4: #9a8276;
     --sl-color-gray-5: #dccbbd;
-    --sl-color-gray-6: var(--kiln-line);
-    --sl-color-gray-7: var(--kiln-tint);
-    --sl-color-black: var(--kiln-paper);
+    --sl-color-gray-6: var(--fornax-line);
+    --sl-color-gray-7: var(--fornax-tint);
+    --sl-color-black: var(--fornax-paper);
 
     --sl-color-accent-low: #f7dcc6;
-    --sl-color-accent: var(--kiln-ember);
+    --sl-color-accent: var(--fornax-ember);
     --sl-color-accent-high: #8a300a;
 
     --sl-color-bg-nav: #fffdfa;
-    --sl-color-bg-inline-code: var(--kiln-tint);
+    --sl-color-bg-inline-code: var(--fornax-tint);
     --sl-color-backdrop-overlay: rgba(42, 26, 18, 0.45);
 
     --sl-color-blue-low: #f9e3d1;
-    --sl-color-blue: var(--kiln-ember);
+    --sl-color-blue: var(--fornax-ember);
     --sl-color-blue-high: #7a2a08;
 }
 
@@ -67,7 +67,7 @@ pre,
     font-variant-ligatures: none;
 }
 
-/* A long inline name (-Dkiln.vulkan.maxNodesPerSubmit=8) breaks rather than pushing a phone's page sideways. */
+/* A long inline name (-Dfornax.vulkan.maxNodesPerSubmit=8) breaks rather than pushing a phone's page sideways. */
 .sl-markdown-content :not(pre) > code {
     overflow-wrap: anywhere;
 }

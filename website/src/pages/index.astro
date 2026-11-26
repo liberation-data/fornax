@@ -1,6 +1,6 @@
 ---
 /**
- * The landing page: the splash, then what Kiln is, the code, the engines, what it measured, the all-in-one demo, Kiln
+ * The landing page: the splash, then what Fornax is, the code, the engines, what it measured, the all-in-one demo, Fornax
  * Studio and its downloads, and how to build it. Every number here comes from the repository's README, from
  * out/bench/results.md, or (the Studio's) from its screenshot.
  */
@@ -22,19 +22,19 @@ import { createHash } from 'node:crypto';
 import { STUDIO, repoStars, studioRelease, studioRepoPublic, studioUrl } from '../lib/github';
 import Share from '../components/Share.astro';
 
-const REPO = 'https://github.com/liberation-data/kiln';
+const REPO = 'https://github.com/liberation-data/fornax';
 
-// Kiln Studio's latest release and the installers it attached, for the download buttons in the Studio section. None
+// Fornax Studio's latest release and the installers it attached, for the download buttons in the Studio section. None
 // (the repository still private, no release yet, or GitHub out of reach): the section says they are on their way.
 const [studio, studioPublic] = await Promise.all([studioRelease(), studioRepoPublic()]);
 /* The nav's GitHub menu, as on drivine.org: each repo with its stars (left out when GitHub can't say). */
-const [kilnStars, studioStars] = await Promise.all([repoStars('liberation-data/kiln'), studioPublic ? repoStars(STUDIO.repo) : Promise.resolve(undefined)]);
+const [fornaxStars, studioStars] = await Promise.all([repoStars('liberation-data/fornax'), studioPublic ? repoStars(STUDIO.repo) : Promise.resolve(undefined)]);
 const stars = (n?: number) => (!n ? '' : `★ ${n.toLocaleString('en')}`);
-// Download Kiln Studio (the hero, the closing call) goes to the buttons, or to the section that says they are coming.
+// Download Fornax Studio (the hero, the closing call) goes to the buttons, or to the section that says they are coming.
 const studioHref = studio ? '#get-studio' : '#studio';
 const DESCRIPTION = 'Open models as plain Java calls: chat, vision, documents, images, songs, video and speech, running on your GPU, inside your JVM.';
 
-// The link preview: the video's title card (logo, kiln4j, tagline), 1200×630, at an absolute URL on the site's domain.
+// The link preview: the video's title card (logo, fornax4j, tagline), 1200×630, at an absolute URL on the site's domain.
 const preview = await getImage({ src: shareCard, format: 'jpeg', width: 1200, quality: 85 });
 const previewUrl = new URL(preview.src, Astro.site).href;
 const pageUrl = new URL('/', Astro.site).href;
@@ -68,14 +68,14 @@ const seconds = existsSync(PLAYLIST)
     ? Math.round([...readFileSync(PLAYLIST, 'utf8').matchAll(/#EXTINF:([\d.]+)/g)].reduce((sum, [, it]) => sum + Number(it), 0))
     : 128;
 const VIDEO = {
-    title: 'Kiln in two minutes',
+    title: 'Fornax in two minutes',
     length: `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`,
     spoken: `${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds`,
     hls: existsSync(PLAYLIST) ? v('/video/hls/index.m3u8') : undefined,
     end: existsSync('public/video/explainer-end.jpg') ? v('/video/explainer-end.jpg') : undefined,
     captions: existsSync('public/video/explainer.vtt') ? v('/video/explainer.vtt') : undefined,
-    share: 'https://kiln4j.org/#video',
-    shareText: 'Kiln: open generative models inside your JVM.',
+    share: 'https://fornax4j.org/#video',
+    shareText: 'Fornax: open generative models inside your JVM.',
 };
 const photoVars = `--photo: ${photoLarge.css}; --photo-small: ${photoSmall.css}; --lines: url('${lines.src}');`;
 const logoSmall = await getImage({ src: logo, width: 144, format: 'png' });
@@ -119,18 +119,18 @@ val natives = when {
     else -> "macos-x86_64-metal"
 }
 dependencies {
-    implementation("org.kiln4j:kiln-llama:0.1.0")
-    runtimeOnly("org.kiln4j:kiln-natives-$natives:0.1.0")
+    implementation("org.fornax4j:fornax-llama:0.2.0")
+    runtimeOnly("org.fornax4j:fornax-natives-$natives:0.2.0")
 }`;
 
-const download = `kiln pull qwen3-4b
+const download = `fornax pull qwen3-4b
 # or, with the Hugging Face CLI:
 hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf`;
 
 const hello = `var weights = HfCache.find("unsloth/Qwen3-4B-Instruct-2507-GGUF",
         "Qwen3-4B-Instruct-2507-Q4_K_M.gguf").orElseThrow();
 try (var llm = new LlamaModel(weights.toString())) {
-    llm.chat(List.of(Message.user("Write a haiku about a kiln.")),
+    llm.chat(List.of(Message.user("Write a haiku about a fornax.")),
             Options.DEFAULT, System.out::print);
 }
 // run with --enable-native-access=ALL-UNNAMED`;
@@ -138,9 +138,9 @@ try (var llm = new LlamaModel(weights.toString())) {
 const build = `native/build.sh vulkan     # or hip | cuda | metal | cpu
 ./gradlew build
 ./gradlew single           # an LLM writes a song, ACE-Step sings it, FLUX.2 klein paints the cover
-./gradlew image --args='klein out.png "a neon sign that says KILN"'`;
+./gradlew image --args='klein out.png "a neon sign that says FORNAX"'`;
 
-const installs = ['implementation("org.kiln4j:kiln-llama:0.1.0")', 'hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf'];
+const installs = ['implementation("org.fornax4j:fornax-llama:0.2.0")', 'hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf'];
 const theme = 'vitesse-dark';
 ---
 
@@ -149,13 +149,13 @@ const theme = 'vitesse-dark';
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>kiln4j: open models, in your JVM</title>
+        <title>fornax4j: open models, in your JVM</title>
         <meta name="description" content={DESCRIPTION} />
         <meta name="theme-color" content="#1a0e08" />
         <link rel="icon" href="/favicon.ico" sizes="32x32" />
         <link rel="icon" type="image/png" href="/favicon-64.png" sizes="64x64" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        <meta property="og:title" content="kiln4j: open models, in your JVM" />
+        <meta property="og:title" content="fornax4j: open models, in your JVM" />
         <meta property="og:description" content={DESCRIPTION} />
         <meta property="og:url" content={pageUrl} />
         <meta property="og:type" content="website" />
@@ -281,7 +281,7 @@ const theme = 'vitesse-dark';
             .card p { margin: 0; font-size: 17px; line-height: 1.6; color: var(--muted); }
 
             .dark { background: var(--abyss); color: #f2e4d8; padding: 96px 32px; }
-            /* Faint fire behind the dark section: six frames of the kiln's flames (rendered with Kiln's LTX-2.5 from the
+            /* Faint fire behind the dark section: six frames of the fornax's flames (rendered with Fornax's LTX-2.5 from the
                hero photo) under a deep wash. Scrolling steps through them, so the fire crackles as you move, and drifts
                slower than the page (a gentle parallax). Phones and reduced motion get one still frame. */
             .dark { position: relative; isolation: isolate; overflow: hidden; }
@@ -337,7 +337,7 @@ const theme = 'vitesse-dark';
             .bar { display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 12px; margin-bottom: 6px; font-size: 15px; }
             .bar .track { position: relative; height: 30px; }
             .bar .fill { height: 100%; border-radius: 6px; display: flex; align-items: center; justify-content: flex-end; padding-right: 10px; font-weight: 700; font-size: 14px; min-width: 64px; }
-            .bar .fill.kiln { background: linear-gradient(90deg, #f6b25a, var(--accent)); color: var(--abyss); }
+            .bar .fill.fornax { background: linear-gradient(90deg, #f6b25a, var(--accent)); color: var(--abyss); }
             .bar .fill.other { background: #e2d5c9; color: var(--ink); }
             .backends { display: flex; flex-wrap: wrap; gap: 10px; }
             .backends span { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); font-size: 15px; font-weight: 500; }
@@ -465,7 +465,7 @@ const theme = 'vitesse-dark';
     <body style={photoVars}>
         <header class="fire hero">
             <nav class="nav wrap" aria-label="Main">
-                <a href="/" class="brand"><img src={logoSmall.src} alt="" width="34" height="34" /><span>kiln<span class="j">4j</span></span></a>
+                <a href="/" class="brand"><img src={logoSmall.src} alt="" width="34" height="34" /><span>fornax<span class="j">4j</span></span></a>
                 <div class="nav-links">
                     <a href="#code" class="wide">Code</a>
                     <a href="#engines">Models</a>
@@ -476,17 +476,17 @@ const theme = 'vitesse-dark';
                     <details class="repo-menu">
                         <summary>GitHub</summary>
                         <div class="menu">
-                            <a href={REPO}><span><strong>Kiln</strong> Java library</span><span class="count">{stars(kilnStars)}</span></a>
-                            {studioPublic && <a href={studioUrl} class="studio-repo"><span><strong>Kiln Studio</strong> Desktop app</span><span class="count">{stars(studioStars)}</span></a>}
-                            <p class="hint">★ Star them on GitHub: it helps others find Kiln.</p>
+                            <a href={REPO}><span><strong>Fornax</strong> Java library</span><span class="count">{stars(fornaxStars)}</span></a>
+                            {studioPublic && <a href={studioUrl} class="studio-repo"><span><strong>Fornax Studio</strong> Desktop app</span><span class="count">{stars(studioStars)}</span></a>}
+                            <p class="hint">★ Star them on GitHub: it helps others find Fornax.</p>
                         </div>
                     </details>
                 </div>
             </nav>
             <div class="splash">
-                <div class="emblem"><div><img src={logoSmall.src} alt="The Kiln logo: a flame in a kiln's arched door" width="66" height="66" /></div></div>
+                <div class="emblem"><div><img src={logoSmall.src} alt="The Fornax logo: a flame in a fornax's arched door" width="66" height="66" /></div></div>
                 <div class="rule" style="width: min(620px, 80%); margin-top: 32px" aria-hidden="true"></div>
-                <h1>kiln<span class="j">4j</span></h1>
+                <h1>fornax<span class="j">4j</span></h1>
                 <div class="rule" style="width: min(820px, 94%)" aria-hidden="true"></div>
                 <p class="subtitle">Open generative models for the JVM</p>
                 <p class="tagline">Call models as plain Java methods, <em>on your GPU, inside your JVM</em>.</p>
@@ -497,7 +497,7 @@ const theme = 'vitesse-dark';
                         <span>Watch · {VIDEO.length}: {VIDEO.title}</span>
                     </a>
                 ) : (
-                    <a href="#studio" class="pill"><span class="new">New</span><span>Kiln Studio: try the models without writing code</span></a>
+                    <a href="#studio" class="pill"><span class="new">New</span><span>Fornax Studio: try the models without writing code</span></a>
                 )}
                 <div class="installs">
                     {installs.map((line) => (
@@ -508,7 +508,7 @@ const theme = 'vitesse-dark';
                     ))}
                     <span class="sr" role="status"></span>
                 </div>
-                <p class="status">Early · Apache 2.0 · a Liberation Data project · <a href={studioHref}>Download Kiln Studio</a></p>
+                <p class="status">Early · Apache 2.0 · a Liberation Data project · <a href={studioHref}>Download Fornax Studio</a></p>
             </div>
         </header>
 
@@ -519,7 +519,7 @@ const theme = 'vitesse-dark';
                     <h2>Native inference. No middleman.</h2>
                     <p class="accent">Straight from the JVM to the GPU.</p>
                     <p>
-                        Kiln runs open-weight models in-process, through Java’s Foreign Function &amp; Memory API: language and
+                        Fornax runs open-weight models in-process, through Java’s Foreign Function &amp; Memory API: language and
                         vision models, speech, images, songs and video, for business, industrial, medical and creative work, or
                         anywhere a specialized model earns its keep. A model is an object, a generation is a method call, and the weights stay on your GPU between
                         calls. There is no Python, no model server, no HTTP, no JSON round trip and no second process.
@@ -552,7 +552,7 @@ const theme = 'vitesse-dark';
                     <article class="card">
                         <p class="eyebrow">Same engines</p>
                         <h3>The native runners themselves</h3>
-                        <p>Kiln calls llama.cpp, stable-diffusion.cpp, acestep.cpp, yue2.cpp, whisper.cpp and stems.cpp directly: the same C/C++ engines the CLIs and servers use, so you get their speed and their model support.</p>
+                        <p>Fornax calls llama.cpp, stable-diffusion.cpp, acestep.cpp, yue2.cpp, whisper.cpp and stems.cpp directly: the same C/C++ engines the CLIs and servers use, so you get their speed and their model support.</p>
                     </article>
                     <article class="card">
                         <p class="eyebrow">Vulkan today</p>
@@ -562,7 +562,7 @@ const theme = 'vitesse-dark';
                     <article class="card">
                         <p class="eyebrow">One process</p>
                         <h3>Nothing in between</h3>
-                        <p>A Kiln call is a native function call. Weights stay resident between calls, and tokens stream back to a Java callback as they are produced.</p>
+                        <p>A Fornax call is a native function call. Weights stay resident between calls, and tokens stream back to a Java callback as they are produced.</p>
                     </article>
                 </div>
             </section>
@@ -593,7 +593,7 @@ const theme = 'vitesse-dark';
                         <div data-pane="tools" hidden><Code code={samples.tools} lang="java" theme={theme} /></div>
                         <div data-pane="songs" hidden><Code code={samples.songs} lang="java" theme={theme} /></div>
                         <div data-pane="images" hidden><Code code={samples.images} lang="java" theme={theme} /></div>
-                        <p class="note">Kiln doesn’t download anything: <code>HfCache</code> finds weights in your Hugging Face cache, or pass file paths.</p>
+                        <p class="note">Fornax doesn’t download anything: <code>HfCache</code> finds weights in your Hugging Face cache, or pass file paths.</p>
                     </div>
                 </div>
             </section>
@@ -608,49 +608,49 @@ const theme = 'vitesse-dark';
                     <div class="row">
                         <article class="card engine">
                             <p class="eyebrow">Text</p>
-                            <h3>kiln-llama</h3>
+                            <h3>fornax-llama</h3>
                             <p class="via">on <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a></p>
                             <p>Any GGUF language model, vision models that read images, and embeddings and reranking for search.</p>
                             <ul class="models"><li>Qwen</li><li>Llama</li><li>Gemma</li><li>Mistral</li><li>Qwen3-VL</li><li>PaddleOCR-VL</li><li>MedGemma</li><li>…</li></ul>
                         </article>
                         <article class="card engine">
                             <p class="eyebrow">Speech</p>
-                            <h3>kiln-tts</h3>
+                            <h3>fornax-tts</h3>
                             <p class="via">on <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a></p>
                             <p>Text to speech, with built-in voices or a reference clip.</p>
                             <ul class="models"><li>Kokoro</li><li>ZONOS3</li><li>LFM3-Audio</li><li>VoxCPM2</li><li>Qwen3-TTS</li><li>…</li></ul>
                         </article>
                         <article class="card engine">
                             <p class="eyebrow">Images</p>
-                            <h3>kiln-sd</h3>
+                            <h3>fornax-sd</h3>
                             <p class="via">on <a href="https://github.com/leejet/stable-diffusion.cpp">stable-diffusion.cpp</a></p>
                             <p>Diffusion models, including image editing.</p>
                             <ul class="models"><li>FLUX.1</li><li>FLUX.2</li><li>Qwen-Image</li><li>Qwen-Image-Edit</li><li>SD 1.x/2.x/XL/3</li><li>Wan</li><li>LTX</li></ul>
                         </article>
                         <article class="card engine">
                             <p class="eyebrow">Songs</p>
-                            <h3>kiln-acestep</h3>
+                            <h3>fornax-acestep</h3>
                             <p class="via">on <a href="https://github.com/ServeurpersoCom/acestep.cpp">acestep.cpp</a></p>
                             <p>Songs with vocals and lyrics, up to several minutes long.</p>
                             <ul class="models"><li>ACE-Step 1.5</li></ul>
                         </article>
                         <article class="card engine">
                             <p class="eyebrow">Songs</p>
-                            <h3>kiln-yue2</h3>
+                            <h3>fornax-yue2</h3>
                             <p class="via">on <a href="https://github.com/ServeurpersoCom/yue2.cpp">yue2.cpp</a></p>
                             <p>Songs, from the engine’s own JSON request.</p>
                             <ul class="models"><li>YuE2</li></ul>
                         </article>
                         <article class="card engine">
                             <p class="eyebrow">Transcripts</p>
-                            <h3>kiln-whisper</h3>
+                            <h3>fornax-whisper</h3>
                             <p class="via">on <a href="https://github.com/ggml-org/whisper.cpp">whisper.cpp</a></p>
                             <p>Speech to text, with a start and end for every word.</p>
                             <ul class="models"><li>Whisper large-v3-turbo</li><li>base.en</li><li>…</li></ul>
                         </article>
                         <article class="card engine">
                             <p class="eyebrow">Stems</p>
-                            <h3>kiln-demucs</h3>
+                            <h3>fornax-demucs</h3>
                             <p class="via">on <a href="https://github.com/betweentwomidnights/stems.cpp">stems.cpp</a></p>
                             <p>A song split into vocals and backing, or drums, bass, other and vocals.</p>
                             <ul class="models"><li>HTDemucs v4</li><li>6-stem</li><li>fine-tuned</li></ul>
@@ -678,7 +678,7 @@ const theme = 'vitesse-dark';
                                 <span>Metal <small>untested</small></span>
                             </div>
                             <p style="font-size: 16px">
-                                The build script knows the ROCm, CUDA and Metal backends of the underlying engines, but those Kiln builds
+                                The build script knows the ROCm, CUDA and Metal backends of the underlying engines, but those Fornax builds
                                 haven’t been tested yet. Reports and fixes welcome.
                             </p>
                         </div>
@@ -710,19 +710,19 @@ const theme = 'vitesse-dark';
                                 doesn’t return its cached result).
                             </p>
                             <p style="font-size: 15px">
-                                Not quite like for like: ComfyUI ran the bf16 safetensors DiT, Kiln the GGUF Q8_0 weights. One run each,
-                                from <code>kiln-bench</code>.
+                                Not quite like for like: ComfyUI ran the bf16 safetensors DiT, Fornax the GGUF Q8_0 weights. One run each,
+                                from <code>fornax-bench</code>.
                             </p>
                         </div>
-                        <div class="bars" role="img" aria-label="Cold: ComfyUI 38.2 s, Kiln 17.3 s. Warm: ComfyUI 23.0 s, Kiln 14.7 s.">
+                        <div class="bars" role="img" aria-label="Cold: ComfyUI 38.2 s, Fornax 17.3 s. Warm: ComfyUI 23.0 s, Fornax 14.7 s.">
                             <div class="bar-group">
                                 <h4>Cold</h4>
-                                <div class="bar"><span>Kiln</span><div class="track"><div class="fill kiln" style={`width: ${(17.3 / 38.2) * 100}%`}>17.3 s</div></div></div>
+                                <div class="bar"><span>Fornax</span><div class="track"><div class="fill fornax" style={`width: ${(17.3 / 38.2) * 100}%`}>17.3 s</div></div></div>
                                 <div class="bar"><span>ComfyUI</span><div class="track"><div class="fill other" style="width: 100%">38.2 s</div></div></div>
                             </div>
                             <div class="bar-group">
                                 <h4>Warm</h4>
-                                <div class="bar"><span>Kiln</span><div class="track"><div class="fill kiln" style={`width: ${(14.7 / 38.2) * 100}%`}>14.7 s</div></div></div>
+                                <div class="bar"><span>Fornax</span><div class="track"><div class="fill fornax" style={`width: ${(14.7 / 38.2) * 100}%`}>14.7 s</div></div></div>
                                 <div class="bar"><span>ComfyUI</span><div class="track"><div class="fill other" style={`width: ${(23.0 / 38.2) * 100}%`}>23.0 s</div></div></div>
                             </div>
                         </div>
@@ -736,20 +736,20 @@ const theme = 'vitesse-dark';
                         <p class="eyebrow">{STUDIO.name}</p>
                         <h2>Try the models without writing code.</h2>
                         <p>
-                            Kiln Studio is a desktop app around Kiln: chat with a GGUF model and watch the tokens per second,
+                            Fornax Studio is a desktop app around Fornax: chat with a GGUF model and watch the tokens per second,
                             watch it call tools, make an image or a song, and see what is loaded and how much memory it holds.
-                            It runs Kiln in a JVM of its own, with its own Java, and finds the models in your Hugging Face cache.
+                            It runs Fornax in a JVM of its own, with its own Java, and finds the models in your Hugging Face cache.
                         </p>
                     </header>
                     <figure>
-                        <Image src={studioDesktop} widths={[800, 1600]} sizes="(max-width: 1264px) 100vw, 1200px" loading="lazy" alt="Kiln Studio in its dark theme with two windows on its desktop. Behind, the Chat window: Qwen3 4B Instruct answering a request for a haiku about a kiln and one sentence on what a kiln is for, at 68.7 tokens a second, with its time to the first token and token counts. In front, overlapping it, the Image window: FLUX.2 [klein] with its prompt, size and steps, and the image it made, a kiln's orange fire beside shelves of stoneware jars, generated in 2 minutes 17 seconds over 12 steps" />
+                        <Image src={studioDesktop} widths={[800, 1600]} sizes="(max-width: 1264px) 100vw, 1200px" loading="lazy" alt="Fornax Studio in its dark theme with two windows on its desktop. Behind, the Chat window: Qwen3 4B Instruct answering a request for a haiku about a fornax and one sentence on what a fornax is for, at 68.7 tokens a second, with its time to the first token and token counts. In front, overlapping it, the Image window: FLUX.2 [klein] with its prompt, size and steps, and the image it made, a fornax's orange fire beside shelves of stoneware jars, generated in 2 minutes 17 seconds over 12 steps" />
                         <figcaption>Chat with Qwen3 4B Instruct at 68.7 tokens a second, and an image from FLUX.2 [klein].</figcaption>
                     </figure>
                     {studio ? (
                         <div class="get-studio" id="get-studio">
                             <p class="get-studio-head">
-                                <strong>Download Kiln Studio.</strong>
-                                <span class="get-studio-sub">Alpha {studio.version}. Models are not included: fetch them with <code>kiln pull</code> or the Hugging Face CLI, as in Getting started.{(studio.mac.appleSilicon || studio.mac.intel) && ' The macOS builds are signed and notarized, so they open without a Gatekeeper prompt.'}</span>
+                                <strong>Download Fornax Studio.</strong>
+                                <span class="get-studio-sub">Alpha {studio.version}. Models are not included: fetch them with <code>fornax pull</code> or the Hugging Face CLI, as in Getting started.{(studio.mac.appleSilicon || studio.mac.intel) && ' The macOS builds are signed and notarized, so they open without a Gatekeeper prompt.'}</span>
                             </p>
                             <div class="downloads">
                                 {(studio.mac.appleSilicon || studio.mac.intel) && (
@@ -767,7 +767,7 @@ const theme = 'vitesse-dark';
                                                 </a>
                                             )}
                                         </div>
-                                        <p class="install-hint">Open the <code>.dmg</code> and drag Kiln Studio to Applications.</p>
+                                        <p class="install-hint">Open the <code>.dmg</code> and drag Fornax Studio to Applications.</p>
                                     </div>
                                 )}
                                 {studio.linux.length > 0 && (
@@ -817,14 +817,14 @@ const theme = 'vitesse-dark';
                         </p>
                     </header>
                     <div class="row">
-                        <article class="feature"><h3>stable-diffusion.cpp</h3><p>Has a key/value C API, so <code>kiln-sd</code> binds it directly.</p></article>
-                        <article class="feature"><h3>llama.cpp</h3><p>Its C API passes structs by value and is mid-migration to a new batch API, so <code>kiln-llama</code> binds a small, stable C layer instead.</p></article>
+                        <article class="feature"><h3>stable-diffusion.cpp</h3><p>Has a key/value C API, so <code>fornax-sd</code> binds it directly.</p></article>
+                        <article class="feature"><h3>llama.cpp</h3><p>Its C API passes structs by value and is mid-migration to a new batch API, so <code>fornax-llama</code> binds a small, stable C layer instead.</p></article>
                         <article class="feature"><h3>acestep.cpp and yue2.cpp</h3><p>C++ only, so each gets a C layer of about a hundred lines: a JSON request in, PCM audio out.</p></article>
                         <article class="feature"><h3>Tool calling</h3><p><code>LlamaModel.chatJson</code> takes messages and tools in OpenAI’s format and returns a message with <code>content</code>, <code>reasoning_content</code> and <code>tool_calls</code>. It uses the model’s own chat template and tool-call format, with the same templates and parsers as llama-server.</p></article>
                         <article class="feature"><h3>ModelPool</h3><p>Keeps models resident between uses, the way ComfyUI does. It unloads idle models least recently used first to stay within a memory budget, can unload after an idle timeout, and gives each model one user at a time.</p></article>
                         <article class="feature"><h3>Pick a backend at build time</h3><p>The Java is the same for every backend. <code>native/build.sh</code> builds the libraries for the one you name.</p></article>
-                        <article class="feature"><h3>Long jobs on small power budgets</h3><p>A long GPU dispatch can trip a laptop driver’s compute timeout, so ACE-Step audio is decoded in 512-frame tiles. Tune it with <code>KILN_ACESTEP_VAE_CHUNK</code>.</p></article>
-                        <article class="feature"><h3>The engines’ own logs</h3><p>Set <code>KILN_VERBOSE=1</code> to see what llama.cpp, stable-diffusion.cpp and friends print.</p></article>
+                        <article class="feature"><h3>Long jobs on small power budgets</h3><p>A long GPU dispatch can trip a laptop driver’s compute timeout, so ACE-Step audio is decoded in 512-frame tiles. Tune it with <code>FORNAX_ACESTEP_VAE_CHUNK</code>.</p></article>
+                        <article class="feature"><h3>The engines’ own logs</h3><p>Set <code>FORNAX_VERBOSE=1</code> to see what llama.cpp, stable-diffusion.cpp and friends print.</p></article>
                     </div>
                 </div>
             </section>
@@ -834,10 +834,10 @@ const theme = 'vitesse-dark';
                     <p class="eyebrow">Embabel</p>
                     <h2>A great companion for Embabel Agent.</h2>
                     <p>
-                        <a href="https://github.com/embabel/embabel-agent">Embabel Agent</a> plans with goals and actions on the JVM. Kiln
+                        <a href="https://github.com/embabel/embabel-agent">Embabel Agent</a> plans with goals and actions on the JVM. Fornax
                         runs local models in the same process: chat and tool calls, vision, embeddings, speech, images, songs and video. A
-                        <code>kiln-embabel</code> module, to give Embabel's agents those models, is
-                        <a href="https://github.com/liberation-data/kiln/issues/9">in progress</a>.
+                        <code>fornax-embabel</code> module, to give Embabel's agents those models, is
+                        <a href="https://github.com/liberation-data/fornax/issues/9">in progress</a>.
                     </p>
                     <p class="embabel-links"><a href="https://embabel.com">embabel.com</a> · <a href="https://github.com/embabel/embabel-agent">Embabel Agent on GitHub</a></p>
                 </div>
@@ -847,27 +847,27 @@ const theme = 'vitesse-dark';
                 <div class="wrap">
                     <header>
                         <p class="eyebrow">Getting started</p>
-                        <h2>Add Kiln, fetch a model, run.</h2>
+                        <h2>Add Fornax, fetch a model, run.</h2>
                         <p>
-                            Kiln is on Maven Central as <code>org.kiln4j</code>. You need Java 22 or newer (Kiln 0.1.0 itself needs 25),
+                            Fornax is on Maven Central as <code>org.fornax4j</code>. You need Java 22 or newer (Kiln 0.1.0 itself needs 25),
                             and on Linux your GPU’s Vulkan driver, which desktop installs already have (if not: <a href="/docs/gpu-drivers/">Installing GPU drivers</a>). Macs need nothing more.
                         </p>
                     </header>
                     <div class="stepper">
                         <div>
-                            <div><h3>1. Add Kiln</h3><p>An engine module, and the natives jar for your OS and GPU. Kiln unpacks the engine into its cache and loads it, so there’s no native build. Maven works the same way: see <a href="/docs/maven-and-gradle/">Maven and Gradle</a>.</p></div>
+                            <div><h3>1. Add Fornax</h3><p>An engine module, and the natives jar for your OS and GPU. Fornax unpacks the engine into its cache and loads it, so there’s no native build. Maven works the same way: see <a href="/docs/maven-and-gradle/">Maven and Gradle</a>.</p></div>
                             <div class="shell"><Code code={depend} lang="kotlin" theme={theme} /></div>
                         </div>
                         <div>
-                            <div><h3>2. Fetch a model</h3><p>With <a href="/docs/guides/cli/"><code>kiln pull</code></a> and an alias from Kiln’s catalogue. To get <code>kiln</code>, install <a href="#studio">Kiln Studio</a> and choose <strong>Install kiln command</strong> from its menu (coming in the next Studio release), or build it from source with <code>./gradlew :kiln-cli:installDist</code>. Or use the Hugging Face CLI: both fill the one Hugging Face cache (<code>HF_HUB_CACHE</code>, <code>HF_HOME/hub</code> or <code>~/.cache/huggingface/hub</code>), where <code>HfCache</code> finds the weights.</p></div>
+                            <div><h3>2. Fetch a model</h3><p>With <a href="/docs/guides/cli/"><code>fornax pull</code></a> and an alias from Fornax’s catalogue. To get <code>fornax</code>, install <a href="#studio">Fornax Studio</a> and choose <strong>Install fornax command</strong> from its menu (coming in the next Studio release), or build it from source with <code>./gradlew :fornax-cli:installDist</code>. Or use the Hugging Face CLI: both fill the one Hugging Face cache (<code>HF_HUB_CACHE</code>, <code>HF_HOME/hub</code> or <code>~/.cache/huggingface/hub</code>), where <code>HfCache</code> finds the weights.</p></div>
                             <div class="shell"><Code code={download} lang="sh" theme={theme} /></div>
                         </div>
                         <div>
-                            <div><h3>3. Run it</h3><p>A chat reply, streamed token by token from your GPU, inside your JVM. <a href="https://github.com/liberation-data/kiln/tree/main/samples/hello-kiln"><code>samples/hello-kiln</code></a> is this as a project to copy, for Gradle and Maven.</p></div>
+                            <div><h3>3. Run it</h3><p>A chat reply, streamed token by token from your GPU, inside your JVM. <a href="https://github.com/liberation-data/fornax/tree/main/samples/hello-fornax"><code>samples/hello-fornax</code></a> is this as a project to copy, for Gradle and Maven.</p></div>
                             <div class="shell"><Code code={hello} lang="java" theme={theme} /></div>
                         </div>
                         <div>
-                            <div><h3>4. Or build the engines</h3><p>For HIP or CUDA, or to run the repository’s examples: JDK 25, CMake, Ninja, a C++17 compiler and your GPU’s SDK. <code>native/build.sh</code> clones the engines at their pinned commits; point your app at the result with <code>-Dkiln.library.path</code>.</p></div>
+                            <div><h3>4. Or build the engines</h3><p>For HIP or CUDA, or to run the repository’s examples: JDK 25, CMake, Ninja, a C++17 compiler and your GPU’s SDK. <code>native/build.sh</code> clones the engines at their pinned commits; point your app at the result with <code>-Dfornax.library.path</code>.</p></div>
                             <div class="shell"><Code code={build} lang="sh" theme={theme} /></div>
                         </div>
                     </div>
@@ -878,11 +878,11 @@ const theme = 'vitesse-dark';
                 <div class="wrap">
                     <div class="text">
                         <p class="eyebrow">Roadmap</p>
-                        <h2 style="font-size: 30px">Next in the kiln.</h2>
+                        <h2 style="font-size: 30px">Next in the fornax.</h2>
                     </div>
                     <ul>
                         <li><span>Test and document the HIP, CUDA and Metal builds; natives jars for HIP and CUDA.</span></li>
-                                                <li><span><code>kiln-embabel</code>: an Embabel Agent <code>LlmService</code> and <code>LocalModelSource</code>.</span></li>
+                                                <li><span><code>fornax-embabel</code>: an Embabel Agent <code>LlmService</code> and <code>LocalModelSource</code>.</span></li>
                         <li><span>An optional OpenAI-compatible server.</span></li>
                         <li><span>An MLX module for Apple silicon, through <code>mlx-c</code>.</span></li>
                         <li><span>A Kotlin layer with coroutine <code>Flow</code> streaming.</span></li>
@@ -902,11 +902,11 @@ const theme = 'vitesse-dark';
                 <div class="wrap">
                     <p class="eyebrow" style="color: var(--glow)">Things on the JVM are about to heat up</p>
                     <h2>Fire up your JVM.</h2>
-                    <p>Open models as Java objects, on your own GPU. Kiln is early: try it, and tell us what breaks.</p>
+                    <p>Open models as Java objects, on your own GPU. Fornax is early: try it, and tell us what breaks.</p>
                     <div class="actions">
-                        <a href={REPO} class="button primary">Kiln on GitHub</a>
+                        <a href={REPO} class="button primary">Fornax on GitHub</a>
                         <a href="/docs/getting-started/" class="button ghost">Getting started</a>
-                        <a href={studioHref} class="button ghost">Download Kiln Studio</a>
+                        <a href={studioHref} class="button ghost">Download Fornax Studio</a>
                     </div>
                 </div>
             </section>
@@ -917,13 +917,13 @@ const theme = 'vitesse-dark';
                 <div class="about">
                     <img src={logoSmall.src} alt="" width="40" height="40" />
                     <p>
-                        Kiln is a community project by Liberation Data, the home of <a href="https://drivine.org">Drivine</a>. It grew out of <a href="https://endlesscountry.com">Endless Country</a>, a country-music side quest made with open models.
+                        Fornax is a community project by Liberation Data, the home of <a href="https://drivine.org">Drivine</a>. It grew out of <a href="https://endlesscountry.com">Endless Country</a>, a country-music side quest made with open models.
                         Founded by Jasper Blues, creator of Typhoon. Sponsored by Rod Johnson, creator of the Spring Framework and Embabel.
                         Apache 2.0. The engines it builds against are MIT-licensed.
                     </p>
                 </div>
                 <nav aria-label="Footer">
-                    <div><span>Kiln</span><a href={REPO}>GitHub</a><a href={`${REPO}/blob/main/LICENSE`}>Apache 2.0</a></div>
+                    <div><span>Fornax</span><a href={REPO}>GitHub</a><a href={`${REPO}/blob/main/LICENSE`}>Apache 2.0</a></div>
                     <div><span>Engines</span><a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a><a href="https://github.com/leejet/stable-diffusion.cpp">stable-diffusion.cpp</a><a href="https://github.com/ServeurpersoCom/acestep.cpp">acestep.cpp</a><a href="https://github.com/ServeurpersoCom/yue2.cpp">yue2.cpp</a><a href="https://github.com/ggml-org/whisper.cpp">whisper.cpp</a><a href="https://github.com/betweentwomidnights/stems.cpp">stems.cpp</a></div>
                     <div><span>Liberation Data</span><a href="https://github.com/liberation-data">GitHub</a><a href="https://drivine.org">Drivine</a></div>
                 </nav>

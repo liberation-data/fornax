@@ -1,7 +1,7 @@
 WEBVTT
 
 00:00:00.500 --> 00:00:03.214
-Kiln runs open models in your JVM.
+Fornax runs open models in your JVM.
 
 00:00:03.214 --> 00:00:07.408
 For business, industrial,
@@ -51,7 +51,7 @@ another process,
 and a network hop on every call.
 
 00:00:49.062 --> 00:00:51.732
-Kiln calls the native engines directly.
+Fornax calls the native engines directly.
 
 00:00:51.732 --> 00:00:54.539
 No Python, no server, nothing in between.
@@ -69,7 +69,7 @@ Weights load once and stay
 on the GPU between requests,
 
 00:01:06.226 --> 00:01:11.583
-and when memory runs short, Kiln unloads
+and when memory runs short, Fornax unloads
 the models you've used least recently.
 
 00:01:11.583 --> 00:01:15.958
@@ -77,7 +77,7 @@ Text streams back token by token,
 and models can call your tools.
 
 00:01:17.250 --> 00:01:22.815
-Try a model in Kiln Studio before you
+Try a model in Fornax Studio before you
 write any code: read an invoice into JSON,
 
 00:01:22.815 --> 00:01:27.267
@@ -89,7 +89,7 @@ Or chat, paint an image,
 write a song, or render a clip.
 
 00:01:31.136 --> 00:01:36.652
-On our test laptop, Kiln made a one-minute
+On our test laptop, Fornax made a one-minute
 song up to twice as fast as ComfyUI,
 
 00:01:36.652 --> 00:01:37.769
@@ -97,10 +97,10 @@ on the same GPU.
 
 00:01:39.066 --> 00:01:43.967
 Pull a model from Hugging Face with
-one command, and try it in Kiln Studio.
+one command, and try it in Fornax Studio.
 
 00:01:43.967 --> 00:01:47.938
-Kiln needs no other Java libraries,
+Fornax needs no other Java libraries,
 just its native engines,
 
 00:01:47.938 --> 00:01:53.431
@@ -112,13 +112,13 @@ in process.
 
 00:01:55.466 --> 00:01:59.075
 Here's what open models
-can make, running in Kiln.
+can make, running in Fornax.
 
 00:01:59.075 --> 00:02:01.746
 This is Endless Country, episode two.
 
 00:02:10.970 --> 00:02:11.488
-Kiln!
+Fornax!
 
 00:02:11.488 --> 00:02:14.492
 Open models, inside your JVM!
@@ -128,7 +128,7 @@ Sponsored by Rod Johnson,
 and created by Jasper Blues!
 
 00:02:20.087 --> 00:02:20.812
-kiln4j.
+fornax4j.
 
 00:02:20.812 --> 00:02:21.227
 org!

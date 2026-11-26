@@ -7,12 +7,12 @@ description: Generate video with sound from Java with LTX-2.5 through stable-dif
 pipeline. This page covers **LTX-2.5**, which generates picture and sound together. The same API runs Wan and the
 other video models stable-diffusion.cpp supports.
 
-Video is the heaviest thing Kiln does. LTX-2.5 is a 22B model with a 12B text encoder, and a render takes minutes
+Video is the heaviest thing Fornax does. LTX-2.5 is a 22B model with a 12B text encoder, and a render takes minutes
 even at small sizes. Start small (see [Render small first](#render-small-first)).
 
 ## The files
 
-Kiln's example uses ComfyUI's int8 build of LTX-2.5 from `Lightricks/LTX-2.5`:
+Fornax's example uses ComfyUI's int8 build of LTX-2.5 from `Lightricks/LTX-2.5`:
 
 ```sh
 hf download Lightricks/LTX-2.5 \
@@ -29,8 +29,8 @@ The upscaler is only for the [two-stage recipe](#the-two-stage-recipe). For the 
 ## A clip with sound
 
 ```java
-import org.liberationdata.kiln.HfCache;
-import org.liberationdata.kiln.sd.DiffusionModel;
+import org.liberationdata.fornax.HfCache;
+import org.liberationdata.fornax.sd.DiffusionModel;
 
 import java.util.Map;
 
@@ -58,7 +58,7 @@ try (var model = new DiffusionModel(config)) {
 ```
 
 `generateVideo` returns a `Video`: its `frames` as `BufferedImage`s, its `fps`, and its `audio` (an `Audio`, the same
-type the song and speech models return, or `null` for a model without sound). Kiln doesn't encode video files; write
+type the song and speech models return, or `null` for a model without sound). Fornax doesn't encode video files; write
 the frames and the audio out and join them with ffmpeg, as the example does.
 
 The distilled model takes 8 steps at CFG 1; `dev` takes about 20 at CFG 3.
@@ -111,14 +111,14 @@ audio VAE (`audio_vae_path`) and works with first and last frames and with the t
 its lip-sync shots with a vocals-only stem (split from the mix) and laid the full mix over the cut.
 
 LTX was trained on compressed frames. ComfyUI's LTX workflow passes each keyframe through H.264 at CRF 18 first, and
-Kiln's example can do the same (`-Ppreprocess=18`), though in tests it made no visible difference.
+Fornax's example can do the same (`-Ppreprocess=18`), though in tests it made no visible difference.
 
 ## The two-stage recipe
 
 For a sharper result, render a draft at half size, upscale its latent with LTX's learned ×2 upscaler, then refine it
 at full size. This is ComfyUI's "Image to Video (LTX-2.5)" workflow, step for step:
 
-| ComfyUI | Kiln |
+| ComfyUI | Fornax |
 |---|---|
 | Stage 1: half size, `ManualSigmas` 1.0 … 0.421875, 0, euler_ancestral, CFG 1 | `sample.sigmas`, `sample.method=euler_a` |
 | `LTXVImgToVideoInplace` strength 0.7 | `strength=0.7` |
@@ -152,7 +152,7 @@ The output is twice the draft's size: 1344×896 here.
 
 :::caution[`hires.model_path` needs `hires.upscaler = "model"`]
 stable-diffusion.cpp only runs a learned upscaler when `hires.upscaler` is `"model"`. Otherwise it interpolates the
-latent and silently ignores `hires.model_path`, and refining an interpolated video latent ghosts badly. Kiln selects
+latent and silently ignores `hires.model_path`, and refining an interpolated video latent ghosts badly. Fornax selects
 the model for you when you give a model path without an upscaler, and refuses a model path with any other upscaler.
 :::
 
@@ -168,9 +168,9 @@ setting can split a single dispatch.
 The HIP (ROCm) backend doesn't have that timeout: its work goes through user queues that the timeout doesn't cover.
 It was also about 2.7× faster per LTX step on the Radeon 8060S (44 s against 119 s at 672×448×313, after a slower
 first step). Build it with `native/build.sh hip`; see [Choosing a GPU backend](/docs/guides/gpu-backends/#hip-rocm).
-Kiln turns off ggml's HIP graphs by default, which would otherwise overflow a JVM thread's stack on LTX.
+Fornax turns off ggml's HIP graphs by default, which would otherwise overflow a JVM thread's stack on LTX.
 
-For shorter clips on Vulkan, tiled VAE decoding and `-Dkiln.vulkan.maxNodesPerSubmit=8` (`-Pkiln.vulkan.maxNodesPerSubmit=8`
+For shorter clips on Vulkan, tiled VAE decoding and `-Dfornax.vulkan.maxNodesPerSubmit=8` (`-Pfornax.vulkan.maxNodesPerSubmit=8`
 on `./gradlew video`) keep each GPU submission short enough. See [Troubleshooting](/docs/troubleshooting/#long-gpu-work-loses-the-device).
 
 ## Render small first
