@@ -15,8 +15,9 @@ engine surprises you.
   generation.
 - **Read the exception.** Each model class throws an `IllegalStateException` (or, in `kiln-sd`, an `Sd.SdException`)
   with the engine's own error message when a native call fails.
-- **"Kiln could not find libkiln_….so".** The libraries aren't where Kiln looks. Build them with `native/build.sh`
-  and point `-Dkiln.library.path` at the folder; [Getting started](/docs/getting-started/#in-your-own-application)
+- **"Kiln could not find libkiln_….so".** The libraries aren't where Kiln looks. Add the natives jar for your
+  platform ([Maven and Gradle](/docs/maven-and-gradle/)), or build them with `native/build.sh` and point
+  `-Dkiln.library.path` at the folder; [Getting started](/docs/getting-started/#in-your-own-application)
   has the search order.
 - **"Not in the Hugging Face cache".** `HfCache.require` didn't find the file; the message ends with the
   `hf download` command that fetches it.

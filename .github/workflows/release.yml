@@ -246,7 +246,14 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
-        run: ./gradlew --no-daemon publishAndReleaseToMavenCentral -Pversion="$VERSION" -Pkiln.natives.require=true
+        run: |
+          set -euo pipefail
+          # A re-run after an upload that went through (the job failed later, or while waiting): Central refuses a
+          # version it already has, so go on to verify-central instead of failing here every time.
+          if curl -fsI -o /dev/null "https://repo1.maven.org/maven2/org/kiln4j/kiln-core/$VERSION/kiln-core-$VERSION.pom"; then
+            echo "::notice::Kiln $VERSION is already on Maven Central; not uploading it again"; exit 0
+          fi
+          ./gradlew --no-daemon publishAndReleaseToMavenCentral -Pversion="$VERSION" -Pkiln.natives.require=true
 
   # After a release: wait until Maven Central serves every artifact, then build the sample from Central alone, the
   # way a user would (built, not run: runners have no GPU to run it on).
