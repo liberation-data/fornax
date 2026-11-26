@@ -104,6 +104,21 @@ class WordsTest {
     }
 
     @Test
+    void silentAudioLeavesTheTimesAlone() {
+        var s = new Segment(0, 3, "", List.of(new Word(0.5, 1.0, "a", 1f)));
+        assertEquals(List.of(s), Words.snapToVoice(List.of(s), new float[16000 * 3], 16000));
+        assertEquals(List.of(s), Words.snapToVoice(List.of(s), new float[100], 16000));   // under one frame
+    }
+
+    @Test
+    void subtitlesSkipBlankSegmentsAndNumberOnwards() {
+        var t = new Transcript("a b", "en", List.of(new Segment(0, 1, " a", List.of()), new Segment(1, 2, "  ", List.of()),
+                new Segment(2, 3, " b", List.of())));
+        assertEquals("1\n00:00:00,000 --> 00:00:01,000\na\n\n2\n00:00:02,000 --> 00:00:03,000\nb\n\n", t.srt());
+        assertEquals("WEBVTT\n\n00:00:00.000 --> 00:00:01.000\na\n\n00:00:02.000 --> 00:00:03.000\nb\n\n", t.vtt());
+    }
+
+    @Test
     void segmentsSpanTheirWords() {
         var s = new Segment(0, 6, " a b", List.of(new Word(0.26, 0.5, "a", 1f), new Word(0.5, 5.12, "b", 1f)));
         var empty = new Segment(6, 7, "", List.of());

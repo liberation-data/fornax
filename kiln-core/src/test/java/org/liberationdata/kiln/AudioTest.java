@@ -103,4 +103,60 @@ class AudioTest {
     void rejectsWhatIsntAWav() {
         assertThrows(IOException.class, () -> Audio.readWav("not a wav file at all".getBytes()));
     }
+
+    /** WAVE_FORMAT_EXTENSIBLE (as ffmpeg writes beyond two channels): the subformat says PCM; channels past two are dropped. */
+    @Test
+    void readsExtensiblePcmAndKeepsTheFirstTwoChannels() throws IOException {
+        ByteBuffer b = ByteBuffer.allocate(12 + 8 + 40 + 8 + 6).order(ByteOrder.LITTLE_ENDIAN);
+        b.put("RIFF".getBytes()).putInt(b.capacity() - 8).put("WAVE".getBytes())
+         .put("fmt ".getBytes()).putInt(40).putShort((short) 0xfffe).putShort((short) 3).putInt(8000).putInt(48000)
+         .putShort((short) 6).putShort((short) 16).putShort((short) 22).putShort((short) 16).putInt(7)
+         .putShort((short) 1).put(new byte[14])                  // subformat GUID: KSDATAFORMAT_SUBTYPE_PCM
+         .put("data".getBytes()).putInt(6).putShort((short) 16384).putShort((short) -16384).putShort((short) 1234);
+        Audio a = Audio.readWav(b.array());
+        assertArrayEquals(new float[] {0.5f}, a.left());
+        assertArrayEquals(new float[] {-0.5f}, a.right());
+    }
+
+    @Test
+    void reads8BitUnsignedPcm() throws IOException {
+        ByteBuffer b = ByteBuffer.allocate(44 + 2).order(ByteOrder.LITTLE_ENDIAN);
+        b.put("RIFF".getBytes()).putInt(38).put("WAVE".getBytes())
+         .put("fmt ".getBytes()).putInt(16).putShort((short) 1).putShort((short) 1).putInt(8000).putInt(8000)
+         .putShort((short) 1).putShort((short) 8)
+         .put("data".getBytes()).putInt(2).put((byte) 0xc0).put((byte) 0x40);
+        assertArrayEquals(new float[] {0.5f, -0.5f}, Audio.readWav(b.array()).left());
+    }
+
+    @Test
+    void rejectsWavsItCantRead() {
+        ByteBuffer alaw = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN);
+        alaw.put("RIFF".getBytes()).putInt(36).put("WAVE".getBytes())
+            .put("fmt ".getBytes()).putInt(16).putShort((short) 6).putShort((short) 1).putInt(8000).putInt(8000)
+            .putShort((short) 1).putShort((short) 8).put("data".getBytes()).putInt(0);
+        assertTrue(assertThrows(IOException.class, () -> Audio.readWav(alaw.array())).getMessage().contains("format 6"));
+
+        ByteBuffer dataFirst = ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN);
+        dataFirst.put("RIFF".getBytes()).putInt(12).put("WAVE".getBytes()).put("data".getBytes()).putInt(0);
+        assertThrows(IOException.class, () -> Audio.readWav(dataFirst.array()));
+
+        ByteBuffer noData = ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN);
+        noData.put("RIFF".getBytes()).putInt(4).put("WAVE".getBytes());
+        assertThrows(IOException.class, () -> Audio.readWav(noData.array()));
+
+        assertThrows(IllegalArgumentException.class, () -> Audio.resample(new float[1], 0, 16000));
+    }
+
+    /** A file cut off inside its format chunk, or with a chunk size past the end, is an IOException, not an index error. */
+    @Test
+    void aTruncatedWavIsAnIOException() {
+        ByteBuffer cut = ByteBuffer.allocate(12 + 8 + 4).order(ByteOrder.LITTLE_ENDIAN);
+        cut.put("RIFF".getBytes()).putInt(16).put("WAVE".getBytes()).put("fmt ".getBytes()).putInt(16).putShort((short) 1)
+           .putShort((short) 1);
+        assertThrows(IOException.class, () -> Audio.readWav(cut.array()));
+
+        ByteBuffer huge = ByteBuffer.allocate(12 + 8 + 8).order(ByteOrder.LITTLE_ENDIAN);
+        huge.put("RIFF".getBytes()).putInt(20).put("WAVE".getBytes()).put("LIST".getBytes()).putInt(0x7ffffff8);
+        assertThrows(IOException.class, () -> Audio.readWav(huge.array()));
+    }
 }

@@ -90,8 +90,16 @@ public record Audio(float[] left, float[] right, int sampleRate) {
         return readWav(Files.readAllBytes(f.toPath()));
     }
 
-    /** Reads a WAV file's bytes; see {@link #readWav(File)}. */
+    /** Reads a WAV file's bytes; see {@link #readWav(File)}. A file cut short is an IOException too. */
     public static Audio readWav(byte[] bytes) throws IOException {
+        try {
+            return parseWav(bytes);
+        } catch (IndexOutOfBoundsException e) {
+            throw new IOException("truncated WAV file", e);
+        }
+    }
+
+    private static Audio parseWav(byte[] bytes) throws IOException {
         ByteBuffer b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
         if (bytes.length < 12 || b.getInt(0) != 0x46464952 || b.getInt(8) != 0x45564157) throw new IOException("not a WAV file");
         int format = 0, channels = 0, rate = 0, bits = 0, pos = 12;
@@ -108,8 +116,10 @@ public record Audio(float[] left, float[] right, int sampleRate) {
                 int len = Math.min(size < 0 ? Integer.MAX_VALUE : size, bytes.length - body);
                 return decode(b, body, len, format, channels, rate, bits);
             }
-            pos = body + size + (size & 1);
             if (size < 0) break;
+            long next = (long) body + size + (size & 1);
+            if (next > bytes.length) break;
+            pos = (int) next;
         }
         throw new IOException("WAV file has no data chunk");
     }
