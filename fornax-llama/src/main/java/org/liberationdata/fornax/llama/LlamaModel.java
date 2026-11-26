@@ -12,6 +12,8 @@ import org.liberationdata.fornax.Wire;
 import org.liberationdata.fornax.Worker;
 import org.liberationdata.fornax.WorkerCrashedException;
 import org.liberationdata.fornax.hub.FornaxHub;
+import org.liberationdata.fornax.hub.ModelCatalog;
+import org.liberationdata.fornax.hub.ModelSet;
 import org.liberationdata.fornax.hub.PullListener;
 
 import javax.imageio.ImageIO;
@@ -442,6 +444,10 @@ public final class LlamaModel implements AutoCloseable {
         catch (java.nio.file.InvalidPathException notAPath) { /* a reference's ':' on Windows */ }
         FornaxHub hub = FornaxHub.standard();
         if (!hub.isReference(gguf)) return new String[]{gguf, mmproj};
+        var set = ModelCatalog.byName(gguf.strip());   // refused before fetching: an image model's files are gigabytes
+        if (set.isPresent() && set.get().kind() != ModelSet.Kind.CHAT && set.get().kind() != ModelSet.Kind.VISION)
+            throw new IllegalArgumentException(gguf + " is a " + set.get().kind().name().toLowerCase(java.util.Locale.ROOT) + " model ("
+                    + set.get().engine() + "); LlamaModel loads language and vision models");
         Map<String, Path> files;
         try { files = hub.fetch(gguf, PullListener.logging()); }
         catch (IOException e) { throw new UncheckedIOException(gguf + ": " + e.getMessage(), e); }

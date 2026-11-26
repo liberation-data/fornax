@@ -173,48 +173,35 @@ public final class FornaxHub {
     }
 
     /**
-     * The set a reference names, without downloading it: from the cache when the model is there (default revision
-     * only), else from the repo's file list on the Hub.
+     * The set a reference names, without downloading it: from the cache when the model is there (for the default
+     * revision or a commit), else from the repo's file list on the Hub, a branch or tag pinned to the commit it names.
      */
     public ModelSet resolve(ModelRef ref) throws IOException {
-        if (ref.revision() == null) {
-            Map<String, Path> cached = HfCache.files(cache.root(), ref.repo());
-            List<String> files = pick(ref, cached.keySet(), false);
-            if (!files.isEmpty() && cached.keySet().containsAll(files)) return refSet(ref, "main", files);
+        boolean commit = ref.revision() != null && CacheLayout.isCommit(ref.revision());
+        if (ref.revision() == null || commit) {   // a commit's snapshot never changes, so it needs no Hub either
+            Map<String, Path> cached = commit ? snapshotFiles(ref.repo(), ref.revision()) : HfCache.files(cache.root(), ref.repo());
+            List<String> files = ref.pick(cached.keySet(), false);
+            if (!files.isEmpty() && cached.keySet().containsAll(files)) return refSet(ref, commit ? ref.revision() : "main", files);
         }
         String revision = ref.revision() == null ? "main" : ref.revision();
         RepoIndex.RepoInfo info = index.info(ref.repo(), revision);
-        return refSet(ref, revision, pick(ref, info.files().stream().map(RepoIndex.RepoFile::path).toList(), true));
+        // a named revision is pinned to the commit it names now, so main's copy of the same file in the cache isn't taken for it
+        return refSet(ref, ref.revision() == null ? revision : info.commit(),
+                ref.pick(info.files().stream().map(RepoIndex.RepoFile::path).toList(), true));
+    }
+
+    /** The complete files in one snapshot of repo, by path. */
+    private Map<String, Path> snapshotFiles(String repo, String commit) throws IOException {
+        Path snap = cache.snapshots(repo).resolve(commit);
+        Map<String, Path> out = new LinkedHashMap<>();
+        if (!Files.isDirectory(snap)) return out;
+        try (var w = Files.walk(snap)) {   // follows links; drops dangling ones (a download in progress)
+            for (Path f : w.filter(Files::isRegularFile).sorted().toList()) out.put(snap.relativize(f).toString().replace('\\', '/'), f);
+        }
+        return out;
     }
 
     private Optional<ModelSet> alias(String name) { return catalogue.stream().filter(m -> m.isNamed(name.strip())).findFirst(); }
-
-    /**
-     * The files of ref's model among paths, first the one to load: a tag that is a path or file name takes that file
-     * (with a split GGUF's other parts); otherwise the GGUF model the tag (or, with no tag, the repo's only one)
-     * picks. strict: fail on no match or on several, as for the Hub's list; else empty, for the cache, where a model
-     * that isn't there yet is the usual case.
-     */
-    private static List<String> pick(ModelRef ref, java.util.Collection<String> paths, boolean strict) throws HubException {
-        Map<String, List<String>> models = GgufFiles.models(paths);
-        String tag = ref.tag();
-        if (tag != null && !GgufFiles.isGguf(tag)) {
-            List<String> named = paths.stream().filter(p -> p.equals(tag) || GgufFiles.name(p).equals(tag)).toList();
-            if (named.size() == 1) return named;
-            if (named.size() > 1) {
-                if (!strict) return List.of();
-                throw new IllegalArgumentException(tag + " is ambiguous in " + ref.repo() + ":\n  " + String.join("\n  ", named));
-            }
-        }
-        List<String> hits = tag == null ? List.copyOf(models.keySet()) : GgufFiles.match(models, tag);
-        if (hits.size() == 1) return GgufFiles.allParts(models.get(hits.get(0)));
-        if (!strict) return List.of();
-        if (hits.isEmpty()) throw new HubException(Reason.NOT_FOUND, ref.repo(), (tag == null
-                ? ref.repo() + " has no GGUF model" : "No file or GGUF model matching " + tag + " in " + ref.repo())
-                + (models.isEmpty() ? "; name a file: " + ref.repo() + ":FILE." : ". It has:\n  " + String.join("\n  ", models.keySet())));
-        throw new IllegalArgumentException((tag == null ? ref.repo() + " has several GGUF models" : tag + " matches several models in "
-                + ref.repo()) + "; name one:\n  " + String.join("\n  ", hits.stream().map(h -> ref.repo() + ":" + h).toList()));
-    }
 
     /** One part per file: the first as "gguf" (or "model"), a split GGUF's others by path. */
     private static ModelSet refSet(ModelRef ref, String revision, List<String> files) {

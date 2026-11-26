@@ -15,6 +15,7 @@ public final class GgufFiles {
 
     private static final Pattern SPLIT = Pattern.compile("(.*)-(\\d{5})-of-(\\d{5})\\.gguf", Pattern.CASE_INSENSITIVE);
 
+    /** Whether the path names a GGUF file, by its extension. */
     public static boolean isGguf(String path) { return path.toLowerCase(Locale.ROOT).endsWith(".gguf"); }
 
     /** Vision projectors and the like: GGUFs that aren't models you can chat with on their own. */
@@ -67,5 +68,6 @@ public final class GgufFiles {
         return models.keySet().stream().filter(k -> k.toLowerCase(Locale.ROOT).contains(t)).toList();
     }
 
+    /** The file name: the path after its last '/', as the Hub's paths spell it. */
     public static String name(String path) { return path.substring(path.lastIndexOf('/') + 1); }
 }

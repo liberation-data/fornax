@@ -6,6 +6,7 @@ import org.liberationdata.fornax.hub.RepoIndex;
 import org.liberationdata.fornax.hub.RepoIndex.RepoFile;
 import org.liberationdata.fornax.hub.RepoIndex.RepoInfo;
 import org.liberationdata.fornax.hub.FornaxHub;
+import org.liberationdata.fornax.hub.HubException;
 import org.liberationdata.fornax.hub.ModelCatalog;
 import org.liberationdata.fornax.hub.ModelRef;
 import org.liberationdata.fornax.hub.ModelSet;
@@ -127,7 +128,7 @@ final class Pull {
     }
 
     /**
-     * The files that {@code tag} or {@code patterns} name (empty when both are absent). A name matches a path or a
+     * The files that {@code tag} ({@link ModelRef#pick}) or {@code patterns} name (empty when both are absent). A name matches a path or a
      * unique file name; a pattern with {@code * ? [} or {@code {} is a glob over paths. Naming any part of a split
      * GGUF selects all of its parts.
      */
@@ -135,13 +136,9 @@ final class Pull {
         List<String> paths = info.files().stream().map(RepoFile::path).toList();
         Map<String, List<String>> models = GgufFiles.models(paths);
         LinkedHashSet<String> chosen = new LinkedHashSet<>();
-        if (tag != null) {
-            List<String> hits = GgufFiles.match(models, tag);
-            if (hits.isEmpty()) throw new Main.Failure("No GGUF model matching " + tag + " in " + info.repo()
-                    + (models.isEmpty() ? " (it has no GGUF files)." : ". It has:\n  " + String.join("\n  ", models.keySet())));
-            if (hits.size() > 1) throw new Main.Failure(tag + " matches several models in " + info.repo() + "; name one:\n  "
-                    + String.join("\n  ", hits.stream().map(h -> info.repo() + ":" + h).toList()));
-            chosen.addAll(models.get(hits.get(0)));
+        if (tag != null) {   // as FornaxHub.fetch picks it, so the reference names the same files in code and here
+            try { chosen.addAll(new ModelRef(info.repo(), null, tag).pick(paths)); }
+            catch (HubException | IllegalArgumentException e) { throw new Main.Failure(e.getMessage()); }
         }
         for (String p : patterns) {
             List<String> hits;

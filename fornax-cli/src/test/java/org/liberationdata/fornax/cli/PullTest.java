@@ -54,7 +54,7 @@ class PullTest {
         server.createContext("/api/models/", ex -> {
             requests.add("API " + ex.getRequestURI().getPath());
             String path = ex.getRequestURI().getPath();
-            String repo = path.equals("/api/models/" + REPO + "/revision/main") ? REPO
+            String repo = path.equals("/api/models/" + REPO + "/revision/main") || path.equals("/api/models/" + REPO + "/revision/" + COMMIT) ? REPO
                     : path.equals("/api/models/" + GATED + "/revision/main") ? GATED : null;
             if (repo == null) { send(ex, 404, new byte[0]); return; }
             String json = """
@@ -171,6 +171,23 @@ class PullTest {
         assertTrue(Pull.select(info, null, List.of()).isEmpty());
         assertThrows(Main.Failure.class, () -> Pull.select(info, "tiny", List.of()));        // two models
         assertThrows(Main.Failure.class, () -> Pull.select(info, null, List.of("nope.bin")));
+    }
+
+    @Test
+    void aRevisionInTheReference() throws Exception {
+        assertEquals(0, pull(null, REPO + "@" + COMMIT + ":Q8_0"));
+        assertEquals("API /api/models/" + REPO + "/revision/" + COMMIT, requests.get(0));
+        assertTrue(Files.isRegularFile(snapshot("tiny-Q8_0.gguf")));
+        var twice = assertThrows(Args.UsageException.class, () -> pull(null, REPO + "@" + COMMIT + ":Q8_0", "--revision", "main"));
+        assertTrue(twice.getMessage().contains("give the revision once"), twice.getMessage());
+        var url = assertThrows(Args.UsageException.class, () -> pull(null, "https://huggingface.co/" + REPO + "/blob/main/tiny-Q8_0.gguf"));
+        assertTrue(url.getMessage().contains("use fornax pull " + REPO + ":tiny-Q8_0.gguf"), url.getMessage());
+    }
+
+    @Test
+    void aTagCanNameAFileThatIsntAGguf() throws Exception {
+        var info = new RepoIndex(endpoint(), null).info(REPO, "main");
+        assertEquals(List.of("README.md"), Pull.select(info, "README.md", List.of()).stream().map(RepoIndex.RepoFile::path).toList());
     }
 
     @Test

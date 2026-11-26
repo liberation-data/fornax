@@ -35,4 +35,12 @@ class LlamaRefIT {
         var e = assertThrows(RuntimeException.class, () -> new LlamaModel("models/not-there.gguf", 0, 512));
         assertFalse(e.getMessage().contains("huggingface"), e.getMessage());
     }
+
+    @Test
+    void anAliasForAnotherEngineIsRefusedBeforeAnyDownload() {
+        var e = assertThrows(IllegalArgumentException.class, () -> new LlamaModel("flux2-klein", 0, 512));
+        assertTrue(e.getMessage().contains("image model"), e.getMessage());
+        var speech = assertThrows(IllegalArgumentException.class, () -> LlamaModel.isolated("kokoro"));
+        assertTrue(speech.getMessage().contains("speech model"), speech.getMessage());
+    }
 }

@@ -40,7 +40,7 @@ Map<String, Path> vlm = hub.fetch("qwen3-vl-4b", PullListener.logging());   // a
 The name is a catalogue alias, or a `ModelRef`: `owner/repo[@revision][:tag]`, the form `fornax pull` takes. The tag
 is a quant, matched against the repo's GGUF file names ignoring case, or a file's name or path. With no tag, the repo
 must hold one GGUF model, not counting mmproj files. A split GGUF brings all its parts. A tag that matches several
-files fails and lists them. A model already in the cache needs no request to the Hub; otherwise `fetch` reads the
+files fails and lists them. A model already in the cache needs no request to the Hub (with no revision, or a commit); otherwise `fetch` reads the
 repo's file list first. `hub.isReference(s)` says whether a string is a name to fetch rather than a path.
 
 ## Pulling a model

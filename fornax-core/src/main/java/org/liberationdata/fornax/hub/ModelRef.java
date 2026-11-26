@@ -1,6 +1,10 @@
 package org.liberationdata.fornax.hub;
 
+import org.liberationdata.fornax.hub.HubException.Reason;
+
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -69,6 +73,40 @@ public record ModelRef(String repo, String revision, String tag) {
         if (!m.matches()) return Optional.empty();
         String rev = m.group(2), file = m.group(3);
         return Optional.of(new ModelRef(m.group(1), "main".equals(rev) ? null : rev, file).toString());
+    }
+
+    /**
+     * The files of this reference's model among a repo's paths, the one to load first: a tag that is a file's path or
+     * name takes that file (a split GGUF with its other parts); otherwise the GGUF model the tag picks, or with no tag
+     * the repo's only one. What {@link FornaxHub#fetch} downloads and {@code fornax pull owner/repo:TAG} selects.
+     *
+     * @throws HubException ({@link HubException.Reason#NOT_FOUND}) when nothing matches
+     * @throws IllegalArgumentException when several models match, naming them
+     */
+    public List<String> pick(java.util.Collection<String> paths) throws HubException { return pick(paths, true); }
+
+    /**
+     * {@link #pick(java.util.Collection)}; strict false gives empty instead of failing on no match or several, for the
+     * cache, where a model that isn't there yet is the usual case.
+     */
+    List<String> pick(java.util.Collection<String> paths, boolean strict) throws HubException {
+        Map<String, List<String>> models = GgufFiles.models(paths);
+                if (tag != null && !GgufFiles.isGguf(tag)) {
+            List<String> named = paths.stream().filter(p -> p.equals(tag) || GgufFiles.name(p).equals(tag)).toList();
+            if (named.size() == 1) return named;
+            if (named.size() > 1) {
+                if (!strict) return List.of();
+                throw new IllegalArgumentException(tag + " is ambiguous in " + repo + ":\n  " + String.join("\n  ", named));
+            }
+        }
+        List<String> hits = tag == null ? List.copyOf(models.keySet()) : GgufFiles.match(models, tag);
+        if (hits.size() == 1) return GgufFiles.allParts(models.get(hits.get(0)));
+        if (!strict) return List.of();
+        if (hits.isEmpty()) throw new HubException(Reason.NOT_FOUND, repo, (tag == null
+                ? repo + " has no GGUF model" : "No file or GGUF model matching " + tag + " in " + repo)
+                + (models.isEmpty() ? "; name a file: " + repo + ":FILE." : ". It has:\n  " + String.join("\n  ", models.keySet())));
+        throw new IllegalArgumentException((tag == null ? repo + " has several GGUF models" : tag + " matches several models in "
+                + repo) + "; name one:\n  " + String.join("\n  ", hits.stream().map(h -> repo + ":" + h).toList()));
     }
 
     @Override public String toString() {

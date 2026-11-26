@@ -105,6 +105,25 @@ class FetchTest {
         assertThrows(HubException.class, () -> hub().fetch(REPO + "@nope:Q8_0", PullListener.NONE));
     }
 
+    @Test void aCommitInTheCacheNeedsNoHubOffline() throws Exception {
+        String ref = REPO + "@" + FakeHub.commit(REPO) + ":Q8_0";
+        Map<String, Path> files = hub().fetch(ref, PullListener.NONE);
+        assertEquals(files, builder().offline(true).build().fetch(ref, PullListener.NONE));
+        assertEquals(1, fake.listings.size());
+    }
+
+    @Test void aNamedRevisionIsntAnsweredByMainsOlderCopy() throws Exception {
+        // an older main in the cache: snapshot "b...", refs/main naming it, its own m-Q8_0.gguf
+        Path repo = cache.resolve("models--org--Model-GGUF"), old = repo.resolve("snapshots/" + "b".repeat(40) + "/m-Q8_0.gguf");
+        Files.createDirectories(old.getParent());
+        Files.writeString(old, "older");
+        Files.createDirectories(repo.resolve("refs"));
+        Files.writeString(repo.resolve("refs/main"), "b".repeat(40));
+        Path got = hub().fetch(REPO + "@main:Q8_0", PullListener.NONE).get("gguf");
+        assertEquals(30_000, Files.size(got));   // the commit main names on the Hub, downloaded
+        assertEquals(List.of(REPO + "@main"), fake.listings);
+    }
+
     @Test void anAliasFetchesItsWholeSet() throws Exception {
         var vlm = ModelSet.of("tiny-vl", Kind.VISION, "Tiny VL", "llama.cpp",
                 Part.of("gguf", REPO, "m-Q4_K_M.gguf"), Part.of("mmproj", REPO, "mmproj-m-F16.gguf")).withAliases("tiny");
