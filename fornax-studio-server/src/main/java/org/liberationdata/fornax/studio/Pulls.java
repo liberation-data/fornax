@@ -69,15 +69,31 @@ final class Pulls {
     /**
      * The Hugging Face token for gated repos, from the desktop app's keychain, for every request that brings none of
      * its own; null or blank clears it, and the hub's own (HF_TOKEN, or the token file) is used again. Held in memory
-     * only: never written, logged or sent anywhere but the Hub.
+     * only: never written, logged or sent anywhere but the Hub. A token no header can carry is refused, without its
+     * characters, before it is kept.
      */
-    void token(String t) { token = t == null || t.isBlank() ? null : t.strip(); }
+    void token(String t) { token = checked(t); }
 
     /** Whether the app has given a token ({@link #token(String)}). */
     boolean hasToken() { return token != null; }
 
     /** A request's own token, else the app's. */
-    private String tokenFor(String requested) { return requested != null && !requested.isBlank() ? requested : token; }
+    private String tokenFor(String requested) {
+        String t = checked(requested);
+        return t != null ? t : token;
+    }
+
+    /**
+     * The token stripped, or null for none. One with a space or control character inside is refused here: the HTTP
+     * client would refuse it too, but with the header's value, token and all, in its message, which is sent back.
+     */
+    private static String checked(String t) {
+        if (t == null || t.isBlank()) return null;
+        String s = t.strip();
+        if (!s.chars().allMatch(c -> c > 0x20 && c < 0x7f))
+            throw new IllegalArgumentException("a Hugging Face token is printable ASCII, without spaces");
+        return s;
+    }
 
     /** The set with this id or alias ("flux2-klein" or the studio's "image:flux2-klein"). */
     ModelSet set(String name) {

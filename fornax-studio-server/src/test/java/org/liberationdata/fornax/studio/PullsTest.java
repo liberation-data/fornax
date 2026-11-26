@@ -247,6 +247,25 @@ class PullsTest {
         assertTrue(authorizations.contains("Bearer " + TOKEN), "trimmed, and sent to the Hub");
     }
 
+    @Test void aMalformedTokenIsRefusedWithoutBeingEchoed() throws Exception {
+        String bad = "hf_secret\\nInjected: yes";   // a newline inside: no header can carry it
+        call("POST", "/api/hub/token", "{\"token\": \"" + TOKEN + "\"}");
+        for (String body : List.of("{\"token\": \"" + bad + "\"}", "{\"token\": \"hf_a b\"}", "{\"token\": 12345}",
+                "{\"token\": {\"t\": \"hf_secret\"}}", "hf_secret")) {
+            var r = call("POST", "/api/hub/token", body);
+            assertEquals(400, r.statusCode(), body + " -> " + r.body());
+            assertFalse(r.body().contains("hf_secret") || r.body().contains("12345"), r.body());
+        }
+        assertEquals(true, Json.object(call("GET", "/api/hub", null).body()).get("tokenSet"), "the app's token is kept");
+
+        var plan = call("POST", "/api/models/plan", "{\"id\": \"locked\", \"token\": \"" + bad + "\"}");
+        assertEquals(400, plan.statusCode(), plan.body());
+        assertFalse(plan.body().contains("hf_secret"), plan.body());
+        String pull = call("POST", "/api/models/pull", "{\"id\": \"locked\", \"token\": \"" + bad + "\"}").body();
+        assertFalse(pull.contains("hf_secret"), pull);
+        assertFalse(pull.contains("event: done"), pull);
+    }
+
     @Test void tooLittleDiskFailsBeforeAnyDownload() throws Exception {
         reserveBytes = Long.MAX_VALUE / 4;
         var error = event(call("POST", "/api/models/pull", "{\"id\": \"tiny\"}").body(), "error");

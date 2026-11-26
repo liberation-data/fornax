@@ -48,7 +48,7 @@ import java.util.regex.Pattern;
  * POST /api/models/pull  {id, token?}   downloads it (start, progress, done | cancelled | error), or watches its download
  * POST /api/models/pull/cancel {id}     stops its download; what has arrived stays, for the next pull to resume
  * GET  /api/hub                   {"tokenSet": ...}: whether the app has given a Hugging Face token
- * POST /api/hub/token   {token}    the token for gated repos, from the app's keychain (null or "" clears it)
+ * POST /api/hub/token   {token}    the token for gated repos, from the app's keychain (null or "" clears it); 400 for one that isn't a token
  * </pre>
  *
  * A {@code token} is a Hugging Face token for a gated repo, from the app's keychain; it is sent to the Hub only, and
@@ -116,7 +116,9 @@ public final class StudioServer {
         route("/api/models/pull", "POST", this::pull);
         route("/api/hub", "GET", ex -> json(ex, 200, Json.obj("tokenSet", pulls.hasToken())));
         route("/api/hub/token", "POST", ex -> {
-            pulls.token(Json.str(body(ex), "token", null));
+            Object token = body(ex).get("token");
+            if (token != null && !(token instanceof String)) throw new IllegalArgumentException("token is a string");
+            pulls.token((String) token);
             json(ex, 200, Json.obj("tokenSet", pulls.hasToken()));
         });
         route("/api/models/pull/cancel", "POST", ex -> json(ex, 200, Json.obj("cancelled", pulls.cancel(Json.str(body(ex), "id", null)))));
