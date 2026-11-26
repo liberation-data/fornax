@@ -62,6 +62,7 @@ public final class ModelThread implements AutoCloseable {
     private Call current;                                         // guarded by state
     private boolean closed;                                       // guarded by state
     private Thread worker;                                        // guarded by state
+    private Thread closer;                                        // guarded by state: the thread doing the first close
     private volatile Executor streamExecutor = VIRTUAL;
     private volatile int streamBuffer = DEFAULT_BUFFER;
 
@@ -178,7 +179,9 @@ public final class ModelThread implements AutoCloseable {
 
     /**
      * Cancels the call in progress and every queued one, waits for the native call to return, then frees the engine
-     * instance. Idempotent: a second close (from any thread) waits for the first to finish freeing it and returns.
+     * instance. Idempotent: a second close (from any thread) waits for the first to finish freeing it and returns;
+     * one nested in the first, on its thread (a queued call's dependent stage, which runs as close fails it), returns
+     * at once and leaves the freeing to the outer close.
      * @throws IllegalStateException if called from inside one of this model's own callbacks, which would free the
      *         instance under the native call that is running the callback
      */
@@ -189,7 +192,11 @@ public final class ModelThread implements AutoCloseable {
         List<Job<?>> abandoned;
         Thread w;
         synchronized (state) {
+            // Nested in the first close, on its thread (a queued call's dependent, failed below, closing the model):
+            // waiting here would wait for itself, so leave the freeing to the outer close.
+            if (closed && closer == Thread.currentThread()) return;
             first = !closed;
+            if (first) closer = Thread.currentThread();
             closed = true;
             if (current != null) stop(current);
             abandoned = new ArrayList<>(queue);

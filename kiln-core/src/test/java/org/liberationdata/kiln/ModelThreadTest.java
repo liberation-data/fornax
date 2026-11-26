@@ -171,6 +171,24 @@ class ModelThreadTest {
     }
 
     @Test
+    void theFirstCallbackFailureWinsAndLaterOnesAreSuppressed() {
+        try (var t = new ModelThread("fake", () -> {})) {
+            var first = new IllegalStateException("first");
+            var second = new IllegalArgumentException("second");
+            var thrown = assertThrows(IllegalStateException.class, () -> t.run(call -> {
+                call.fail(first);
+                call.fail(second);
+                call.fail(first);  // the same one again isn't added to itself
+                return 0;
+            }));
+            assertSame(first, thrown);
+            assertArrayEquals(new Throwable[] {second}, thrown.getSuppressed());
+            var oom = new OutOfMemoryError("an Error is rethrown as itself");
+            assertSame(oom, assertThrows(OutOfMemoryError.class, () -> t.run(call -> { call.fail(oom); return 0; })));
+        }
+    }
+
+    @Test
     void streamsEveryItemThenCompletes() throws Exception {
         try (var t = new ModelThread("fake", () -> {})) {
             var r = new Recorder();
@@ -346,6 +364,26 @@ class ModelThreadTest {
         assertEquals(List.of("returned", "destroy"), log);
         assertTrue(running.get(10, TimeUnit.SECONDS) < 100_000);
         assertThrows(CancellationException.class, () -> queued.get(10, TimeUnit.SECONDS));  // get() throws it unwrapped
+    }
+
+    /** A queued call's own failure handler closing the model, the "close when done" idiom, mustn't hang close. */
+    @Test
+    void closeFromADependentOfAQueuedCallDoesNotDeadlock() throws Exception {
+        AtomicInteger destroys = new AtomicInteger();
+        var t = new ModelThread("fake", destroys::incrementAndGet);
+        var started = new CountDownLatch(1);
+        var running = t.submit(call -> { started.countDown(); return generate(call, 100_000, null); });
+        var queued = t.submit(call -> 0);
+        var dependentClosed = new CountDownLatch(1);
+        queued.whenComplete((v, e) -> { t.close(); dependentClosed.countDown(); });
+        assertTrue(started.await(5, TimeUnit.SECONDS));
+        var closer = Thread.ofPlatform().daemon(true).start(t::close);
+        closer.join(10_000);
+        assertFalse(closer.isAlive(), "close() hung: the queued call's dependent ran on the closing thread and waited for it");
+        assertTrue(dependentClosed.await(5, TimeUnit.SECONDS));
+        assertEquals(1, destroys.get());
+        assertTrue(running.get(10, TimeUnit.SECONDS) < 100_000);
+        assertThrows(CancellationException.class, () -> queued.get(10, TimeUnit.SECONDS));
     }
 
     @Test
