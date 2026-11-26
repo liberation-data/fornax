@@ -108,6 +108,9 @@ final class Catalog {
 
     Path root() { return root; }
 
+    /** The model folders searched after the cache. */
+    List<Path> folders() { return folders; }
+
     List<Model> models() {
         List<Model> all = new ArrayList<>(chatModels());
         all.addAll(imagePresets());

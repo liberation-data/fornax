@@ -42,7 +42,14 @@ import java.util.regex.Pattern;
  * POST /api/video                  generates a video clip with sound, with LTX-2.5 (status, progress, done | error)
  * POST /api/inspect                asks a vision model about an image, free text or to a JSON schema (status, token, done | error)
  * GET  /api/outputs/{file}         an image, song or video made, from the studio's home
+ * GET  /api/catalogue              Fornax's model sets: what of each is on disk, licence, gated, downloading
+ * POST /api/models/plan  {id, token?}   what getting one would download, and the free disk ({@link Pulls#plan})
+ * POST /api/models/pull  {id, token?}   downloads it (start, progress, done | cancelled | error), or watches its download
+ * POST /api/models/pull/cancel {id}     stops its download; what has arrived stays, for the next pull to resume
  * </pre>
+ *
+ * A {@code token} is a Hugging Face token for a gated repo, from the app's keychain; it is sent to the Hub only, and
+ * never logged. Without one, the hub's own is used ({@code HF_TOKEN}, or the token file {@code hf auth login} writes).
  *
  * Settings, as system properties or the environment: {@code fornax.studio.port} / {@code FORNAX_STUDIO_PORT} (5191),
  * {@code fornax.studio.budget} / {@code FORNAX_STUDIO_BUDGET_GB} (the pool's budget in GB, 24),
@@ -58,6 +65,7 @@ public final class StudioServer {
     private final Studio studio;
     private final HttpServer http;
     private final String ffmpeg;
+    private final Pulls pulls;
 
     StudioServer(Studio studio, int port) throws IOException {
         this(studio, port, Mp4.find(setting("fornax.studio.ffmpeg", "FORNAX_STUDIO_FFMPEG", "")));
@@ -65,8 +73,14 @@ public final class StudioServer {
 
     /** ffmpeg: the one that makes a video's .mp4, or null for none (a video then fails, saying where its frames are). */
     StudioServer(Studio studio, int port, String ffmpeg) throws IOException {
+        this(studio, port, ffmpeg, Pulls.standard(studio.catalog()));
+    }
+
+    /** pulls: where models are got from (a test's hub on localhost). */
+    StudioServer(Studio studio, int port, String ffmpeg, Pulls pulls) throws IOException {
         this.studio = studio;
         this.ffmpeg = ffmpeg;
+        this.pulls = pulls;
         this.http = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), port), 0);
         // Platform threads: a generation is one long native call, which would pin a virtual thread's carrier throughout.
         http.setExecutor(Executors.newCachedThreadPool(r -> {
@@ -85,6 +99,13 @@ public final class StudioServer {
         route("/api/video", "POST", this::video);
         route("/api/inspect", "POST", this::inspect);
         http.createContext("/api/outputs/", ex -> handle(ex, "GET", this::output));
+        route("/api/catalogue", "GET", ex -> json(ex, 200, Json.obj("models", pulls.catalogue())));
+        route("/api/models/plan", "POST", ex -> {
+            var b = body(ex);
+            json(ex, 200, pulls.plan(Json.str(b, "id", null), Json.str(b, "token", null)));
+        });
+        route("/api/models/pull", "POST", this::pull);
+        route("/api/models/pull/cancel", "POST", ex -> json(ex, 200, Json.obj("cancelled", pulls.cancel(Json.str(body(ex), "id", null)))));
     }
 
     int port() { return http.getAddress().getPort(); }
@@ -629,6 +650,16 @@ public final class StudioServer {
                 out.write(buf, 0, n);
                 left -= n;
             }
+        }
+    }
+
+    private void pull(HttpExchange ex) throws IOException {
+        var b = body(ex);
+        String id = Json.str(b, "id", null), token = Json.str(b, "token", null);
+        pulls.set(id);   // an unknown id is a 400, before the stream begins
+        try (var sse = new Sse(ex)) {
+            try { pulls.pull(id, token, sse); }
+            catch (RuntimeException e) { sse.send("error", Json.obj("id", id, "message", message(e), "reason", "IO")); }
         }
     }
 
