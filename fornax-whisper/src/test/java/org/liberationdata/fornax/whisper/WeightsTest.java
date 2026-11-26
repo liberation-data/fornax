@@ -19,6 +19,7 @@ class WeightsTest {
         assertEquals(Alignment.BASE_EN, Weights.alignmentOf("whisper-base.en"));
         assertEquals(Alignment.BASE_EN, Weights.alignmentOf("ggerganov/whisper.cpp:ggml-base.en.bin"));
         assertEquals(Alignment.LARGE_V3_TURBO, Weights.alignmentOf("ggerganov/whisper.cpp@main:ggml-large-v3-turbo-q8_0.bin"));
+        assertEquals(Alignment.BASE_EN, Weights.alignmentOf(" ggerganov/whisper.cpp:ggml-base.en.bin "));   // loads, stripped, as the hub reads it
     }
 
     @Test void anythingElseGetsNone() throws Exception {

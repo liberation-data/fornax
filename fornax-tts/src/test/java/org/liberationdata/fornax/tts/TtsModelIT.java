@@ -66,6 +66,9 @@ class TtsModelIT {
         try (var byAlias = new TtsModel("kokoro")) {
             assertEquals(model.voices(), byAlias.voices());
         }
+        try (var mmprojByAlias = new TtsModel("kokoro", "kokoro")) {   // the alias's mmproj, not its model
+            assertEquals(model.voices(), mmprojByAlias.voices());
+        }
         String repo = TtsModel.Weights.KOKORO.repo;
         try (var byRef = new TtsModel(repo + ":F32", repo + ":mmproj-Kokoro-82M-F16.gguf")) {
             assertTrue(byRef.speak("Hello.", "af_heart").seconds() > 0.3);

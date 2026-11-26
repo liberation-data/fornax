@@ -4,6 +4,7 @@ import org.liberationdata.fornax.Audio;
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.NativeLibrary;
 import org.liberationdata.fornax.hub.ModelCatalog;
+import org.liberationdata.fornax.hub.ModelRef;
 import org.liberationdata.fornax.hub.ModelReferences;
 import org.liberationdata.fornax.hub.ModelSet;
 import org.liberationdata.fornax.whisper.Transcript.Segment;
@@ -124,9 +125,10 @@ public final class WhisperModel implements AutoCloseable {
         static Alignment alignmentOf(String model) {
             if (ModelReferences.isPath(model)) return Alignment.NONE;
             var alias = ModelCatalog.byName(model.strip());
+            var ref = ModelRef.tryParse(model).filter(r -> r.repo().equals(REPO) && r.tag() != null);
             String file;
             if (alias.isPresent()) file = alias.get().parts().getFirst().primary().file();
-            else if (model.startsWith(REPO + ":") || model.startsWith(REPO + "@")) file = model.substring(model.lastIndexOf(':') + 1);
+            else if (ref.isPresent()) file = ref.get().tag();
             else return Alignment.NONE;
             for (Weights w : values()) if (w.file.equals(file)) return w.alignment;
             return Alignment.NONE;

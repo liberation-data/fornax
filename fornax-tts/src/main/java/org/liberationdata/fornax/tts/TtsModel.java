@@ -168,7 +168,7 @@ public final class TtsModel implements AutoCloseable {
         if (mmprojPath == null && model.isPresent() && model.get().containsKey("mmproj")) mmprojPath = model.get().get("mmproj").toString();
         if (mmprojPath == null) throw new NullPointerException("mmprojPath: " + given + " needs its mmproj (its voices and audio decoder)");
         String mm = mmprojPath;
-        mmprojPath = ModelReferences.locate(mm, ENGINE).map(f -> f.get("gguf").toString()).orElse(mm);
+        mmprojPath = ModelReferences.locate(mm, ENGINE).map(f -> f.getOrDefault("mmproj", f.get("gguf")).toString()).orElse(mm);   // an alias: its mmproj
         modelPath = model.map(f -> f.get("gguf").toString()).orElse(given);
         try (Arena a = Arena.ofConfined()) {
             handle = (MemorySegment) CREATE.invokeExact(a.allocateFrom(modelPath), a.allocateFrom(mmprojPath), gpuLayers, contextSize);
