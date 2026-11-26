@@ -9,24 +9,31 @@ Gemma, Mistral and the rest. The class is `LlamaModel`. The same class embeds te
 
 ## Load a model
 
-```sh
-hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
-```
-
 ```java
-import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.llama.LlamaModel;
 
-String gguf = HfCache.require("unsloth/Qwen3-4B-Instruct-2507-GGUF", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf").toString();
-
-try (var llm = new LlamaModel(gguf)) {                       // every layer on the GPU, 8192 tokens of context
+try (var llm = new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M")) {   // all layers on the GPU, 8192 tokens
     // ...
 }
 
-try (var llm = new LlamaModel(gguf, -1, 32768)) {            // gpuLayers (-1 = all), contextSize (0 = the model's own)
+try (var llm = new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M", -1, 32768)) {   // gpuLayers (-1 = all), contextSize (0 = the model's own)
     // ...
 }
 ```
+
+The first argument is a path to a `.gguf` file, or a model by name:
+
+- **`owner/repo:TAG`**, a Hugging Face repo and a quant (`Q4_K_M`, `Q8_0`, matched against the repo's GGUF file
+  names, ignoring case) or a file name. `owner/repo` alone takes the repo's only GGUF model. Add `@revision` for a
+  branch, tag or commit other than `main`.
+- **a catalogue alias**, such as `qwen3-4b` or `qwen3-vl-4b`, which brings the model's mmproj too (see
+  [Downloading models](/docs/guides/models/)).
+
+The first time, Fornax downloads the model into the Hugging Face cache, logging its progress (through
+`System.Logger` `org.liberationdata.fornax.hub`). After that, the model loads from the cache with no network, under
+`HF_HUB_OFFLINE` too. A path that names an existing file is always a path, and a URL is refused with the reference to
+use instead. To download ahead of time, run `fornax pull unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M` or
+`hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf`; both use the same cache.
 
 The constructor loads the weights onto the GPU, and they stay there until `close()`. Load once and reuse the model
 for many calls; [ModelPool](/docs/guides/model-pool/) helps when an app has several models to juggle.

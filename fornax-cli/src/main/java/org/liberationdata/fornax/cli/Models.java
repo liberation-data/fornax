@@ -1,8 +1,10 @@
 package org.liberationdata.fornax.cli;
 
+import org.liberationdata.fornax.hub.GgufFiles;
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.hub.FornaxHub;
 import org.liberationdata.fornax.hub.ModelCatalog;
+import org.liberationdata.fornax.hub.ModelRef;
 import org.liberationdata.fornax.hub.ModelSet;
 import org.liberationdata.fornax.hub.ModelSet.Kind;
 import org.liberationdata.fornax.hub.ModelStatus;
@@ -11,8 +13,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -35,9 +35,6 @@ final class Models {
     /** A catalogue set that isn't a chat model (image, song, ...), with its files by role. */
     record Set(ModelSet set, Map<String, Path> files) implements Target {}
 
-    /** "org/name" or "org/name:tag". */
-    static final Pattern REPO = Pattern.compile("([\\w.-]+/[\\w.-]+)(?::(.+))?");
-
     /** The catalogue's ids, for messages. */
     static String aliases() { return ModelCatalog.all().stream().map(ModelSet::id).collect(Collectors.joining(", ")); }
 
@@ -58,19 +55,23 @@ final class Models {
             if (m.kind() == Kind.CHAT || m.kind() == Kind.VISION) return new Llm(spec, status.paths().get("gguf"));
             return new Set(m, status.paths());
         }
-        Matcher rm = REPO.matcher(spec);
-        if (rm.matches()) return new Llm(spec, fromRepo(rm.group(1), rm.group(2), hub.cacheRoot()));
+        var ref = ModelRef.tryParse(spec);
+        if (ref.isPresent()) {
+            if (ref.get().revision() != null) throw new Main.Failure(spec + ": fornax chat uses the downloaded copy, whatever its "
+                    + "revision; drop @" + ref.get().revision() + " (fornax pull " + spec + " fetches that revision)");
+            return new Llm(spec, fromRepo(ref.get().repo(), ref.get().tag(), hub.cacheRoot()));
+        }
         throw new Main.Failure("No such file, alias or repo: " + spec + "\n  aliases: " + aliases());
     }
 
     private static Path fromRepo(String repo, String tag, Path cacheRoot) {
         Map<String, Path> byPath = HfCache.files(cacheRoot, repo);
-        Map<String, List<String>> models = Gguf.models(byPath.keySet());
-        List<String> hits = tag == null ? List.copyOf(models.keySet()) : Gguf.match(models, tag);
+        Map<String, List<String>> models = GgufFiles.models(byPath.keySet());
+        List<String> hits = tag == null ? List.copyOf(models.keySet()) : GgufFiles.match(models, tag);
         String want = repo + (tag == null ? "" : ":" + tag);
         if (hits.size() == 1) {
             List<String> parts = models.get(hits.get(0));
-            List<String> missing = Gguf.allParts(parts).stream().filter(x -> !byPath.containsKey(x)).toList();
+            List<String> missing = GgufFiles.allParts(parts).stream().filter(x -> !byPath.containsKey(x)).toList();
             if (!missing.isEmpty()) throw new Main.Failure(want + " is incomplete in the cache (missing " + missing
                     + "). Fetch it with: fornax pull " + repo + ":" + hits.get(0));
             return byPath.get(hits.get(0));

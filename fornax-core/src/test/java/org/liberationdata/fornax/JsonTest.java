@@ -1,4 +1,4 @@
-package org.liberationdata.fornax.llama;
+package org.liberationdata.fornax;
 
 import org.junit.jupiter.api.Test;
 

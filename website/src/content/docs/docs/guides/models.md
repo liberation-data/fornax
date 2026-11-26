@@ -25,6 +25,24 @@ build it from source with `./gradlew :fornax-cli:installDist`. The Hugging Face 
 `hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors` and so on, one command
 per file, into the same cache. The rest of this page is the Java API.
 
+## By reference
+
+`fetch` takes a model by name, downloads whatever of it is missing, and returns its files by role. This is what
+`new LlamaModel("owner/repo:Q4_K_M")` does:
+
+```java
+Map<String, Path> files = hub.fetch("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M", PullListener.logging());
+Path gguf = files.get("gguf");
+
+Map<String, Path> vlm = hub.fetch("qwen3-vl-4b", PullListener.logging());   // an alias: "gguf" and "mmproj"
+```
+
+The name is a catalogue alias, or a `ModelRef`: `owner/repo[@revision][:tag]`, the form `fornax pull` takes. The tag
+is a quant, matched against the repo's GGUF file names ignoring case, or a file's name or path. With no tag, the repo
+must hold one GGUF model, not counting mmproj files. A split GGUF brings all its parts. A tag that matches several
+files fails and lists them. A model already in the cache needs no request to the Hub (with no revision, or a commit); otherwise `fetch` reads the
+repo's file list first. `hub.isReference(s)` says whether a string is a name to fetch rather than a path.
+
 ## Pulling a model
 
 ```java
