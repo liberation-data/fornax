@@ -16,7 +16,7 @@ class UpscalerTest {
 
     @Test
     void otherFactorsAreRefusedNotApproximated() {
-        for (int f : new int[] {0, 1, 2, 8, 12, 32, -4, Integer.MAX_VALUE})
+        for (int f : new int[] {0, 1, 2, 3, 8, 12, 32, -4, Integer.MAX_VALUE})
             assertThrows(IllegalArgumentException.class, () -> Upscaler.repeats(4, f), "factor " + f);
     }
 

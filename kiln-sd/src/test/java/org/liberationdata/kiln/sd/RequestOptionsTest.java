@@ -178,13 +178,4 @@ class RequestOptionsTest {
         wide.getRaster().setSample(0, 0, 0, 100 << 8);
         assertEquals(100, DiffusionModel.grey(wide)[0] & 0xff, "16-bit grey drops its low byte, as stb_image does");
     }
-
-    @Test
-    void upscaleFactorsArePowersOfTheModelScale() {
-        assertEquals(1, Upscaler.repeats(4, 4));
-        assertEquals(2, Upscaler.repeats(4, 16));
-        assertEquals(3, Upscaler.repeats(2, 8));
-        for (int bad : new int[] {0, 1, 2, 3, 8, 12})
-            assertThrows(IllegalArgumentException.class, () -> Upscaler.repeats(4, bad), "factor " + bad);
-    }
 }
