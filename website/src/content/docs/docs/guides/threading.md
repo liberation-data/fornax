@@ -21,6 +21,8 @@ model while one is running.
 - **`close()`** can be called twice, and from any thread while a call is running: it cancels the call, waits for it to
   return, then frees the weights.
 - **A callback that throws** no longer takes the JVM down. The call stops and rethrows that exception.
+- **A native crash** still does, in-process. An [isolated](/docs/guides/isolation/) model runs in a worker process
+  behind this same API, and a crash there fails the call instead.
 
 ## Virtual threads
 

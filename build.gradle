@@ -152,6 +152,31 @@ project(':kiln-examples') {
     }
 }
 
+project(':kiln-core') {
+    // ./gradlew :kiln-core:workerBench: per-call overhead of an isolated worker vs in-process, with a trivial service
+    tasks.register('workerBench', JavaExec) {
+        group = 'kiln examples'
+        description = 'Isolation overhead: a trivial echo service in-process vs in a worker process'
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = 'org.liberationdata.kiln.WorkerBenchmark'
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+    }
+}
+
+project(':kiln-llama') {
+    // ./gradlew :kiln-llama:isolationBench --args=model.gguf: tokens/s in-process vs isolated, one model at a time
+    tasks.register('isolationBench', JavaExec) {
+        group = 'kiln examples'
+        description = 'Isolation overhead with a real model: tokens/s and short-call latency, in-process vs isolated'
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = 'org.liberationdata.kiln.llama.IsolationBenchmark'
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+        systemProperty 'kiln.library.path', nativeDir.absolutePath
+    }
+}
+
 project(':kiln-whisper') {
     // the integration test speaks its own test audio with Kokoro
     dependencies { testImplementation project(':kiln-tts') }
