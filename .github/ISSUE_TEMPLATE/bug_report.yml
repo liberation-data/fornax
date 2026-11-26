@@ -1,0 +1,35 @@
+name: Bug report
+description: Something in Fornax doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: For a security problem, don't open an issue. See SECURITY.md to report it privately.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Include the full error and stack trace.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest code or command that shows it, and the model (Hugging Face repo and file).
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Fornax version
+      description: The release, or the commit if you built from source.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, JDK version, GPU and driver, and the backend (Vulkan, Metal, ROCm, CUDA, CPU).
+    validations:
+      required: true
