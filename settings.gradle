@@ -16,6 +16,7 @@ include 'kiln-sd'       // stable-diffusion.cpp: FLUX, Qwen-Image, SD, Wan, LTX
 include 'kiln-acestep'  // acestep.cpp: ACE-Step 1.5 songs
 include 'kiln-yue2'     // yue2.cpp: YuE2 songs
 include 'kiln-whisper'  // whisper.cpp: speech to text with word timings
+include 'kiln-demucs'   // stems.cpp: HTDemucs stem separation (vocals and backing)
 include 'kiln-examples' // runnable demos (not published)
 include 'kiln-bench'    // A/B against ComfyUI's HTTP API (not published)
 
