@@ -163,7 +163,7 @@ public final class DemucsModel implements AutoCloseable {
      * @param cpuThreads threads for the CPU backend; 0 for one per physical core
      */
     public DemucsModel(String modelPath, boolean gpu, int cpuThreads) {
-        modelPath = ModelReferences.locate(modelPath, ENGINE).map(f -> ModelReferences.file(f, ENGINE).toString()).orElse(modelPath);
+        modelPath = ModelReferences.path(modelPath, ENGINE);
         try (Arena a = Arena.ofConfined()) {
             MemorySegment device = gpu ? MemorySegment.NULL : a.allocateFrom("cpu");
             handle = (MemorySegment) CREATE.invokeExact(a.allocateFrom(modelPath), device, cpuThreads);

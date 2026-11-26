@@ -11,9 +11,21 @@ A diffusion model is usually several files: the **diffusion model** itself, a **
 and a **text encoder** (a language model, for the models on this page). You name each one in a `Config`, and the
 model loads all of them in its constructor and keeps them loaded across calls.
 
+For the models Fornax's catalogue knows (`flux2-klein`, `qwen-image`, `qwen-image-edit`), `Config.builder().model(name)`
+names every file at once and downloads what's missing. Each file option also takes a
+[model reference](/docs/guides/models/#by-reference) in place of a path, such as a GGUF quant from another repo.
+
 ## FLUX.2 [klein]
 
-FLUX.2 [klein] base 4B is the model Fornax's demo paints its covers with, and a good first one to try.
+FLUX.2 [klein] base 4B is the model Fornax's demo paints its covers with, and a good first one to try. By name:
+
+```java
+try (var images = new DiffusionModel(DiffusionModel.Config.builder().model("flux2-klein").build())) {
+    BufferedImage img = images.generate(new DiffusionModel.Request("a neon sign that says FORNAX", 768, 768, 12, 4.0, 7)).get(0);
+}
+```
+
+Or file by file, after fetching them:
 
 ```sh
 hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors
