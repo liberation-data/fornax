@@ -33,16 +33,25 @@ final class RepoIndex {
 
     private final URI endpoint;
     private final String token;
+    private final boolean offline;
     private final HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(30)).build();
 
-    RepoIndex(URI endpoint, String token) {
+    RepoIndex(URI endpoint, String token) { this(endpoint, token, false); }
+
+    /** {@code offline}: {@link #info} fails at once, as {@code KilnHub} does for a missing file under HF_HUB_OFFLINE. */
+    RepoIndex(URI endpoint, String token, boolean offline) {
         this.endpoint = URI.create(endpoint.toString().replaceAll("/+$", ""));
         this.token = token;
+        this.offline = offline;
     }
 
-    /** {@code HF_ENDPOINT} (default https://huggingface.co) and the token {@link HubToken#find()} finds, as KilnHub uses. */
-    static RepoIndex standard() { return new RepoIndex(endpoint(), HubToken.find().orElse(null)); }
+    /** {@code HF_ENDPOINT} (default https://huggingface.co), the token {@link HubToken#find()} finds and HF_HUB_OFFLINE, as KilnHub uses. */
+    static RepoIndex standard() {
+        String off = System.getenv("HF_HUB_OFFLINE");
+        boolean offline = off != null && java.util.Set.of("1", "true", "yes", "on").contains(off.trim().toLowerCase(java.util.Locale.ROOT));
+        return new RepoIndex(endpoint(), HubToken.find().orElse(null), offline);
+    }
 
     static URI endpoint() {
         String ep = System.getenv("HF_ENDPOINT");
@@ -51,6 +60,8 @@ final class RepoIndex {
 
     /** The repo's files at {@code revision} (a branch, tag or commit). */
     RepoInfo info(String repo, String revision) throws IOException {
+        if (offline) throw new HubException(Reason.OFFLINE, repo, repo + ": listing its files needs the Hub, and HF_HUB_OFFLINE "
+                + "is set. Unset it to pull from a repo; kiln chat " + repo + ":TAG uses what is already in the cache.");
         URI uri = URI.create(endpoint + "/api/models/" + repo + "/revision/" + encode(revision) + "?blobs=true");
         HttpRequest.Builder req = HttpRequest.newBuilder(uri).header("User-Agent", "kiln-cli");
         if (token != null) req.header("Authorization", "Bearer " + token);

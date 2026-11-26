@@ -90,12 +90,22 @@ public final class Main {
                     + "\n  run kiln info to see where Kiln looks for " + Info.names());
             return 1;
         } catch (IOException e) {
-            err.println("kiln " + cmd + ": " + e);
+            err.println("kiln " + cmd + ": " + describe(e));
             return 1;
         } catch (IllegalStateException e) {   // an engine reporting a failure (load or generate)
             err.println("kiln " + cmd + ": " + e.getMessage());
             return 1;
         }
+    }
+
+    /** An I/O failure in words: no connection to the Hub says so, rather than a bare java.net.ConnectException. */
+    static String describe(IOException e) {
+        if (!(e instanceof java.net.ConnectException || e instanceof java.net.UnknownHostException
+                || e instanceof java.net.http.HttpTimeoutException)) return e.toString();
+        Throwable t = e;
+        while (t.getMessage() == null && t.getCause() != null) t = t.getCause();
+        return "couldn't reach " + RepoIndex.endpoint() + " (" + (t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName())
+                + "). Check the network connection; with HF_HUB_OFFLINE=1, kiln uses only what is already downloaded.";
     }
 
     private static Set<String> valueOptions(String cmd) {

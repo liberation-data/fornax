@@ -187,6 +187,23 @@ class PullTest {
         assertTrue(e.getMessage().contains("not found"), e.getMessage());
     }
 
+    @Test
+    void offlineListsNothingFromTheHub() {
+        var e = assertThrows(HubException.class, () -> new RepoIndex(endpoint(), null, true).info(REPO, "main"));
+        assertEquals(HubException.Reason.OFFLINE, e.reason());
+        assertTrue(e.getMessage().contains("HF_HUB_OFFLINE"), e.getMessage());
+        assertEquals(List.of(), requests);
+    }
+
+    @Test
+    void anUnreachableHubSaysSo() throws Exception {
+        int port;
+        try (var s = new java.net.ServerSocket(0)) { port = s.getLocalPort(); }   // closed again: nothing listens
+        var e = assertThrows(IOException.class, () -> new RepoIndex(URI.create("http://127.0.0.1:" + port), null).info(REPO, "main"));
+        String m = Main.describe(e);
+        assertTrue(m.contains("couldn't reach") && m.contains("network"), m);
+    }
+
     static String sha256(byte[] b) { return hex("SHA-256", b); }
 
     static String gitSha1(byte[] b) {
