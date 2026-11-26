@@ -4,7 +4,7 @@
 # On a published GitHub Release tagged v<version> (v0.1.0 publishes 0.1.0). Run by hand for a dry run, which builds
 # and signs every jar exactly as a release does, and stops before the upload; the signed repository is left as an
 # artifact to look through. A run by hand that isn't a dry run must be on a v* tag.
-# After a release, verify-central waits for repo1.maven.org to serve it and compiles samples/hello-kiln from there.
+# After a release, verify-central waits for repo1.maven.org to serve it and builds samples/hello-kiln from there.
 #
 # NO SECRETS WHERE THIRD-PARTY CODE BUILDS. The natives job builds llama.cpp, stable-diffusion.cpp, acestep.cpp and
 # yue2.cpp (fetched by native/build.sh at the commits native/engines.properties pins), so it gets no secrets; only the
@@ -23,6 +23,10 @@ on:
 
 permissions:
   contents: read
+
+env:
+  # Resolves the sample's runtime dependencies too (its natives jar), which `mvn compile` alone never does.
+  RESOLVE: org.apache.maven.plugins:maven-dependency-plugin:3.8.1:resolve
 
 concurrency:
   group: release-${{ github.ref }}
@@ -132,6 +136,9 @@ jobs:
           for lib in libkiln_llama libkiln_tts libstable-diffusion libkiln_acestep libkiln_yue2; do
             [ -f "$DIR/$lib.so" ] || [ -f "$DIR/$lib.dylib" ] || { echo "::error::no $lib in $DIR"; exit 1; }
           done
+          # kiln-llama binds its vision functions when it loads, so a libkiln_llama built without mtmd fails every model.
+          if [ "$RUNNER_OS" = Linux ]; then syms="nm -D --defined-only"; else syms="nm -gU"; fi
+          $syms "$DIR"/libkiln_llama.* | grep 'kiln_llama_create_mm$' > /dev/null || { echo "::error::libkiln_llama has no vision (mtmd)"; exit 1; }
           if [ "$RUNNER_OS" = Linux ]; then
             sudo apt-get install -y -qq libvulkan1 > /dev/null
             for lib in "$DIR"/*.so; do
@@ -216,11 +223,12 @@ jobs:
           [ "$total" -lt 1000000000 ] || { echo "::error::the deployment is over the Central Portal's 1 GB"; exit 1; }
 
       # samples/hello-kiln, a standalone build, against what was just signed: the coordinates users will copy work.
-      - name: Compile the sample against the signed repository
+      # Compiling alone never resolves the runtime-only natives jar, so Gradle installs the app and Maven resolves.
+      - name: Build the sample against the signed repository
         run: |
           set -euo pipefail
-          samples/hello-kiln/gradlew --no-daemon -p samples/hello-kiln compileJava -PkilnLocal=true -PkilnVersion="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
-          mvn -B -q -f samples/hello-kiln/pom.xml compile -Dkiln.version="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
+          samples/hello-kiln/gradlew --no-daemon -p samples/hello-kiln installDist -PkilnLocal=true -PkilnVersion="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
+          mvn -B -q -f samples/hello-kiln/pom.xml compile $RESOLVE -Dkiln.version="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
 
       - name: Keep the signed repository (dry run)
         if: env.DRY_RUN == 'true'
@@ -241,7 +249,7 @@ jobs:
         run: ./gradlew --no-daemon publishAndReleaseToMavenCentral -Pversion="$VERSION" -Pkiln.natives.require=true
 
   # After a release: wait until Maven Central serves every artifact, then build the sample from Central alone, the
-  # way a user would (compiled only: runners have no GPU to run it on).
+  # way a user would (built, not run: runners have no GPU to run it on).
   verify-central:
     name: Resolve ${{ needs.version.outputs.version }} from Maven Central
     needs: [version, publish]
@@ -279,8 +287,8 @@ jobs:
             sleep 60
           done
 
-      - name: Compile the sample from Maven Central
+      - name: Build the sample from Maven Central
         run: |
           set -euo pipefail
-          samples/hello-kiln/gradlew --no-daemon -p samples/hello-kiln compileJava --refresh-dependencies -PkilnVersion="$VERSION"
-          mvn -B -q -U -f samples/hello-kiln/pom.xml compile -Dkiln.version="$VERSION"
+          samples/hello-kiln/gradlew --no-daemon -p samples/hello-kiln installDist --refresh-dependencies -PkilnVersion="$VERSION"
+          mvn -B -q -U -f samples/hello-kiln/pom.xml compile $RESOLVE -Dkiln.version="$VERSION"

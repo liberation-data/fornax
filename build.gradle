@@ -49,7 +49,7 @@ subprojects {
 // What goes to Maven Central, as org.kiln4j:<project name>. The version is gradle.properties' unless -Pversion=...
 def published = [
     'kiln-core'   : 'Kiln core: native library loading, Hugging Face cache lookup, audio and the model pool',
-    'kiln-llama'  : 'Kiln llama: GGUF language models through llama.cpp, in-process via Java FFM',
+    'kiln-llama'  : 'Kiln llama: GGUF language and vision language models through llama.cpp, in-process via Java FFM',
     'kiln-tts'    : 'Kiln TTS: text to speech through llama.cpp (mtmd), in-process via Java FFM',
     'kiln-sd'     : 'Kiln SD: images and video through stable-diffusion.cpp, in-process via Java FFM',
     'kiln-acestep': 'Kiln ACE-Step: ACE-Step 1.5 songs through acestep.cpp, in-process via Java FFM',
@@ -98,8 +98,7 @@ configure(subprojects.findAll { published.containsKey(it.name) || it.name.starts
 def engineLibraries = ['kiln_llama', 'kiln_tts', 'stable-diffusion', 'kiln_acestep', 'kiln_yue2']
 configure(subprojects.findAll { it.name.startsWith('kiln-natives-') }) { p ->
     def platform = p.name - 'kiln-natives-'
-    // native/build.sh names its directory by `uname -m`, which is arm64 on macOS
-    def libs = rootProject.file("build/native/${platform.startsWith('macos-aarch64-') ? platform.replace('aarch64', 'arm64') : platform}")
+    def libs = gradle.nativesDirs[platform]  // from settings.gradle, which maps macos-aarch64 to build.sh's arm64 dir
     def ext = platform.startsWith('macos-') ? 'dylib' : 'so'
     tasks.named('jar', Jar) {
         from(libs) { include "*.$ext"; into "org/kiln4j/natives/$platform" }
