@@ -66,8 +66,9 @@ public final class WorkerMain {
                     default -> throw new IOException("unknown frame type " + f.type());
                 }
             }
-        } catch (IOException | RuntimeException e) {
-            // the parent is gone (EOF) or sent something we can't read: either way there is no one to answer
+        } catch (Throwable e) {
+            // the parent is gone (EOF), sent something we can't read, or a pong couldn't be written: either way the
+            // parent must see this worker go, not a worker that has stopped reading
         }
         exit();
     }
@@ -168,6 +169,14 @@ public final class WorkerMain {
             else out.error(id, failure instanceof CancellationException ? new CancellationException(failure.getMessage()) : failure);
         } catch (IOException e) {
             exit();  // the parent is gone
+        } catch (Throwable t) {
+            // the reply couldn't be written, e.g. a fault writing a shared-memory slot on a full /dev/shm: say so
+            try { out.error(id, t); }
+            catch (Throwable u) {
+                // nor that: the parent sees the worker die and fails its calls, rather than waiting for this one
+                try { channel.close(); } catch (IOException ignored) {}
+                exit();
+            }
         }
     }
 }

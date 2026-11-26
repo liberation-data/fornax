@@ -103,6 +103,30 @@ class WorkerTest {
         assertEquals("small", new Wire.In(svc.invoke("echo", str("small"))).string());
     }
 
+    /**
+     * A reply whose write fails with something other than an IOException, as writing a shared-memory slot does on a
+     * full /dev/shm (the fault arrives as an InternalError): the call fails at once rather than waiting forever.
+     */
+    @Test
+    void aReplyThatFailsToWriteFailsTheCallInsteadOfHanging() throws Exception {
+        Worker w = worker(FAST.withSharedMemoryThreshold(1024));
+        var svc = w.open(SERVICE, null);
+        assertArrayEquals(TestService.pattern(512 << 10), svc.invoke("big", num(512 << 10)));  // maps the worker's slot
+        try (var files = Files.list(w.sharedDir())) {
+            for (var slot : files.filter(p -> p.getFileName().toString().startsWith("w")).toList()) {
+                try (var fc = java.nio.channels.FileChannel.open(slot, java.nio.file.StandardOpenOption.WRITE)) {
+                    fc.truncate(4096);  // the slot's state survives; writing the payload past it faults
+                }
+            }
+        }
+        var e = assertTimeoutPreemptively(Duration.ofSeconds(20),
+                () -> assertThrows(RuntimeException.class, () -> svc.invoke("big", num(512 << 10))));
+        System.out.println(e);
+        assertTrue(e.getMessage().contains("InternalError"), "the failure travels back as an error: " + e);
+        assertEquals("ok", new Wire.In(svc.invoke("echo", str("ok"))).string(), "the worker still answers");
+        assertEquals(1, w.starts());
+    }
+
     @Test
     void concurrentLargePayloadsUseSeveralSlotsAndFilesOfTheirOwn() throws Exception {
         Worker w = worker(FAST.withSharedMemoryThreshold(1024));
