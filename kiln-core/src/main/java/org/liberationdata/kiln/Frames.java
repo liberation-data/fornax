@@ -200,7 +200,15 @@ final class Frames {
             if (n < 0 || n > MAX_FRAME) throw new IOException("bad frame length " + n);
             ByteBuffer body = ByteBuffer.allocate(n);
             readFully(body);
-            Wire.In in = new Wire.In(body.array());
+            try {
+                return decode(body.array(), n);
+            } catch (RuntimeException e) {  // truncated, or a length that doesn't fit: the connection is unusable
+                throw new IOException("bad frame: " + e, e);
+            }
+        }
+
+        private Frame decode(byte[] bytes, int n) throws IOException {
+            Wire.In in = new Wire.In(bytes);
             byte type = (byte) in.integer();
             long id = in.longValue(), ref = in.longValue();
             String name = in.string();
@@ -210,10 +218,11 @@ final class Frames {
                 int size = in.integer();
                 if (size < 0 || size > n) throw new IOException("bad payload length " + size);
                 payload = new byte[size];
-                System.arraycopy(body.array(), n - size, payload, 0, size);
+                System.arraycopy(bytes, n - size, payload, 0, size);
             } else {
                 String file = in.string();
                 int size = in.integer();
+                if (size < 0) throw new IOException("bad payload length " + size);
                 if (file == null || file.isEmpty() || file.contains("/") || file.contains("\\") || file.startsWith("."))
                     throw new IOException("bad shared file " + file);
                 payload = kind == SLOT ? fromSlot(file, size) : readShared(sharedDir.resolve(file), size);

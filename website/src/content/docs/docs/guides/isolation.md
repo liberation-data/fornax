@@ -102,7 +102,8 @@ Measured on a Ryzen AI Max+ 395 (Radeon 8060S, Vulkan), with the GPU shared with
   or the exception, and cancels. The worker's exceptions arrive as the same class where they can be rebuilt
   (`IllegalStateException`, `CancellationException`, ...), with the worker's stack trace.
 - **Large payloads** (over 64 KB: images, audio) go through shared memory: files on `/dev/shm`, each mapped once by
-  both sides and reused, so a payload is copied in and out once and never pushed through the socket.
+  both sides and reused, so a payload is copied in and out once and never pushed through the socket. Where there is
+  no `/dev/shm` (macOS), the files go in the worker's private temporary directory instead.
 - **Health.** The worker is pinged every 2 seconds. One that answers nothing for 30 seconds is killed and treated as
   crashed. The worker's own reader answers pings while a model loads or generates, so only a wedged process times out.
 - **Crashes.** When the worker dies, every call in flight fails with a `WorkerCrashedException`. It names the exit code

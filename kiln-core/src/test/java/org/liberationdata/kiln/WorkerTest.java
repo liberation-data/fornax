@@ -254,6 +254,19 @@ class WorkerTest {
         assertEquals("ok", new Wire.In(svc.invoke("echo", str("ok"))).string());
     }
 
+    /** The worker's reader answers pings while a call keeps the service busy for longer than the timeout. */
+    @Test
+    void aWorkerBusyInALongCallIsNotKilled() {
+        Worker w = worker(FAST.withHeartbeat(Duration.ofMillis(100), Duration.ofSeconds(1)));
+        var svc = w.open(SERVICE, null);
+        long pid = pid(svc);
+        byte[] r = svc.invoke("spin", null, null, started ->
+                CompletableFuture.delayedExecutor(3, TimeUnit.SECONDS).execute(svc::cancel));
+        assertEquals("stopped", new Wire.In(r).string());
+        assertEquals(pid, pid(svc), "the same worker, three heartbeat timeouts later");
+        assertEquals(1, w.starts());
+    }
+
     @Test
     void closeEndsTheWorkerAndFailsTheCallInFlight() throws Exception {
         Worker w = worker(FAST);

@@ -288,9 +288,10 @@ public final class Worker implements AutoCloseable {
                 throw new UncheckedIOException("could not start worker " + name, e);
             }
             this.writer = new Frames.Writer(channel, sharedDir, options.sharedMemoryThreshold, "p");
-            Thread.ofPlatform().name("kiln-worker-reader-" + name).daemon(true).start(this::readFrames);
             long every = Math.max(1, options.heartbeat.toMillis());
             this.heartbeat = HEARTBEATS.scheduleWithFixedDelay(this::beat, every, every, TimeUnit.MILLISECONDS);
+            // after the heartbeat is set: a worker that dies at once has the reader call died(), which cancels it
+            Thread.ofPlatform().name("kiln-worker-reader-" + name).daemon(true).start(this::readFrames);
         }
 
         private List<String> command(Path sock, Path shared) {
@@ -360,7 +361,7 @@ public final class Worker implements AutoCloseable {
         }
 
         private void readFrames() {
-            IOException failure = null;
+            Throwable failure = null;
             try (Frames.Reader reader = new Frames.Reader(channel, sharedDir)) {
                 while (true) {
                     Frames.Frame f = reader.read();
@@ -368,7 +369,7 @@ public final class Worker implements AutoCloseable {
                     Pending p = pending.get(f.id());
                     if (p != null) p.queue.add(f);
                 }
-            } catch (IOException e) {
+            } catch (Throwable e) {  // anything that ends this thread must fail the calls waiting on it
                 failure = e;
             }
             died(failure);
@@ -402,7 +403,7 @@ public final class Worker implements AutoCloseable {
         }
 
         /** The process is gone (or the socket broke): fail everything in flight with why. */
-        private void died(IOException cause) {
+        private void died(Throwable cause) {
             heartbeat.cancel(false);
             try { channel.close(); } catch (IOException ignored) {}
             if (!waitFor(process, Duration.ofSeconds(stopping ? 5 : 10))) {

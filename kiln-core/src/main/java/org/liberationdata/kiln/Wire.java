@@ -65,6 +65,7 @@ public final class Wire {
             try {
                 int n = in.readInt();
                 if (n < 0) return null;
+                if (n > in.available()) throw new java.io.EOFException(n + " bytes, with " + in.available() + " left");
                 byte[] b = new byte[n];
                 in.readFully(b);
                 return b;
