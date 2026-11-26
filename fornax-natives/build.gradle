@@ -6,23 +6,27 @@ plugins { id 'java-platform' }
 // Gradle Module Metadata would describe a platform with no dependencies; without it Gradle reads the POM.
 tasks.withType(GenerateModuleMetadata).configureEach { enabled = false }
 
-// Maven's os.name and os.arch for each platform, as samples/hello-fornax/pom.xml has them.
-def activation = [
-    'linux-x86_64-vulkan': [name: 'Linux', arch: 'amd64'],
-    'macos-aarch64-metal': [family: 'mac', arch: 'aarch64'],
-    'macos-x86_64-metal' : [family: 'mac', arch: 'x86_64'],
+// Maven's os.name (or family) and os.arch, as the JDK reports them, for each <os>-<arch> a platform starts with: any
+// backend (-Pfornax.natives=linux-x86_64-cuda, ...) gets one. Checked only when the POM is written, so a build with an
+// unknown platform still configures.
+def activations = [
+    'linux-x86_64' : [name: 'Linux', arch: 'amd64'],
+    'linux-aarch64': [name: 'Linux', arch: 'aarch64'],
+    'macos-aarch64': [family: 'mac', arch: 'aarch64'],
+    'macos-x86_64' : [family: 'mac', arch: 'x86_64'],
 ]
+def activation = { String platform -> activations[platform.split('-').take(2).join('-')] }
 def platforms = gradle.nativePlatforms
-def unknown = platforms.findAll { !activation.containsKey(it) }
-if (unknown) throw new GradleException("fornax-natives has no Maven OS activation for $unknown")
 
 ext.nativesProfiles = { Node project ->
+    def unknown = platforms.findAll { !activation(it) }
+    if (unknown) throw new GradleException("fornax-natives has no Maven OS activation for $unknown")
     def profiles = project.appendNode('profiles')
     platforms.each { platform ->
         def profile = profiles.appendNode('profile')
         profile.appendNode('id', "fornax-$platform")
         def os = profile.appendNode('activation').appendNode('os')
-        activation[platform].each { k, v -> os.appendNode(k, v) }
+        activation(platform).each { k, v -> os.appendNode(k, v) }
         def dep = profile.appendNode('dependencies').appendNode('dependency')
         dep.appendNode('groupId', 'org.fornax4j')
         dep.appendNode('artifactId', "fornax-natives-$platform")

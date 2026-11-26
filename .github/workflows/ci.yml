@@ -83,4 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           samples/hello-fornax/gradlew --no-daemon -p samples/hello-fornax installDist -PfornaxLocal=true -PfornaxVersion="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
-          mvn -B -q -f samples/hello-fornax/pom.xml compile $RESOLVE -Dfornax.version="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
+          mvn -B -q -f samples/hello-fornax/pom.xml compile $RESOLVE -DoutputFile="$RUNNER_TEMP/maven-deps.txt" -Dfornax.version="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
+          # fornax-natives' OS profiles, not the sample's POM, bring in this machine's natives jar
+          grep -q 'org.fornax4j:fornax-natives-linux-x86_64-vulkan:jar' "$RUNNER_TEMP/maven-deps.txt" \
+            || { echo "::error::Maven took no natives jar from fornax-natives"; cat "$RUNNER_TEMP/maven-deps.txt"; exit 1; }

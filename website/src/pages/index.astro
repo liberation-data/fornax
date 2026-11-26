@@ -112,15 +112,16 @@ String res = llm.chatJson("""
 }`
 };
 
-const depend = `// build.gradle.kts: an engine module, and the natives jar for the OS and arch building it
+const depend = `// build.gradle.kts: the BOM, an engine module, and the natives jar for the OS and arch building it
 val natives = when {
     !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
     System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
     else -> "macos-x86_64-metal"
 }
 dependencies {
-    implementation("org.fornax4j:fornax-llama:0.2.0")
-    runtimeOnly("org.fornax4j:fornax-natives-$natives:0.2.0")
+    implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
+    implementation("org.fornax4j:fornax-llama")
+    runtimeOnly("org.fornax4j:fornax-natives-$natives")
 }`;
 
 const download = `fornax pull qwen3-4b
