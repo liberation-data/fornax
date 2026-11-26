@@ -11,6 +11,7 @@ import org.liberationdata.kiln.hub.ModelStatus.State;
 import org.liberationdata.kiln.hub.ModelStatus.Where;
 import org.liberationdata.kiln.hub.PullProgress.Phase;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -154,6 +155,25 @@ class KilnHubTest {
 
         assertArrayEquals(f.content(), Files.readAllBytes(files.get("model")));
         assertEquals(List.of(f.etag() + " bytes=100000-"), fake.ranges);
+    }
+
+    @Test void aTransferThatNeverFinishesGivesUpAfterItsRetriesAndKeepsThePartialFile() throws Exception {
+        var f = fake.add(REPO, "big.gguf", 300_000, true);
+        var set = set("one", Part.of("model", REPO, "big.gguf"));
+        fake.chunked = true;
+        fake.dropEveryAfter = 10_000;
+
+        IOException e = assertThrows(IOException.class, () -> hub().pull(set, PullListener.NONE));
+
+        assertFalse(e instanceof HubException, "a connection that keeps failing is not the Hub's answer: " + e);
+        assertEquals(5, fake.gets(f), "five attempts, then it gives up");
+        Path part = new CacheLayout(cache).incomplete(REPO, f.etag());
+        assertEquals(50_000, Files.size(part), "each attempt's bytes are kept");
+
+        fake.dropEveryAfter = 0;
+        Map<String, Path> files = hub().pull(set, PullListener.NONE);
+        assertArrayEquals(f.content(), Files.readAllBytes(files.get("model")));
+        assertTrue(fake.ranges.contains(f.etag() + " bytes=50000-"), "the next pull resumes: " + fake.ranges);
     }
 
     @Test void aPathWithSpacesUnicodeAndReservedCharactersIsEncoded() throws Exception {

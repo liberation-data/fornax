@@ -51,6 +51,8 @@ final class FakeHub implements AutoCloseable {
     final List<String> cdnAuth = new CopyOnWriteArrayList<>();
     /** The next transfer stops after this many bytes (once); 0 for none. */
     final AtomicLong dropNextAfter = new AtomicLong();
+    /** Every CDN response ends after this many bytes (0: never), so the file never arrives. */
+    volatile long dropEveryAfter;
     /** A pause after each 16 KB sent, to make transfers slow enough to overlap or cancel. */
     volatile long pauseMillis;
     /** The CDN answers a Range request with the whole file (200), as a server without range support does. */
@@ -168,6 +170,7 @@ final class FakeHub implements AutoCloseable {
             long length = content.length - from;
             x.sendResponseHeaders(range != null && !ignoreRange ? 206 : 200, chunked ? 0 : length);
             long drop = dropNextAfter.getAndSet(0);
+            if (drop == 0) drop = dropEveryAfter;
             OutputStream out = x.getResponseBody();
             int pos = (int) from;
             long sent = 0;
