@@ -5,12 +5,12 @@
 #
 #   native/build.sh [vulkan|hip|cuda|metal|cpu] [engine...]
 #
-# Engines: llama tts sd acestep yue2 (default: all). Output: build/native/<os>-<arch>-<backend>/.
+# Engines: llama tts sd acestep yue2 whisper (default: all). Output: build/native/<os>-<arch>-<backend>/.
 # Env: JOBS, HIP_ARCH (default gfx1151), CMAKE_EXTRA (extra cmake args for every engine).
 set -euo pipefail
 
 BACKEND=${1:-vulkan}; shift || true
-ENGINES=${*:-llama tts sd acestep yue2}
+ENGINES=${*:-llama tts sd acestep yue2 whisper}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=$ROOT/engines-src
 OS=$(uname -s | tr A-Z a-z); ARCH=$(uname -m)
@@ -130,6 +130,16 @@ build_yue2() {
         "$s/src/request.cpp" "$s/src/model-store.cpp" "$s/vendor/yyjson/yyjson.c" \
         -I"$s/src" -I"$s" -I"$b" -I"$s/ggml/include" -I"$s/vendor/yyjson" -I"$s/vendor" \
         $(ggml_archives "$b") $PRIVATE $OMP $LIBS -lpthread
+}
+
+build_whisper() {
+    fetch whisper.cpp
+    local s=$SRC/whisper.cpp b=$SRC/whisper.cpp/build-$BACKEND
+    mkdir -p "$b"
+    cmake_build "$s" "$b" whisper $GGML -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=OFF -DWHISPER_BUILD_SERVER=OFF
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_whisper.$EXT" "$ROOT/kiln-whisper/native/kiln_whisper.cpp" \
+        -I"$s/include" -I"$s/ggml/include" \
+        "$(find "$b" -name libwhisper.a)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS -lpthread
 }
 
 for e in $ENGINES; do

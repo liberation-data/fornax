@@ -55,6 +55,24 @@ surprises you.
 - **Decode in 512-frame VAE tiles.** The default 1024-frame tiles hung the GPU on battery (the same compute
   timeout). The shim defaults to 512 and reads `KILN_ACESTEP_VAE_CHUNK`.
 
+## whisper.cpp (kiln-whisper)
+
+- **DTW needs flash attention off.** whisper.cpp quietly drops DTW token timestamps when flash attention is on (its
+  default), so the shim turns flash attention off whenever an alignment preset is given. On 55 s of narration with
+  large-v3-turbo on Vulkan, DTW made a transcription about 50% slower (1.8 s against 1.2 s, beam 5).
+- **The new-segment callback is unreliable with DTW on.** Its DTW branch passes a segment index as `n_new`, and its
+  loop bound skips segments after the first window. The shim counts the segments it has reported itself and hands
+  over the rest when `whisper_full` returns.
+- **Word times drift at pauses.** In running speech, DTW puts a word within a frame or two (20 ms), but a word after
+  a pause started 0.06-0.27 s late, and the word before a pause ran on to the next word's start. `Words.snapToVoice`
+  moves word edges onto the voice where there is silence to go by: sentence starts went from 0.16 s to 0.03 s off on
+  average, ends from 0.76 s to 0.08 s (synthesized narration with known gaps). Whisper's timestamp tokens (no DTW)
+  were worse: starts up to 0.5 s early or late, and ends that ran into the next sentence.
+- **large-v3-turbo's segment times are coarse**, often whole seconds. Kiln fits each segment to its words.
+- **SPIRV-Headers.** whisper.cpp v1.9.6's ggml finds SPIRV-Headers but doesn't link the target into ggml-vulkan, so the
+  headers must be on the compiler's include path. Fedora's `spirv-headers-devel` puts them in `/usr/include`; for a
+  private install, pass `CMAKE_EXTRA="-DCMAKE_CXX_FLAGS=-I<prefix>/include"`.
+
 ## ComfyUI parity for LTX-2.5 (Endless Country episode 2)
 
 | ComfyUI | Kiln (`VideoClip -Drecipe=two-stage`) |
