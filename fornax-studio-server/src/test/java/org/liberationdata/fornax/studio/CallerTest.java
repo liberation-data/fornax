@@ -106,8 +106,11 @@ class CallerTest {
         }
         assertTrue(send("GET", "/api/health", null, "Host: attacker.example:" + server.port()).startsWith("HTTP/1.1 403"));
         assertTrue(send("GET", "/api/outputs/a.png", null, "Host: attacker.example:" + server.port()).startsWith("HTTP/1.1 403"));
+        // No Host at all: some JDKs' HttpServer answers an HTTP/1.1 request without one itself (a 400) before any handler
+        // runs, and others pass it on, to be refused here. Either way it is refused, and the hub is never asked (below).
         String none = send("POST", "/api/models/pull", "{\"id\": \"tiny\"}");
-        assertTrue(none.startsWith("HTTP/1.1 403") && none.contains("wrong Host"), "no Host at all: " + none);
+        assertTrue(none.matches("(?s)HTTP/1\\.1 4\\d\\d.*") && (!none.startsWith("HTTP/1.1 403") || none.contains("wrong Host")),
+                "no Host at all: " + none);
         // refused before the method is looked at: a HEAD, and a method the route doesn't take
         String bad = "Host: attacker.example:" + server.port();
         assertTrue(send("HEAD", "/api/catalogue", null, bad).startsWith("HTTP/1.1 403"));
