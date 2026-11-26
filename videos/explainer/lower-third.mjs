@@ -1,4 +1,4 @@
-// Renders the clip's lower-third ("endlesscountry.com · made with Kiln") as a transparent 1920×1080 PNG, in the cards'
+// Renders the clip's lower-third ("endlesscountry.com · made with Fornax") as a transparent 1920×1080 PNG, in the cards'
 // fonts, and burns it into the clip: clips/endless-country-ep2.mp4 → clips/endless-country-ep2-titled.mp4.
 //   node explainer/lower-third.mjs        (from videos/)
 import { execFileSync } from 'node:child_process';
@@ -15,7 +15,7 @@ html, body { margin: 0; width: 1920px; height: 1080px; background: transparent !
       background: rgba(18, 8, 3, 0.62); border: 1px solid rgba(255, 255, 255, 0.16); color: #fff;
       font: 700 40px Ub, sans-serif; letter-spacing: 0.01em; }
 .lt em { font: italic 400 42px Serif, serif; color: #f39a3d; }
-</style></head><body><div class="lt">endlesscountry.com · <em>made with Kiln</em></div></body></html>`;
+</style></head><body><div class="lt">endlesscountry.com · <em>made with Fornax</em></div></body></html>`;
 
 const path = process.env.CHROME_PATH ?? ['/usr/bin/chromium-browser', '/usr/bin/chromium'].find(existsSync);
 const browser = await chromium.launch(path ? { executablePath: path } : { channel: 'chrome' });
