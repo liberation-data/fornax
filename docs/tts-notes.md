@@ -27,7 +27,7 @@ follows `tools/tts/tts.cpp` step for step. At the same seed its output matches `
 | **Soprano-1.1-80M** | yes, `ggml-org/Soprano-1.1-80M-GGUF` | 1, fixed (US female) | Apache-2.0 | Very fast, 32 kHz |
 | **tiny-voca** (4.5M) | yes, `ggml-org/tiny-voca-GGUF` | 2: `M2`, `F2` | Apache-2.0 | A toy for its size; robotic |
 | **VoxCPM2** (OpenBMB, 2B) | yes, `ggml-org/VoxCPM2-GGUF` | none; *voice design*: a description in parentheses before the text, e.g. `(A calm male narrator)` | Apache-2.0 | 48 kHz. The only way to ask for an **Australian** accent without cloning a real voice. Slow here: about 0.8x real time on the 8060S |
-| Qwen3-TTS (Base) | yes, `ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF` | none in llama.cpp: it needs a speaker reference clip (cloning), and the CustomVoice checkpoints with named speakers aren't supported | Apache-2.0 | Not for built-in voices, but Kiln knows it (`QWEN3_TTS`) for cloning a reference clip with its transcript (see Reference clips below) |
+| Qwen3-TTS (Base) | yes, `ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF` | none in llama.cpp: it needs a speaker reference clip (cloning), and the CustomVoice checkpoints with named speakers aren't supported | Apache-2.0 | Not for built-in voices, but Kiln knows it (`QWEN3_TTS`) for cloning a reference clip. ggml-org's mmproj has no reference encoder, so it clones from the speaker embedding only; `scripts/convert-qwen3-tts.sh` converts one that has it (see Reference clips below) |
 | Fish S2 Pro, Drama 3 | yes | speaker *tags* (`<\|speaker:0\|>`...) give arbitrary voices that aren't fixed between runs; cloning otherwise | S2 Pro: Fish Audio Research License (non-commercial); Drama 3: Fish Audio Community License | Excluded: no stable built-in voice, non-commercial, and Drama 3 is 35B |
 | Pocket TTS (Kyutai) | the mtmd pipeline exists, but no llama.cpp-format GGUF with voices is published (Serveurperso's GGUFs are for pockettts.cpp) | 27 (alba, marius, javert, ...; some named after real readers) | CC-BY-4.0 | Would need converting with llama.cpp's Python converter. Skipped |
 | OuteTTS 0.2/0.3 | **no longer**. libllama still has the WavTokenizer decoder architecture, but no pipeline drives OuteTTS: the old prompt building, speaker JSON and codes-to-audio loop were removed from `tools/tts` | speaker JSON profiles (en_male_1, en_female_1, ...) | 0.2-500M CC-BY-NC-4.0, 0.3-500M CC-BY-SA-4.0, 0.3-1B and 1.0-1B CC-BY-NC-SA-4.0 | Bringing it back would mean porting the removed loop, for a model that is a generation behind Kokoro and ZONOS3 |
@@ -63,6 +63,14 @@ auditions in `videos/explainer/voices/`.
   it as `speaker_ref` instead (VoxCPM2 and Qwen3-TTS clone it). If `<file>.txt` exists, its text, trailing whitespace
   trimmed, goes in as `speaker_ref_text`, as `llama-tts --tts-speaker-text` does: with the transcript the model
   continues that speaker rather than only imitating the sound, which keeps an accent much steadier.
+- **Qwen3-TTS and the reference encoder.** Continuing the speaker (ICL) needs the reference clip as codes, from the
+  speech tokenizer's Mimi encoder (`a.gen.enc.*`, `a.seanet.*`, `a.downsample.*` in the mmproj). ggml-org's
+  `mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf` doesn't have it: llama.cpp warns "no reference codes ... cloning from
+  the speaker embedding only" and ignores the transcript (output with and without it is byte-identical). The pinned
+  `convert_hf_to_gguf.py` (`conversion/qwen3tts.py`) does write it, so no newer llama.cpp is needed:
+  `scripts/convert-qwen3-tts.sh` converts the backbone and an mmproj with the encoder's 129 extra tensors, and Kiln
+  loads them by path (`-Pmodel=... -Pmmproj=...`, or `new TtsModel(model, mmproj)`). With it, the warning is gone and
+  the transcript changes the output.
 - **Streaming.** With `inp.stream`, `get_output()` returns only the audio since the last call, after each
   `step_gen()`, and `flush()` is called once at the end. Without a callback, the shim runs non-streaming, exactly as
   `llama-tts` does.

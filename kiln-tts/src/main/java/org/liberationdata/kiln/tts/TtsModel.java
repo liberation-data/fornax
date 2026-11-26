@@ -102,6 +102,8 @@ public final class TtsModel implements AutoCloseable {
         /**
          * Qwen3-TTS-12Hz-1.7B-Base: clones a reference clip ("@clip.wav"), and with its transcript beside it
          * ("clip.wav.txt") continues that speaker, which holds an accent far better than the sound alone. Apache-2.0.
+         * This mmproj (ggml-org's) has no reference encoder, so it ignores the transcript and clones from the sound
+         * only; scripts/convert-qwen3-tts.sh converts one that has it, to load by path.
          */
         QWEN3_TTS("ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF", "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf", "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf");
 
