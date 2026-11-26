@@ -1,6 +1,8 @@
 package org.liberationdata.kiln.sd;
 
 import org.liberationdata.kiln.Audio;
+import org.liberationdata.kiln.Call;
+import org.liberationdata.kiln.ModelThread;
 
 import java.awt.image.BufferedImage;
 import java.lang.foreign.Arena;
@@ -9,13 +11,21 @@ import java.lang.foreign.MemorySegment;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 
 import static java.lang.foreign.ValueLayout.*;
 
 /**
  * An in-process image (and video) diffusion model backed by stable-diffusion.cpp: SD 1.x/2.x/XL/3, FLUX.1/2,
  * Qwen-Image, Wan, LTX and more. Weights load in the constructor and stay resident across calls.
- * Not thread-safe: use one instance per thread.
+ *
+ * <p>Threads: calls run one at a time, in arrival order, from any thread. {@link #generate} and
+ * {@link #generateVideo} run on the calling thread; {@link #generateAsync} and {@link #generateVideoAsync} run on
+ * this model's own platform thread and return a {@link CompletableFuture}, so a virtual thread awaiting one doesn't pin
+ * its carrier. {@link #cancel()} stops a run between steps (it then throws a {@link CancellationException}), and
+ * {@link #close()} is safe from any thread. The log and progress sinks are process-wide, and run on the generating
+ * thread.
  */
 public final class DiffusionModel implements AutoCloseable {
 
@@ -63,6 +73,7 @@ public final class DiffusionModel implements AutoCloseable {
 
     private final MemorySegment ctx;
     private final Arena arena = Arena.ofShared();
+    private final ModelThread thread;
 
     public DiffusionModel(Config config) {
         try (Arena tmp = Arena.ofConfined()) {
@@ -76,6 +87,35 @@ public final class DiffusionModel implements AutoCloseable {
                 Sd.opt_free.invokeExact(opt);
             }
         } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+        var file = java.nio.file.Path.of(String.valueOf(config.options().getOrDefault("diffusion_model_path",
+                config.options().getOrDefault("model_path", "sd")))).getFileName();
+        MemorySegment c = ctx;
+        thread = new ModelThread(file == null ? "sd" : file.toString(), () -> {
+            try { Sd.ctx_free.invokeExact(c); } catch (Throwable t) { throw new RuntimeException(t); }
+            arena.close();
+        }, () -> {
+            try { Sd.cancel_generation.invokeExact(c, Sd.SD_CANCEL_ALL); } catch (Throwable t) { throw new RuntimeException(t); }
+        }, null);
+    }
+
+    /**
+     * Stops the run in progress (from any thread, including a progress sink) at the next step; that call throws a
+     * {@link CancellationException}. Works for images and video. A call that hasn't started isn't affected: cancel
+     * its future instead.
+     */
+    public void cancel() { thread.cancel(); }
+
+    /** {@link #generate}, on this model's thread. Cancelling the future stops the run. */
+    public CompletableFuture<List<BufferedImage>> generateAsync(Request r) { return thread.submit(c -> generateOn(c, r)); }
+
+    /** {@link #generateVideo}, on this model's thread. Cancelling the future stops the run. */
+    public CompletableFuture<Video> generateVideoAsync(VideoRequest r) { return thread.submit(c -> generateVideoOn(c, r)); }
+
+    /** A status from a generate call: a sink's exception first, then cancellation, then any other failure. */
+    private static void checkRun(Call call, int status, String what) {
+        call.rethrow();
+        if (status == Sd.SD_STATUS_CANCELLED) throw new CancellationException(what + " was cancelled");
+        Sd.check(status, what);
     }
 
     /** Sd log and progress callbacks (process-wide). */
@@ -83,12 +123,17 @@ public final class DiffusionModel implements AutoCloseable {
     public static void onProgress(Sd.ProgressSink s) { Sd.setProgressSink(s); }
 
     public String modelVersion() {
-        try {
-            return ((MemorySegment) Sd.get_model_version_name.invokeExact(ctx)).reinterpret(Long.MAX_VALUE).getString(0);
-        } catch (Throwable t) { throw new RuntimeException(t); }
+        return thread.run(c -> {
+            try {
+                return ((MemorySegment) Sd.get_model_version_name.invokeExact(ctx)).reinterpret(Long.MAX_VALUE).getString(0);
+            } catch (Throwable t) { throw new RuntimeException(t); }
+        });
     }
 
-    public List<BufferedImage> generate(Request r) {
+    public List<BufferedImage> generate(Request r) { return thread.run(c -> generateOn(c, r)); }
+
+    private List<BufferedImage> generateOn(Call call, Request r) {
+        Sd.CALL.set(call);
         try (Arena tmp = Arena.ofConfined()) {
             MemorySegment opt = (MemorySegment) Sd.img_gen_opt_create.invokeExact();
             MemorySegment[] refs = new MemorySegment[r.refImages().size()];
@@ -110,24 +155,30 @@ public final class DiffusionModel implements AutoCloseable {
                     Sd.check((int) Sd.opt_set_tensors.invokeExact(opt, tmp.allocateFrom("ref_images"), arr, (long) refs.length), "set ref_images");
                 }
                 MemorySegment out = tmp.allocate(ADDRESS);
-                Sd.check((int) Sd.generate_image.invokeExact(ctx, opt, out), "sd_generate_image");
+                out.set(ADDRESS, 0, MemorySegment.NULL);
+                int status = (int) Sd.generate_image.invokeExact(ctx, opt, out);
                 MemorySegment result = out.get(ADDRESS, 0);
                 try {
+                    checkRun(call, status, "sd_generate_image");
                     long n = (long) Sd.result_get_image_count.invokeExact(result);
                     var images = new java.util.ArrayList<BufferedImage>();
                     for (long i = 0; i < n; i++) images.add(fromTensor((MemorySegment) Sd.result_get_image.invokeExact(result, i)));
                     return images;
                 } finally {
-                    Sd.result_free.invokeExact(result);
+                    if (!result.equals(MemorySegment.NULL)) Sd.result_free.invokeExact(result);
                 }
             } finally {
                 for (MemorySegment t : refs) if (t != null) Sd.tensor_free.invokeExact(t);
                 Sd.opt_free.invokeExact(opt);
             }
-        } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+        finally { Sd.CALL.remove(); }
     }
 
-    public Video generateVideo(VideoRequest r) {
+    public Video generateVideo(VideoRequest r) { return thread.run(c -> generateVideoOn(c, r)); }
+
+    private Video generateVideoOn(Call call, VideoRequest r) {
+        Sd.CALL.set(call);
         try (Arena tmp = Arena.ofConfined()) {
             MemorySegment opt = (MemorySegment) Sd.vid_gen_opt_create.invokeExact();
             List<MemorySegment> owned = new java.util.ArrayList<>();
@@ -155,22 +206,25 @@ public final class DiffusionModel implements AutoCloseable {
                     Sd.check((int) Sd.opt_set_audios.invokeExact(opt, tmp.allocateFrom("ref_audios"), a, 1L), "set ref_audios");
                 }
                 MemorySegment out = tmp.allocate(ADDRESS);
-                Sd.check((int) Sd.generate_video.invokeExact(ctx, opt, out), "sd_generate_video");
+                out.set(ADDRESS, 0, MemorySegment.NULL);
+                int status = (int) Sd.generate_video.invokeExact(ctx, opt, out);
                 MemorySegment result = out.get(ADDRESS, 0);
                 try {
+                    checkRun(call, status, "sd_generate_video");
                     long n = (long) Sd.result_get_image_count.invokeExact(result);
                     var frames = new java.util.ArrayList<BufferedImage>((int) n);
                     for (long i = 0; i < n; i++) frames.add(fromTensor((MemorySegment) Sd.result_get_image.invokeExact(result, i)));
                     int fps = (int) Sd.result_get_fps.invokeExact(result);
                     return new Video(frames, fps, fromAudio((MemorySegment) Sd.result_get_audio.invokeExact(result)));
                 } finally {
-                    Sd.result_free.invokeExact(result);
+                    if (!result.equals(MemorySegment.NULL)) Sd.result_free.invokeExact(result);
                 }
             } finally {
                 for (MemorySegment t : owned) Sd.tensor_free.invokeExact(t);
                 Sd.opt_free.invokeExact(opt);
             }
-        } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+        finally { Sd.CALL.remove(); }
     }
 
     private static void setTensor(MemorySegment opt, String key, List<MemorySegment> owned, MemorySegment t, Arena a) throws Throwable {
@@ -271,8 +325,10 @@ public final class DiffusionModel implements AutoCloseable {
         return t;
     }
 
-    @Override public void close() {
-        try { Sd.ctx_free.invokeExact(ctx); } catch (Throwable t) { throw new RuntimeException(t); }
-        arena.close();
-    }
+    /**
+     * Frees the model. Idempotent, and safe while a call is in flight on another thread: it cancels that call, fails
+     * queued async calls with a CancellationException, waits for the run to stop, then frees.
+     * @throws IllegalStateException if called from inside a log or progress sink during this model's run
+     */
+    @Override public void close() { thread.close(); }
 }

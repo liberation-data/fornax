@@ -1,7 +1,10 @@
 package org.liberationdata.kiln.llama;
 
+import org.liberationdata.kiln.Call;
 import org.liberationdata.kiln.HfCache;
+import org.liberationdata.kiln.ModelThread;
 import org.liberationdata.kiln.NativeLibrary;
+import org.liberationdata.kiln.StreamOverflowException;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -18,6 +21,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Flow;
 import java.util.function.Consumer;
 
 import static java.lang.foreign.ValueLayout.ADDRESS;
@@ -29,7 +35,12 @@ import static java.lang.foreign.ValueLayout.JAVA_INT;
  * A GGUF language model running in-process through llama.cpp (via libkiln_llama).
  * Loaded with an mmproj GGUF as well, it is a vision language model: user messages can carry {@link Image}s (through
  * llama.cpp's mtmd, as llama-mtmd-cli and llama-server run them). See {@link Weights} for the models Kiln knows by name.
- * Weights stay loaded until {@link #close()}. Not thread-safe: use one instance per thread.
+ * Weights stay loaded until {@link #close()}.
+ *
+ * <p>Threads: calls run one at a time, in arrival order, from any thread. The blocking methods ({@link #chat} and the
+ * rest) run on the calling thread, callback included. The {@code ...Async} methods run on this model's own platform
+ * thread and return a {@link CompletableFuture}, so a virtual thread awaiting one doesn't pin its carrier; streaming
+ * goes to a {@link Flow.Subscriber}. {@link #cancel()} and {@link #close()} are safe from any thread.
  */
 public final class LlamaModel implements AutoCloseable {
     private static final NativeLibrary LIB = NativeLibrary.load("kiln_llama");
@@ -68,24 +79,45 @@ public final class LlamaModel implements AutoCloseable {
                     MethodType.methodType(int.class, MemorySegment.class, MemorySegment.class));
         } catch (ReflectiveOperationException e) { throw new ExceptionInInitializerError(e); }
     }
-    private record Sink(LlamaModel model, Consumer<String> consumer) {}
+    private record Sink(Call call, Consumer<String> consumer) {}
 
     private static final ThreadLocal<Sink> SINK = new ThreadLocal<>();
 
+    /**
+     * The token upcall. Nothing may escape it: an exception thrown into llama.cpp's frames kills the JVM. So a
+     * consumer's exception is recorded in the call, generation stops, and the Java method rethrows it on return.
+     * An empty piece is the shim polling for a stop while no content is streaming (reasoning, tool calls).
+     */
     private static int onToken(MemorySegment piece, MemorySegment user) {
         Sink sink = SINK.get();
         if (sink == null) return 0;
-        if (sink.consumer() != null) sink.consumer().accept(NativeLibrary.string(piece));
-        return sink.model().cancelled ? 1 : 0;
+        try {
+            if (sink.consumer() != null) {
+                String s = NativeLibrary.string(piece);
+                if (s != null && !s.isEmpty()) sink.consumer().accept(s);
+            }
+        } catch (Throwable t) {
+            sink.call().fail(t);
+        }
+        return sink.call().stopRequested() ? 1 : 0;
     }
 
-    private volatile boolean cancelled;
+    /**
+     * Stops the generation in progress (from any thread, including its own callback) after the current token; the
+     * call returns what was generated so far. Works for every call, streaming or not. A call that hasn't started yet
+     * isn't affected: cancel its future instead.
+     */
+    public void cancel() { thread.cancel(); }
 
     /**
-     * Stops the generation in progress (from any thread) after the current token; the call returns what was
-     * generated so far. Takes effect for calls that stream (a non-null onPiece/onContent callback).
+     * Where streamed pieces are delivered ({@link #chatAsync(List, Options, Flow.Subscriber)} and the like), and how
+     * many a subscriber may fall behind before the generation stops with a {@link StreamOverflowException}.
+     * By default: a virtual thread, and {@value ModelThread#DEFAULT_BUFFER} pieces.
      */
-    public void cancel() { cancelled = true; }
+    public LlamaModel streamOn(Executor executor, int bufferSize) {
+        thread.streamOn(executor, bufferSize);
+        return this;
+    }
 
     /** A chat message. A user message can carry images (for a model loaded with an mmproj); they go before its text. */
     public record Message(String role, String content, List<Image> images) {
@@ -210,6 +242,7 @@ public final class LlamaModel implements AutoCloseable {
 
     private final MemorySegment handle;
     private final boolean vision;
+    private final ModelThread thread;
 
     /** @param gpuLayers -1 offloads every layer. @param contextSize 0 uses the model's trained context. */
     public LlamaModel(String ggufPath, int gpuLayers, int contextSize) { this(ggufPath, null, gpuLayers, contextSize); }
@@ -230,6 +263,10 @@ public final class LlamaModel implements AutoCloseable {
                 throw new IllegalStateException((mmprojPath == null ? "kiln_llama_create: " : "kiln_llama_create_mm: ") + error());
             vision = mmprojPath != null && (int) SUPPORTS_VISION.invokeExact(handle) != 0;
         } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+        MemorySegment h = handle;
+        thread = new ModelThread(Path.of(ggufPath).getFileName().toString(), () -> {
+            try { DESTROY.invokeExact(h); } catch (Throwable t) { throw new RuntimeException(t); }
+        });
     }
 
     /** A vision language model and its mmproj, with 8192 tokens of context (images take their share of it). */
@@ -249,6 +286,60 @@ public final class LlamaModel implements AutoCloseable {
         catch (Throwable t) { throw new RuntimeException(t); }
     }
 
+    // ---- async: each call runs on this model's own platform thread (see ModelThread) ----
+    //
+    // A blocking call pins a virtual thread's carrier for the whole generation; these don't. Await the future from a
+    // virtual thread and its carrier is free meanwhile. Cancelling the future (or orTimeout) stops the generation;
+    // cancel() stops whichever call is running. Futures complete off the model's thread, so dependent stages never
+    // hold up the next generation.
+
+    /** {@link #chat(List, Options)}, on this model's thread. */
+    public CompletableFuture<Result> chatAsync(List<Message> messages, Options o) {
+        return thread.submit(c -> chatOn(c, messages, o, null));
+    }
+
+    /**
+     * {@link #chat(List, Options, Consumer)}, on this model's thread, with each piece of text going to pieces through a
+     * bounded buffer on the stream executor ({@link #streamOn}). A slow subscriber doesn't slow the generation; one
+     * that falls a whole buffer behind stops it, and gets (as does the future) a {@link StreamOverflowException}.
+     * Cancelling the subscription stops the generation, and the future completes with the text so far.
+     */
+    public CompletableFuture<Result> chatAsync(List<Message> messages, Options o, Flow.Subscriber<? super String> pieces) {
+        return thread.<String, Result>submit((c, sink) -> chatOn(c, messages, o, sink), pieces);
+    }
+
+    /** A cold publisher of a chat reply's pieces: each subscription runs the chat once, as chatAsync with a subscriber does. */
+    public Flow.Publisher<String> chatStream(List<Message> messages, Options o) {
+        return thread.<String>publisher((c, sink) -> chatOn(c, messages, o, sink));
+    }
+
+    /** {@link #chatJson(String, Consumer)}, on this model's thread. */
+    public CompletableFuture<String> chatJsonAsync(String requestJson) {
+        return thread.submit(c -> chatJsonOn(c, requestJson, List.of(), null));
+    }
+
+    /** {@link #chatJson(String, List, Consumer)}, on this model's thread. */
+    public CompletableFuture<String> chatJsonAsync(String requestJson, List<Image> images) {
+        return thread.submit(c -> chatJsonOn(c, requestJson, images, null));
+    }
+
+    /** {@link #chatJson(String, List, Consumer)}, streaming the message's content to a subscriber as chatAsync does. */
+    public CompletableFuture<String> chatJsonAsync(String requestJson, List<Image> images, Flow.Subscriber<? super String> content) {
+        return thread.<String, String>submit((c, sink) -> chatJsonOn(c, requestJson, images, sink), content);
+    }
+
+    /** {@link #extract}, on this model's thread. */
+    public CompletableFuture<String> extractAsync(List<Message> messages, String jsonSchema, Options o) {
+        return thread.submit(c -> extractOn(c, messages, jsonSchema, o));
+    }
+
+    /** {@link #complete(String, List, Options, Consumer)}, on this model's thread. */
+    public CompletableFuture<Result> completeAsync(String prompt, List<Image> images, Options o) {
+        return thread.submit(c -> images.isEmpty() ? completeOn(c, prompt, o, null) : completeImages(c, prompt, images, o, null));
+    }
+
+    // ---- blocking: on the calling thread ----
+
     public Result chat(List<Message> messages, Options o) { return chat(messages, o, null); }
 
     /**
@@ -257,7 +348,11 @@ public final class LlamaModel implements AutoCloseable {
      * (Jinja) chat template, as {@link #chatJson} does, and its prompt token count includes the image tokens.
      */
     public Result chat(List<Message> messages, Options o, Consumer<String> onPiece) {
-        if (messages.stream().anyMatch(m -> !m.images().isEmpty())) return chatImages(messages, o, onPiece);
+        return thread.run(c -> chatOn(c, messages, o, onPiece));
+    }
+
+    private Result chatOn(Call call, List<Message> messages, Options o, Consumer<String> onPiece) {
+        if (messages.stream().anyMatch(m -> !m.images().isEmpty())) return chatImages(call, messages, o, onPiece);
         try (Arena a = Arena.ofConfined()) {
             int n = messages.size();
             MemorySegment roles = a.allocate(ADDRESS, n), contents = a.allocate(ADDRESS, n);
@@ -266,11 +361,11 @@ public final class LlamaModel implements AutoCloseable {
                 contents.setAtIndex(ADDRESS, i, a.allocateFrom(messages.get(i).content()));
             }
             Out out = new Out(a);
-            MemorySegment cb = callback(a, onPiece);
+            MemorySegment cb = callback(a, call, onPiece);
             int rc = (int) CHAT.invokeExact(handle, roles, contents, n, o.maxTokens(), o.temperature(), o.topP(),
                     o.minP(), o.seed(), cb, MemorySegment.NULL, out.text, out.nPrompt, out.nGen);
-            return out.result(rc);
-        } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+            return out.result(rc, call);
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
     }
 
@@ -285,20 +380,21 @@ public final class LlamaModel implements AutoCloseable {
      * Messages and tools use OpenAI's chat completions format. onContent (optional) streams the message content.
      */
     public String chatJson(String requestJson, Consumer<String> onContent) {
+        return thread.run(c -> chatJsonOn(c, requestJson, List.of(), onContent));
+    }
+
+    private String chatJsonOn(Call call, String requestJson, List<Image> images, Consumer<String> onContent) {
+        if (!images.isEmpty()) return chatJsonImages(call, requestJson, images, onContent);
         try (Arena a = Arena.ofConfined()) {
             MemorySegment out = a.allocate(ADDRESS);
-            MemorySegment cb = callback(a, onContent);
+            MemorySegment cb = callback(a, call, onContent);
             int rc = (int) CHAT_JSON.invokeExact(handle, a.allocateFrom(requestJson), cb, MemorySegment.NULL, out);
-            MemorySegment r = out.get(ADDRESS, 0);
-            String json = NativeLibrary.string(r);
-            if (!r.equals(MemorySegment.NULL)) FREE.invokeExact(r);
-            if (rc != 0) throw new IllegalStateException("llama chat failed (rc=" + rc + "): " + error());
-            return json;
-        } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+            return json(out, rc, call);
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
     }
 
-    private Result chatImages(List<Message> messages, Options o, Consumer<String> onPiece) {
+    private Result chatImages(Call call, List<Message> messages, Options o, Consumer<String> onPiece) {
         requireVision();
         try (Arena a = Arena.ofConfined()) {
             int n = messages.size();
@@ -313,12 +409,12 @@ public final class LlamaModel implements AutoCloseable {
             }
             NativeImages img = new NativeImages(a, images);
             Out out = new Out(a);
-            MemorySegment cb = callback(a, onPiece);
+            MemorySegment cb = callback(a, call, onPiece);
             int rc = (int) CHAT_IMAGES.invokeExact(handle, roles, contents, counts, n, img.rgb, img.widths, img.heights, img.n,
                     o.maxTokens(), o.temperature(), o.topP(), o.minP(), o.seed(), cb, MemorySegment.NULL,
                     out.text, out.nPrompt, out.nGen);
-            return out.result(rc);
-        } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+            return out.result(rc, call);
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
     }
 
@@ -333,20 +429,19 @@ public final class LlamaModel implements AutoCloseable {
      * </pre>
      */
     public String chatJson(String requestJson, List<Image> images, Consumer<String> onContent) {
-        if (images.isEmpty()) return chatJson(requestJson, onContent);
+        return thread.run(c -> chatJsonOn(c, requestJson, images, onContent));
+    }
+
+    private String chatJsonImages(Call call, String requestJson, List<Image> images, Consumer<String> onContent) {
         requireVision();
         try (Arena a = Arena.ofConfined()) {
             NativeImages img = new NativeImages(a, images);
             MemorySegment out = a.allocate(ADDRESS);
-            MemorySegment cb = callback(a, onContent);
+            MemorySegment cb = callback(a, call, onContent);
             int rc = (int) CHAT_JSON_IMAGES.invokeExact(handle, a.allocateFrom(requestJson), img.rgb, img.widths, img.heights,
                     img.n, cb, MemorySegment.NULL, out);
-            MemorySegment r = out.get(ADDRESS, 0);
-            String json = NativeLibrary.string(r);
-            if (!r.equals(MemorySegment.NULL)) FREE.invokeExact(r);
-            if (rc != 0) throw new IllegalStateException("llama chat failed (rc=" + rc + "): " + error());
-            return json;
-        } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+            return json(out, rc, call);
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
     }
 
@@ -358,9 +453,13 @@ public final class LlamaModel implements AutoCloseable {
      * @throws IllegalStateException if the reply ran out of tokens before the JSON was complete
      */
     public String extract(List<Message> messages, String jsonSchema, Options o) {
+        return thread.run(c -> extractOn(c, messages, jsonSchema, o));
+    }
+
+    private String extractOn(Call call, List<Message> messages, String jsonSchema, Options o) {
         List<Image> images = new ArrayList<>();
         String request = ChatRequests.extract(messages, jsonSchema, o, images);
-        Object response = Json.parse(chatJson(request, images, null));
+        Object response = Json.parse(chatJsonOn(call, request, images, null));
         Object finish = Json.get(response, "finish_reason");
         if (!"stop".equals(finish)) throw new IllegalStateException("the reply was cut off (" + finish + "); raise maxTokens");
         return Json.get(response, "message", "content") instanceof String s ? s : "";
@@ -371,17 +470,20 @@ public final class LlamaModel implements AutoCloseable {
      * image, in order, where the model's own image tokens go. Needs a model loaded with its mmproj.
      */
     public Result complete(String prompt, List<Image> images, Options o, Consumer<String> onPiece) {
-        if (images.isEmpty()) return complete(prompt, o, onPiece);
+        return thread.run(c -> images.isEmpty() ? completeOn(c, prompt, o, onPiece) : completeImages(c, prompt, images, o, onPiece));
+    }
+
+    private Result completeImages(Call call, String prompt, List<Image> images, Options o, Consumer<String> onPiece) {
         requireVision();
         try (Arena a = Arena.ofConfined()) {
             NativeImages img = new NativeImages(a, images);
             Out out = new Out(a);
-            MemorySegment cb = callback(a, onPiece);
+            MemorySegment cb = callback(a, call, onPiece);
             int rc = (int) COMPLETE_IMAGES.invokeExact(handle, a.allocateFrom(prompt), img.rgb, img.widths, img.heights, img.n,
                     o.maxTokens(), o.temperature(), o.topP(), o.minP(), o.seed(), cb, MemorySegment.NULL,
                     out.text, out.nPrompt, out.nGen);
-            return out.result(rc);
-        } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+            return out.result(rc, call);
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
     }
 
@@ -410,31 +512,45 @@ public final class LlamaModel implements AutoCloseable {
 
     /** Raw completion of an already-formatted prompt. */
     public Result complete(String prompt, Options o, Consumer<String> onPiece) {
+        return thread.run(c -> completeOn(c, prompt, o, onPiece));
+    }
+
+    private Result completeOn(Call call, String prompt, Options o, Consumer<String> onPiece) {
         try (Arena a = Arena.ofConfined()) {
             Out out = new Out(a);
-            MemorySegment cb = callback(a, onPiece);
+            MemorySegment cb = callback(a, call, onPiece);
             int rc = (int) COMPLETE.invokeExact(handle, a.allocateFrom(prompt), o.maxTokens(), o.temperature(),
                     o.topP(), o.minP(), o.seed(), cb, MemorySegment.NULL, out.text, out.nPrompt, out.nGen);
-            return out.result(rc);
-        } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+            return out.result(rc, call);
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
     }
 
-    private MemorySegment callback(Arena a, Consumer<String> onPiece) {
-        cancelled = false;
-        if (onPiece == null) return MemorySegment.NULL;
-        SINK.set(new Sink(this, onPiece));
+    /** Always an upcall, even with no consumer, so that cancel() reaches every call. */
+    private static MemorySegment callback(Arena a, Call call, Consumer<String> onPiece) {
+        SINK.set(new Sink(call, onPiece));
         return NativeLibrary.linker().upcallStub(ON_TOKEN, TOKEN_CB, a);
+    }
+
+    /** A chatJson reply: freed, then the callback's exception if one threw, then the engine's error. */
+    private static String json(MemorySegment out, int rc, Call call) throws Throwable {
+        MemorySegment r = out.get(ADDRESS, 0);
+        String json = NativeLibrary.string(r);
+        if (!r.equals(MemorySegment.NULL)) FREE.invokeExact(r);
+        call.rethrow();
+        if (rc != 0) throw new IllegalStateException("llama chat failed (rc=" + rc + "): " + error());
+        return json;
     }
 
     private static final class Out {
         final MemorySegment text, nPrompt, nGen;
         Out(Arena a) { text = a.allocate(ADDRESS); nPrompt = a.allocate(JAVA_INT); nGen = a.allocate(JAVA_INT); }
 
-        Result result(int rc) throws Throwable {
+        Result result(int rc, Call call) throws Throwable {
             MemorySegment t = text.get(ADDRESS, 0);
             String s = NativeLibrary.string(t);
             if (!t.equals(MemorySegment.NULL)) FREE.invokeExact(t);
+            call.rethrow();
             if (rc != 0) throw new IllegalStateException("llama generation failed (rc=" + rc + "): " + error());
             return new Result(s, nPrompt.get(JAVA_INT, 0), nGen.get(JAVA_INT, 0));
         }
@@ -445,7 +561,10 @@ public final class LlamaModel implements AutoCloseable {
         catch (Throwable t) { return t.toString(); }
     }
 
-    @Override public void close() {
-        try { DESTROY.invokeExact(handle); } catch (Throwable t) { throw new RuntimeException(t); }
-    }
+    /**
+     * Frees the weights. Idempotent, and safe while a call is in flight on another thread: it cancels that call,
+     * fails queued async calls with a CancellationException, waits for the call to return, then frees them.
+     * @throws IllegalStateException if called from inside one of this model's own callbacks
+     */
+    @Override public void close() { thread.close(); }
 }

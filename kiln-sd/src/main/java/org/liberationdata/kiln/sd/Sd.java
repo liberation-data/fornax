@@ -1,5 +1,6 @@
 package org.liberationdata.kiln.sd;
 
+import org.liberationdata.kiln.Call;
 import org.liberationdata.kiln.NativeLibrary;
 
 import java.lang.foreign.*;
@@ -39,6 +40,8 @@ public final class Sd {
     static final MethodHandle generate_image = fn("sd_generate_image", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
     static final MethodHandle generate_video = fn("sd_generate_video", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
     static final MethodHandle get_model_version_name = fn("sd_get_model_version_name", FunctionDescriptor.of(ADDRESS, ADDRESS));
+    /** Thread-safe; only reaches a run that has started executing (an idle context ignores it). */
+    static final MethodHandle cancel_generation = fn("sd_cancel_generation", FunctionDescriptor.ofVoid(ADDRESS, JAVA_INT));
     // results
     static final MethodHandle result_get_image_count = fn("sd_result_get_image_count", FunctionDescriptor.of(JAVA_LONG, ADDRESS));
     static final MethodHandle result_get_image = fn("sd_result_get_image", FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_LONG));
@@ -61,6 +64,10 @@ public final class Sd {
 
     public static final int SD_TENSOR_U8 = 1;
     public static final int SD_TENSOR_F32 = 4;
+    /** sd_status_t of a run stopped by sd_cancel_generation. */
+    static final int SD_STATUS_CANCELLED = 10;
+    /** sd_cancel_mode_t: stop the current generation as soon as possible. */
+    static final int SD_CANCEL_ALL = 0;
 
     private Sd() {}
 
@@ -94,12 +101,35 @@ public final class Sd {
     }
     private static ProgressSink progressSink = (s, n, t) -> {};
 
+    /** The DiffusionModel call running on this thread, if any: where a sink's exception goes. */
+    static final ThreadLocal<Call> CALL = new ThreadLocal<>();
+
+    /*
+     * The log and progress upcalls. Nothing may escape them: an exception thrown into stable-diffusion.cpp's frames
+     * kills the JVM. During a generate call a sink's exception is recorded in the call and the run is cancelled;
+     * generate rethrows it on return. Outside one (a log line while loading, say) there is no caller to give it to,
+     * so it is printed.
+     */
+
     static void onLog(int level, MemorySegment text, MemorySegment data) {
-        try { logSink.log(level, text.reinterpret(Long.MAX_VALUE).getString(0)); } catch (Throwable ignored) {}
+        try { logSink.log(level, text.reinterpret(Long.MAX_VALUE).getString(0)); } catch (Throwable t) { failed(t); }
     }
 
     static void onProgress(int step, int steps, float time, MemorySegment data) {
-        try { progressSink.progress(step, steps, time); } catch (Throwable ignored) {}
+        try {
+            progressSink.progress(step, steps, time);
+            // sd.cpp ignores a cancel that comes before its run begins executing, so a stopped call asks again here.
+            Call call = CALL.get();
+            if (call != null && call.stopRequested()) call.cancel();
+        } catch (Throwable t) { failed(t); }
+    }
+
+    private static void failed(Throwable t) {
+        try {
+            Call call = CALL.get();
+            if (call != null) call.fail(t);
+            else { System.err.println("Kiln: a stable-diffusion.cpp log or progress sink threw outside a generation:"); t.printStackTrace(); }
+        } catch (Throwable ignored) {}  // last resort: never unwind into native code
     }
 
     private static final MemorySegment LOG_STUB, PROGRESS_STUB;
