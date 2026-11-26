@@ -114,6 +114,8 @@ String res = llm.chatJson("""
 
 // The quick start (#start): four steps, each a frame with tabs where there's a choice to make.
 const qsGradle = `// build.gradle.kts
+plugins { application }
+repositories { mavenCentral() }
 val natives = when {   // the natives jar for the OS and arch building it
     !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
     System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
@@ -123,8 +125,15 @@ dependencies {
     implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
     implementation("org.fornax4j:fornax-llama")
     runtimeOnly("org.fornax4j:fornax-natives-$natives")
+}
+application {
+    mainClass = "Hello"
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }`;
 const qsMaven = `<!-- pom.xml: Maven picks the natives jar for the machine building it -->
+<properties>
+    <maven.compiler.release>22</maven.compiler.release>
+</properties>
 <dependencyManagement>
     <dependencies>
         <dependency>
@@ -162,7 +171,7 @@ public class Hello {
     }
 }`;
 const qsRunGradle = `./gradlew run`;
-const qsRunMaven = `MAVEN_OPTS=--enable-native-access=ALL-UNNAMED mvn -q compile exec:java`;
+const qsRunMaven = `MAVEN_OPTS=--enable-native-access=ALL-UNNAMED mvn -q compile exec:java -Dexec.mainClass=Hello`;
 const qsSpeech = `try (var tts = new TtsModel("kokoro")) {   // a catalogue alias
     tts.speak("Hello from the JVM.", "am_michael").writeWav(new File("hello.wav"));
 }`;
@@ -489,7 +498,7 @@ const theme = 'vitesse-dark';
                 .qs-steps button { flex: none; padding: 10px 12px; }
                 .qs-steps .words span { display: none; }
                 /* Four steps across a phone: numbers, with the title only for the step shown. */
-                .qs-steps button:not([aria-selected="true"]) .words { display: none; }
+                .qs-steps button:not([aria-selected="true"]) .words { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
                 .qs-steps button { align-items: center; }
                 .qs.on .qs-bar { grid-column: 1; }
             }
@@ -975,7 +984,7 @@ const theme = 'vitesse-dark';
                                 <div class="shell" data-qs-pane="gradle"><Code code={qsRunGradle} lang="sh" theme={theme} /></div>
                                 <div class="shell" data-qs-pane="maven" hidden><Code code={qsRunMaven} lang="sh" theme={theme} /></div>
                                 <pre class="qs-out" aria-label="What it prints" set:html={qsOutput} />
-                                <p class="qs-note">A real run on a Radeon 8060S: loaded in 0.7 s, then 58 tokens a second, printed as they come. The JVM needs <code>--enable-native-access=ALL-UNNAMED</code> (Gradle’s <code>application</code> block takes it as <code>applicationDefaultJvmArgs</code>). <a href="https://github.com/liberation-data/fornax/tree/main/samples/hello-fornax">samples/hello-fornax</a> is this app, ready to copy.</p>
+                                <p class="qs-note">A real run on a Radeon 8060S: loaded in 0.7 s, then 58 tokens a second, printed as they come. The JVM needs <code>--enable-native-access=ALL-UNNAMED</code>: Gradle’s <code>application</code> block passes it, and Maven runs the app in its own JVM, so it goes in <code>MAVEN_OPTS</code>. <a href="https://github.com/liberation-data/fornax/tree/main/samples/hello-fornax">samples/hello-fornax</a> is this app, ready to copy.</p>
                             </div>
                             <div class="qs-frame" role="tabpanel" id="qs-more" aria-labelledby="qs-step-more" hidden>
                                 <h3 class="qs-title">4. Add another engine</h3>
@@ -1139,8 +1148,12 @@ const theme = 'vitesse-dark';
                         steps.forEach((b, i) => { b.setAttribute('aria-selected', String(i === at)); b.tabIndex = i === at ? 0 : -1; });
                         frames.forEach((f, i) => { f.hidden = i !== at; });
                         where.textContent = String(at + 1);
+                        // A button disabled under the keyboard would drop focus to the page: hand it to the other one.
+                        const lost = document.activeElement;
                         back.disabled = at === 0;
                         next.disabled = at === steps.length - 1;
+                        if (lost === back && back.disabled) next.focus();
+                        else if (lost === next && next.disabled) back.focus();
                         if (focus) steps[at].focus();
                         // On a phone the steps are a row that scrolls sideways: keep the chosen one in view, without moving the page.
                         const list = steps[at].parentElement!;
