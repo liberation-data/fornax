@@ -88,7 +88,9 @@ try (var tts = new TtsModel(TtsModel.Weights.QWEN3_TTS)) {
 
 Put the clip's transcript beside it, in a file named after the clip with `.txt` added (`/clips/me.wav.txt`). With
 the transcript, the model continues that speaker rather than only imitating the sound, which holds an accent much
-more steadily. Without the file, the clip is used on its own.
+more steadily. Without the file, the clip is used on its own. Qwen3-TTS needs a reference encoder in its mmproj for
+the transcript, and the published one (`Weights.QWEN3_TTS`) has none, so it ignores the transcript:
+`scripts/convert-qwen3-tts.sh` converts one that has it, to load with `new TtsModel(model, mmproj)`.
 
 Only clone a voice you have the right to use.
 
