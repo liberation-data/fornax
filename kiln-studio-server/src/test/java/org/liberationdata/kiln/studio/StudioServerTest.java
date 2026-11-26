@@ -269,6 +269,17 @@ class StudioServerTest {
         assertEquals(List.of(250L, 250L, 500L, 500L), json.get("box"));
     }
 
+    @Test void aSchemaSentAsTextIsReadAsJson() throws Exception {
+        String schema = Json.write("{\"type\": \"object\", \"properties\": {\"total\": {\"type\": \"number\"}}}");
+        var done = event(call("POST", "/api/inspect", "{\"model\": \"vision:qwen3-vl-4b\", \"prompt\": \"Read it.\", \"schema\": " + schema
+                + ", \"image\": \"" + pngDataUrl(8, 8) + "\"}").body(), "done");
+        assertEquals(1L, ((Map<?, ?>) done.get("json")).get("total"));
+        // Text that isn't a JSON object is refused before anything is loaded.
+        var r = call("POST", "/api/inspect", "{\"model\": \"vision:qwen3-vl-4b\", \"prompt\": \"x\", \"schema\": \"[1]\","
+                + "\"image\": \"" + pngDataUrl(8, 8) + "\"}");
+        assertEquals(400, r.statusCode());
+    }
+
     @Test void anOcrModelReadsThenAnotherFillsTheSchema() throws Exception {
         String s = call("POST", "/api/inspect", "{\"model\": \"vision:paddleocr-vl\", \"prompt\": \"Read the invoice.\","
                 + "\"schema\": {\"type\": \"object\", \"properties\": {\"total\": {\"type\": \"number\"}}},"

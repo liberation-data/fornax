@@ -181,7 +181,8 @@ second argument. The request formats are the engines' own (see
 `kiln-studio-server` is the backend of [Kiln Studio](../kiln-studio), a desktop app for trying models: a JDK-only HTTP
 server on localhost (`com.sun.net.httpserver`, replies streamed as server-sent events) that lists what in the Hugging
 Face cache Kiln can run, keeps models in a `ModelPool`, and serves chat (with a tool-calling demo through `chatJson`),
-images, songs (ACE-Step and YuE2) and video clips with sound (LTX-2.5, whose .mp4 needs ffmpeg). The app starts it;
+images, songs (ACE-Step and YuE2), video clips with sound (LTX-2.5, whose .mp4 needs ffmpeg) and questions about an
+image for a vision model (Qwen3-VL, PaddleOCR-VL, MedGemma), as text or held to a JSON schema. The app starts it;
 to run it on its own:
 
 ```sh
