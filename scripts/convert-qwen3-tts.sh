@@ -11,11 +11,14 @@
 #
 # Env: PYTHON  a python with torch, safetensors, transformers, numpy and sentencepiece (gguf comes from llama.cpp's gguf-py)
 #      LLAMA_CPP  llama.cpp checkout at the pinned commit (default: engines-src/llama.cpp, as native/build.sh fetches)
-#      HF_HOME  where the Hugging Face cache lives (default ~/.cache/huggingface)
+#      HF_HUB_CACHE, HF_HOME  where the Hugging Face cache lives (as hf does: default ~/.cache/huggingface/hub)
 #      OUTTYPE  backbone and mmproj type (default q8_0; the converter keeps the encoder's convs, codebooks and
 #               transformer in F32/F16 regardless)
 # The weights must be in the HF cache first: hf download Qwen/Qwen3-TTS-12Hz-1.7B-Base
 set -euo pipefail
+
+case "${1-}" in -*) sed -n '2,/^set -euo/{/^set -euo/d;s/^# \{0,1\}//;p}' "$0"; exit 2 ;; esac
+[ $# -le 1 ] || { echo "usage: $0 [out-dir]" >&2; exit 2; }
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-$HOME/models/qwen3-tts-clone}
@@ -27,11 +30,13 @@ NAME=Qwen3-TTS-12Hz-1.7B-Base
 
 pin=$(grep '^llama.cpp.commit=' "$ROOT/native/engines.properties" | cut -d= -f2)
 [ -f "$LLAMA_CPP/convert_hf_to_gguf.py" ] || { echo "no llama.cpp at $LLAMA_CPP (run native/build.sh vulkan tts, or set LLAMA_CPP)" >&2; exit 1; }
-head=$(git -C "$LLAMA_CPP" rev-parse HEAD)
+head=$(git -C "$LLAMA_CPP" rev-parse HEAD 2>/dev/null || echo "an unknown commit")
 [ "$head" = "$pin" ] || echo "warning: $LLAMA_CPP is at $head, Kiln pins $pin" >&2
 
-snap=$(ls -d "${HF_HOME:-$HOME/.cache/huggingface}/hub/models--${REPO//\//--}"/snapshots/*/ 2>/dev/null | head -1)
-[ -n "$snap" ] && [ -f "$snap/speech_tokenizer/model.safetensors" ] || { echo "not in the HF cache: hf download $REPO" >&2; exit 1; }
+# The snapshot hf download last fetched (refs/main), not whichever older one sorts first.
+cache=${HF_HUB_CACHE:-${HF_HOME:-$HOME/.cache/huggingface}/hub}/models--${REPO//\//--}
+snap=$cache/snapshots/$(cat "$cache/refs/main" 2>/dev/null || true)
+[ -f "$snap/speech_tokenizer/model.safetensors" ] || { echo "not in the HF cache: hf download $REPO" >&2; exit 1; }
 
 mkdir -p "$OUT"
 # convert_hf_to_gguf.py puts its own gguf-py first on sys.path, so the converter and gguf always match.
