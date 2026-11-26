@@ -131,3 +131,22 @@ surprises you.
   in the grid, with or without a schema. Its boxes are on a 0 to 1000 grid over the image.
 - **Images are cheap on the GPU.** A 1000×1300 invoice is ~1200 Qwen3-VL tokens and is read (encoded and prefilled)
   in ~1.6 s; a 720×480 picture in ~0.4 s.
+
+## llama.cpp embeddings and reranking (kiln-llama, Mode.EMBED and Mode.RERANK)
+
+- **Set up as llama-embedding does.** A pooled handle has `embeddings` on, the GGUF's own pooling type (Qwen3-Embedding:
+  last; Qwen3-Reranker: rank), one unified KV cache, and `n_batch = n_ubatch = n_ctx`: pooling needs every token of a
+  sequence in one ubatch, so the context size is also the longest input. Inputs go in as separate sequences, up to
+  256 (`llama_max_parallel_sequences()`) a batch, and the cache is cleared before each batch.
+- **`n_seq_max` must not exceed `n_batch`.** llama.cpp sizes the output buffer for `max(n_outputs, n_seq_max)` and
+  asserts that fits `n_outputs_max` (which defaults to `n_batch`); a 64-token context with 256 sequences aborted the
+  JVM. The shim caps `n_seq_max` at the batch.
+- **Batching moves the numbers a little.** A text embedded with others comes out at cosine ~0.9999 to the same text
+  embedded alone, and a borderline rerank score moved from 0.598 alone to 0.626 in a batch of four. `llama-embedding`
+  gives the same numbers both ways on the same build, so it is the GPU kernels' shapes, not leakage between sequences.
+  Kiln's batched embeddings match `llama-embedding`'s batched ones to cosine 1.000000 (`EmbeddingsIT`;
+  `scripts/embedding-reference.sh` regenerates the reference).
+- **The rerank prompt is the GGUF's.** Qwen3-Reranker's GGUF carries a `tokenizer.chat_template.rerank` with
+  `{query}` and `{document}`; the shim fills it in and tokenizes it whole with special tokens parsed, as llama-server's
+  `format_prompt_rerank` does. The score is the first class output, which for Qwen3 is the softmax probability of "yes".
+  Embedding inputs, unlike llama-embedding's, aren't parsed for special tokens (they're the caller's data).

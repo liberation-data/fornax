@@ -29,6 +29,8 @@ Package `org.liberationdata.kiln`. The engine modules depend on it.
 | `ModelThread` | what each model uses to run its calls one at a time, on the caller's thread or its own, and to cancel and close them. You won't usually call it |
 | `Call` | one call into an engine: its stop flag and the first exception a callback threw. For engine bindings |
 | `StreamOverflowException` | what a streaming subscriber gets when it falls a whole buffer behind, and the generation stops |
+| `Vectors` | search over embeddings in memory: `topK(query, vectors, k)` (by cosine), `cosine`, `dot`, `normalize`, `rank(scores)`. See [Embeddings and reranking](/docs/guides/embeddings/) |
+| `Scored` | an item's `index` and `score`; `BEST_FIRST` |
 
 ## kiln-llama
 
@@ -47,9 +49,13 @@ Package `org.liberationdata.kiln.llama`. See [Language models](/docs/guides/lang
 | `new LlamaModel(Weights)`, `(gguf, mmproj)` | a vision language model with its mmproj; see [Vision](/docs/guides/vision/). `supportsVision()` |
 | `extract(messages, jsonSchema, options)` | a reply constrained to a JSON schema, as JSON text; messages may carry images |
 | `chatJson(requestJson, images, onContent)`, `complete(prompt, images, options, onPiece)` | `chatJson` and `complete` with images; `mediaMarker()` |
+| `new LlamaModel(Weights, Mode)`, `(gguf, Mode)`, `(gguf, gpuLayers, contextSize, Mode)` | a model loaded for `Mode.CHAT`, `EMBED` or `RERANK`; `mode()`. See [Embeddings and reranking](/docs/guides/embeddings/) |
+| `embed(texts[, embedOptions])`, `embed(text)`, `embedAsync(texts, embedOptions)` | embeddings (`float[][]`, L2-normalised by default); `embeddingSize()` |
+| `rerank(query, documents)`, `rerankAsync(query, documents)` | the documents' relevance scores, best first, as `List<Scored>` |
+| `LlamaModel.EmbedOptions` | `prefix`, `normalize`; `DEFAULT`, `query(task)` (Qwen3-Embedding's instruction format), `withPrefix`, `withNormalize` |
 | `LlamaModel.Message` | `role`, `content` and `images`; `system(...)`, `user(...)`, `user(text, images...)`, `assistant(...)` |
 | `LlamaModel.Image` | packed RGB: `of(BufferedImage)`, `read(Path)`, `decode(bytes)` |
-| `LlamaModel.Weights` | the models Kiln knows by name: `QWEN3_4B`, `QWEN3_VL_4B`, `PADDLEOCR_VL`, `MEDGEMMA_4B`; `named(...)`, `vision()`, `model()`, `mmproj()`, `downloaded()`, `downloadCommand()` |
+| `LlamaModel.Weights` | the models Kiln knows by name: `QWEN3_4B`, `QWEN3_VL_4B`, `PADDLEOCR_VL`, `MEDGEMMA_4B`, `QWEN3_EMBEDDING_0_6B`, `QWEN3_RERANKER_0_6B`; `named(...)`, `vision()`, `model()`, `mmproj()`, `downloaded()`, `downloadCommand()` |
 | `Json` | just enough JSON to read `chatJson` replies: `parse`, `get(doc, path...)`, `quote` |
 | `LlamaModel.Options` | `maxTokens`, `temperature`, `topP`, `minP`, `seed`; `DEFAULT`, `withSeed`, `withMaxTokens`, `withTemperature` |
 | `LlamaModel.Result` | `text`, `promptTokens`, `generatedTokens` |

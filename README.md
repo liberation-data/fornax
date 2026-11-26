@@ -24,7 +24,7 @@ Kiln binds native inference engines with Java's Foreign Function & Memory API (J
 
 | Module | Engine | Models |
 |---|---|---|
-| `kiln-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (with `mtmd` for images) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...); vision language models (Qwen3-VL, PaddleOCR-VL, MedGemma, ...) |
+| `kiln-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (with `mtmd` for images) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...); vision language models (Qwen3-VL, PaddleOCR-VL, MedGemma, ...); embedding and reranker models (Qwen3-Embedding, Qwen3-Reranker) |
 | `kiln-tts` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`mtmd`) | text to speech: Kokoro, ZONOS3, LFM3-Audio, Chatterbox, VoxCPM2, ... |
 | `kiln-sd` | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) | FLUX.1/FLUX.2, Qwen-Image and Qwen-Image-Edit, SD 1.x/2.x/XL/3, Wan, LTX |
 | `kiln-acestep` | [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) | ACE-Step 1.5 songs (vocals, lyrics, up to several minutes) |
@@ -162,6 +162,7 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 | Model | Result |
 |---|---|
 | Qwen3 4B Instruct (Q4_K_M) | ~60 tokens/s, streamed through a Java callback |
+| Qwen3-Embedding 0.6B (Q8_0) | ~420 embeddings/s (20-token passages, 256 to a batch), matching `llama-embedding`'s vectors (cosine 1.000000) |
 | Qwen3-VL 4B Instruct (Q4_K_M) | a 1000×1300 invoice to schema-checked JSON (vendor, date, 4 line items, totals) in ~6 s; images read in 0.4 to 1.6 s, then ~60 tokens/s |
 | PaddleOCR-VL 1.6 (0.9B) | the same invoice's text (prompt "OCR:") in ~1.5 s, ~200 tokens/s |
 | MedGemma 1.5 4B (Q4_K_M) | the same invoice to JSON in ~6 s (Gemma 3 vision: 256 tokens an image, read in ~0.8 s) |
@@ -212,6 +213,21 @@ and `llama-server --mmproj` run them): `Message.user(text, images...)` with `Ima
 `Image.read(Path)` or `Image.decode(bytes)`; `chat`, `chatJson` and `extract` (a reply constrained to a JSON schema)
 all take images. `LlamaModel.Weights` names the models Kiln has been tried with.
 
+Loaded in `Mode.EMBED` or `Mode.RERANK`, a `LlamaModel` is an embedding model or a reranker, through llama.cpp's
+pooled embeddings output (as `llama-embedding` and `llama-server --embedding` / `--reranking` run them), for search
+over your own documents (RAG) with no vector database: `kiln-core`'s `Vectors.topK` scans the vectors in memory.
+
+```java
+try (var emb = new LlamaModel(LlamaModel.Weights.QWEN3_EMBEDDING_0_6B, LlamaModel.Mode.EMBED)) {
+    float[][] docs = emb.embed(passages);                                       // L2-normalised, batched
+    float[] q = emb.embed(List.of(question), EmbedOptions.query("Given a question, retrieve passages that answer it"))[0];
+    List<Scored> nearest = Vectors.topK(q, docs, 20);
+}
+try (var rr = new LlamaModel(LlamaModel.Weights.QWEN3_RERANKER_0_6B, LlamaModel.Mode.RERANK)) {
+    List<Scored> best = rr.rerank(question, candidates);                        // best first
+}
+```
+
 ## Building
 
 Needs JDK 25, CMake, Ninja, a C++17 compiler, and the SDK for your GPU backend
@@ -244,6 +260,8 @@ Kiln doesn't download anything. Fetch weights with the Hugging Face CLI, and `Hf
 hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
 hf download Qwen/Qwen3-VL-4B-Instruct-GGUF Qwen3VL-4B-Instruct-Q4_K_M.gguf mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf
 hf download PaddlePaddle/PaddleOCR-VL-1.6-GGUF PaddleOCR-VL-1.6-GGUF.gguf PaddleOCR-VL-1.6-GGUF-mmproj.gguf
+hf download Qwen/Qwen3-Embedding-0.6B-GGUF Qwen3-Embedding-0.6B-Q8_0.gguf
+hf download ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF qwen3-reranker-0.6b-q8_0.gguf
 hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Embedding-0.6B-Q8_0.gguf \
     acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
 hf download Serveurperso/YuE2-GGUF YuE2-3B-Q8_0.gguf YuE2-Vae-F32.gguf
@@ -270,6 +288,7 @@ CC BY-NC 4.0, for example.
 ./gradlew see --args='form.png "Fill in the fields."' -Pschema=schema.json   # a reply that follows a JSON schema
 ./gradlew invoice   # draws a made-up invoice and reads it into JSON; -Pmodel=paddleocr-vl reads it with OCR first
 ./gradlew defects   # a tray of parts with a dented one: Qwen3-VL boxes the defects (out/defects-found.png)
+./gradlew search --args='docs "Why does a long video lose the GPU on Vulkan?"'   # embed, find and rerank passages in a folder
 ```
 
 The song examples use the requests in `kiln-examples/src/main/resources/requests/`; pass your own JSON as a

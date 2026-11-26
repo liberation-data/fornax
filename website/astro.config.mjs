@@ -61,6 +61,7 @@ export default defineConfig({
                     items: [
                         { slug: 'docs/guides/language-models' },
                         'docs/guides/vision',
+                        'docs/guides/embeddings',
                         { slug: 'docs/guides/speech' },
                         { slug: 'docs/guides/speech-to-text' },
                         { slug: 'docs/guides/images' },
