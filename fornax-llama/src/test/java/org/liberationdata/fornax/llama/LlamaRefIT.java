@@ -37,6 +37,14 @@ class LlamaRefIT {
     }
 
     @Test
+    void aUrlIsRefusedWithTheReferenceToUse() {
+        var e = assertThrows(IllegalArgumentException.class, () -> new LlamaModel(
+                "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/blob/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf", 0, 512));
+        assertTrue(e.getMessage().contains("use unsloth/Qwen3-4B-Instruct-2507-GGUF:Qwen3-4B-Instruct-2507-Q4_K_M.gguf"),
+                e.getMessage());
+    }
+
+    @Test
     void anAliasForAnotherEngineIsRefusedBeforeAnyDownload() {
         var e = assertThrows(IllegalArgumentException.class, () -> new LlamaModel("flux2-klein", 0, 512));
         assertTrue(e.getMessage().contains("image model"), e.getMessage());

@@ -13,6 +13,7 @@ import org.liberationdata.fornax.Worker;
 import org.liberationdata.fornax.WorkerCrashedException;
 import org.liberationdata.fornax.hub.FornaxHub;
 import org.liberationdata.fornax.hub.ModelCatalog;
+import org.liberationdata.fornax.hub.ModelRef;
 import org.liberationdata.fornax.hub.ModelSet;
 import org.liberationdata.fornax.hub.PullListener;
 
@@ -442,6 +443,7 @@ public final class LlamaModel implements AutoCloseable {
         Objects.requireNonNull(gguf, "ggufPath");
         try { if (Files.exists(Path.of(gguf))) return new String[]{gguf, mmproj}; }   // the usual case: no hub needed
         catch (java.nio.file.InvalidPathException notAPath) { /* a reference's ':' on Windows */ }
+        if (ModelRef.urlHint(gguf).isPresent()) ModelRef.parse(gguf);   // throws, naming the reference to use instead
         FornaxHub hub = FornaxHub.standard();
         if (!hub.isReference(gguf)) return new String[]{gguf, mmproj};
         var set = ModelCatalog.byName(gguf.strip());   // refused before fetching: an image model's files are gigabytes

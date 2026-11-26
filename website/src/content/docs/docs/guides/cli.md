@@ -43,7 +43,8 @@ fornax pull some/repo@v1.0:Q8_0                           # a revision in the re
 ```
 
 `org/name[@REV][:TAG]` is the same reference `new LlamaModel("org/name:TAG")` and `FornaxHub.fetch` take, so a model
-your code names can be fetched ahead of time with `fornax pull` and the same string.
+your code names can be fetched ahead of time with `fornax pull` and the same string. One difference: with no `:TAG`,
+`fornax pull` lists the repo's GGUF models to choose from, where the code takes the repo's only one.
 
 An alias is a model set from [the catalogue](/docs/guides/models/#the-catalogue); `fornax` with no arguments lists
 them. `fornax pull` downloads with [`FornaxHub`](/docs/guides/models/): into the Hugging Face cache, in the layout
