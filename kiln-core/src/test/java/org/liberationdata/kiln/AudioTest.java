@@ -128,6 +128,34 @@ class AudioTest {
         assertArrayEquals(new float[] {0.5f, -0.5f}, Audio.readWav(b.array()).left());
     }
 
+    /**
+     * A WAV written to a pipe (data size 0xFFFFFFFF: read to the end of the file), after an odd-sized chunk and its pad
+     * byte, in 32-bit integer PCM.
+     */
+    @Test
+    void readsAStreamedWavAfterAnOddSizedChunk() throws IOException {
+        ByteBuffer b = ByteBuffer.allocate(12 + 8 + 16 + 8 + 4 + 8 + 16).order(ByteOrder.LITTLE_ENDIAN);
+        b.put("RIFF".getBytes()).putInt(-1).put("WAVE".getBytes())
+         .put("fmt ".getBytes()).putInt(16).putShort((short) 1).putShort((short) 2).putInt(16000).putInt(128000)
+         .putShort((short) 8).putShort((short) 32)
+         .put("note".getBytes()).putInt(3).put("abc".getBytes()).put((byte) 0)
+         .put("data".getBytes()).putInt(-1)
+         .putInt(1 << 30).putInt(-(1 << 30)).putInt(Integer.MIN_VALUE).putInt(0);
+        Audio a = Audio.readWav(b.array());
+        assertArrayEquals(new float[] {0.5f, -1f}, a.left());
+        assertArrayEquals(new float[] {-0.5f, 0f}, a.right());
+    }
+
+    @Test
+    void reads64BitFloat() throws IOException {
+        ByteBuffer b = ByteBuffer.allocate(44 + 16).order(ByteOrder.LITTLE_ENDIAN);
+        b.put("RIFF".getBytes()).putInt(52).put("WAVE".getBytes())
+         .put("fmt ".getBytes()).putInt(16).putShort((short) 3).putShort((short) 1).putInt(8000).putInt(64000)
+         .putShort((short) 8).putShort((short) 64)
+         .put("data".getBytes()).putInt(16).putDouble(0.25).putDouble(-0.75);
+        assertArrayEquals(new float[] {0.25f, -0.75f}, Audio.readWav(b.array()).left());
+    }
+
     @Test
     void rejectsWavsItCantRead() {
         ByteBuffer alaw = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN);

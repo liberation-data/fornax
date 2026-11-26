@@ -57,6 +57,17 @@ class WordsTest {
         assertEquals(3.30, w.get(2).end(), 1e-9);  // capped at the minimum cap, 1 s, short of the segment's end (4 s)
     }
 
+    /** A window whisper.cpp couldn't align has no DTW times: the word before it ends with its own segment. */
+    @Test
+    void aDtwWordBeforeAnUnalignedSegmentEndsWithItsSegment() {
+        var a = new RawSegment(0, 120, " one two", List.of(dtw(" one", 10), dtw(" two", 50)));
+        var b = new RawSegment(200, 400, " three", List.of(tok(" three", 1f, 210, 260)));
+        List<Word> w = Words.assemble(List.of(a, b)).stream().flatMap(x -> x.words().stream()).toList();
+        assertEquals(1.20, w.get(1).end(), 1e-9);
+        assertEquals(2.10, w.get(2).start(), 1e-9);
+        assertEquals(2.60, w.get(2).end(), 1e-9);
+    }
+
     @Test
     void aWordBeforeAPauseIsCapped() {
         // starts 20 cs apart, then a 5 s pause: "c" would otherwise run until "d"
