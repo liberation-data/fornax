@@ -273,8 +273,8 @@ The Gradle build points the examples and tests at that folder; pick another back
 Without it, `./gradlew build` still compiles every module and runs the tests that need no engine library and no
 model (the rest skip themselves): what CI runs on every pull request (`.github/workflows/ci.yml`), along with a
 canary that publishes to a local repository and builds `samples/hello-fornax` against it.
-The integration tests skip any model that isn't
-downloaded; `scripts/test-models.sh` fetches the ones they use (about 20 GB, small enough for a 32 GB machine).
+The integration tests skip any model that isn't downloaded; `scripts/test-models.sh` fetches the ones they use
+(about 20 GB, small enough for a 32 GB machine).
 
 From Linux, `./gradlew testOnMac -Pfornax.macHost=<host>` (or `scripts/test-on-mac.sh <host>`) runs the tests on a Mac
 over SSH against Metal: it copies the working tree there, builds the Metal libraries, runs `./gradlew test` and brings
