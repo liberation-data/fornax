@@ -37,11 +37,21 @@ surprises you.
   `hip::Graph::ScheduleOneNode` recurses once per node. On a JVM thread (smaller stack than a CLI's 8 MB main
   thread) LTX segfaults in libamdhip64 during text encoding. `GGML_CUDA_DISABLE_GRAPHS=1` fixes it, and Kiln sets it by default (`-Dkiln.gpu.graphs=true` turns graphs back on).
 - **Fedora's ROCm lives in `/usr`**, not `/opt/rocm`; `native/build.sh hip` falls back to `/usr/lib64`.
+- **Cancel only reaches a run that has started.** `sd_cancel_generation` is thread-safe, but an idle context ignores
+  it, so a cancel that lands just before `sd_generate_image` begins is lost. Kiln asks again from the progress callback.
+  A cancelled run returns `SD_STATUS_CANCELLED` (10) and no images.
+- **The progress callback also reports loading.** sd.cpp loads weights on the first run after `sd_ctx_create`, and the
+  process-wide progress callback counts the tensors it loads (hundreds of "steps") before the sampling steps. Loading
+  doesn't check for a cancel; sampling does, at every step.
 - **LTX audio is part of the model.** LTX-2.5 generates sound and picture together. Leaving out
   `audio_vae_path` removes the audio stream; that didn't cause the ghosting, but it isn't how the model was trained.
 
 ## acestep.cpp
 
+- **It can stop mid-run.** At the pinned commit, `ace_lm_generate`, `ace_synth_job_run_dit` and
+  `ace_synth_job_run_vae` take a `bool (*cancel)(void *)` polled between LM tokens, DiT steps and VAE tiles. The shim
+  passes one that reads a flag `kiln_acestep_set_cancel` sets. yue2.cpp's `pipeline_generate` takes the same kind of
+  callback (AR tokens, NAR steps, VAE tiles), and its shim does the same.
 - **Decode in 512-frame VAE tiles.** The default 1024-frame tiles hung the GPU on battery (the same compute
   timeout). The shim defaults to 512 and reads `KILN_ACESTEP_VAE_CHUNK`.
 
@@ -58,9 +68,21 @@ surprises you.
 
 ## llama.cpp text to speech (kiln-tts)
 
+- **Kokoro streams one chunk.** It isn't autoregressive: in stream mode the whole text decodes in one step and arrives
+  as a single chunk, so cancel and backpressure have nothing to act on. The autoregressive models (ZONOS3, LFM3-Audio,
+  ...) stream frame by frame.
+
 - **Call `postprocess_cpu_params` before `common_init_from_params`.** The parser fills in the thread counts after
   the arguments; without it the threadpool is sized from -1 and ggml tries to allocate 2^64 bytes. See
   [tts-notes.md](tts-notes.md) for the rest (models, voices, licences).
+
+## llama.cpp language models (kiln-llama)
+
+- **`chatJson`'s stream callback only fires on content.** Reasoning and tool-call tokens add no content, so a callback
+  that only sees content can't stop them. The shim calls it with an empty piece for those tokens, which LlamaModel
+  doesn't pass on but uses to check for a cancel.
+- **Upcalls must not throw.** An exception that escapes an FFM upcall can't unwind through C++ frames: the JVM prints
+  "Unrecoverable uncaught exception encountered" and exits. Every Kiln upcall catches it and stops the engine instead.
 
 ## llama.cpp vision (kiln-llama with an mmproj)
 

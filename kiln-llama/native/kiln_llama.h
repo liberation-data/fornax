@@ -35,7 +35,9 @@ int kiln_llama_complete(kiln_llama * h, const char * prompt, int max_tokens, flo
 // messages and tools use OpenAI's chat completions format.
 // *out_response_json: {"message": {"role", "content", "reasoning_content", "tool_calls": [...]},
 //                      "finish_reason": "stop|length|tool_calls", "usage": {"prompt_tokens", "completion_tokens"}}
-// cb (optional) receives each new piece of the message's content as it's parsed. Free the response with kiln_llama_free.
+// cb (optional) receives each new piece of the message's content as it's parsed, and an empty piece for each token that
+// adds no content (reasoning, a tool call), so that returning non-zero can stop those too. Free the response with
+// kiln_llama_free.
 int kiln_llama_chat_json(kiln_llama * h, const char * request_json, kiln_llama_token_cb cb, void * user,
                          char ** out_response_json);
 

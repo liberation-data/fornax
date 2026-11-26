@@ -10,6 +10,7 @@
 #include "request.h"
 #include "task-types.h"
 
+#include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -30,7 +31,17 @@ struct kiln_acestep {
     AceSynth *   synth = nullptr;
     // acestep keeps these const char* in its params and reads them lazily, so the handle owns copies
     std::string  lm_path, text_enc_path, dit_path, vae_path;
+    std::atomic<bool> cancel{false};
 };
+
+namespace {
+bool cancelled(void * h) { return static_cast<kiln_acestep *>(h)->cancel.load(std::memory_order_relaxed); }
+int  stopped_or(kiln_acestep * h, int rc, const char * what) {
+    if (h->cancel.load()) { set_err("cancelled"); return KILN_ACESTEP_CANCELLED; }
+    set_err(what);
+    return rc;
+}
+}  // namespace
 
 extern "C" {
 
@@ -85,20 +96,21 @@ int kiln_acestep_generate(kiln_acestep * h, const char * request_json, float ** 
                                                        : LM_MODE_GENERATE;
         AceRequest out;
         request_init(&out);
-        if (ace_lm_generate(h->lm, &req, 1, &out, nullptr, nullptr, nullptr, nullptr, mode) != 0) {
-            set_err("ace_lm_generate failed");
-            return 2;
-        }
+        if (ace_lm_generate(h->lm, &req, 1, &out, nullptr, nullptr, cancelled, h, mode) != 0)
+            return stopped_or(h, 2, "ace_lm_generate failed");
         req = out;
     }
 
     // Stage 2: DiT (flow matching over latents), then VAE decode to 48 kHz stereo.
-    AceSynthJob * job = ace_synth_job_run_dit(h->synth, &req, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, 1);
-    if (!job) { set_err("ace_synth_job_run_dit failed"); return 3; }
+    AceSynthJob * job = ace_synth_job_run_dit(h->synth, &req, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, 1, cancelled, h);
+    if (!job) return stopped_or(h, 3, "ace_synth_job_run_dit failed");
     AceAudio audio{};
-    int      rc = ace_synth_job_run_vae(h->synth, job, &audio);
+    int      rc = ace_synth_job_run_vae(h->synth, job, &audio, cancelled, h);
     ace_synth_job_free(job);
-    if (rc != 0 || !audio.samples) { set_err("ace_synth_job_run_vae failed"); return 4; }
+    if (rc != 0 || !audio.samples) {
+        if (audio.samples) ace_audio_free(&audio);
+        return stopped_or(h, 4, "ace_synth_job_run_vae failed");
+    }
 
     size_t n    = (size_t) audio.n_samples * 2;
     *out_planar = (float *) malloc(n * sizeof(float));
@@ -108,6 +120,8 @@ int kiln_acestep_generate(kiln_acestep * h, const char * request_json, float ** 
     if (out_request_json) *out_request_json = dup(request_to_json(&req, true));
     return 0;
 }
+
+void kiln_acestep_set_cancel(kiln_acestep * h, int cancel) { if (h) h->cancel.store(cancel != 0); }
 
 void kiln_acestep_free(void * p) { free(p); }
 

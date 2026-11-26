@@ -185,7 +185,12 @@ private. The engines pin different ggml versions, so this is what lets several o
 
 Engine quirks and how to debug them: [docs/engine-notes.md](docs/engine-notes.md).
 
-Every model class is `AutoCloseable`; weights are freed on `close()`. Instances aren't thread-safe.
+Every model class is `AutoCloseable`; weights are freed on `close()`, which is idempotent and safe while a call runs.
+A model takes calls from any thread and runs them one at a time. The blocking methods run on your thread; the
+`...Async` ones (`chatAsync`, `speakAsync`, `generateAsync`, ...) run on the model's own platform thread and return a
+`CompletableFuture`, so virtual threads never pin a carrier through a generation, and streaming goes to a
+`Flow.Subscriber` through a bounded buffer. `cancel()` works for every engine, and a callback that throws stops the
+call and rethrows instead of crashing the JVM. See [Threading](https://kiln4j.org/docs/guides/threading/).
 
 `ModelPool` keeps models resident between uses, the way ComfyUI does: it unloads idle models least recently used
 first to stay within a memory budget, optionally unloads after an idle timeout, and gives each model one user at a

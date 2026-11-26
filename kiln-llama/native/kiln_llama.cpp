@@ -305,6 +305,8 @@ int chat_json_impl(kiln_llama * h, const char * request_json, const std::vector<
                 std::string delta = m.content.substr(sent_content.size());
                 sent_content = m.content;
                 if (cb(delta.c_str(), user) != 0) break;
+            } else if (cb && cb("", user) != 0) {
+                break;  // no new content (reasoning, a tool call): an empty piece still lets the caller stop
             }
             bool stop = false;
             for (const auto & s : session.additional_stops())

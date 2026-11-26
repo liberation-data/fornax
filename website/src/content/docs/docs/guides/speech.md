@@ -116,7 +116,10 @@ Audio all = tts.speak("A longer passage to read aloud.", null,
         chunk -> System.out.printf("%.2f s more%n", chunk.seconds()));   // or hand each chunk to a player
 ```
 
-`cancel()`, from another thread, stops a streaming call and returns the audio so far. Without a callback, `speak`
+`cancel()`, from another thread, stops a streaming call and returns the audio so far (Kokoro, which decodes the
+whole text in one step, streams a single chunk, so it has nothing to stop). If the callback throws, speech stops and
+`speak` throws that exception. `speakAsync` runs on the model's own thread and returns a `CompletableFuture`, with or
+without a `Flow.Subscriber` for the chunks: see [Threading](/docs/guides/threading/). Without a callback, `speak`
 runs exactly as llama.cpp's `llama-tts` does. At the same seed, Kiln's output matches `llama-tts` to within 16-bit
 rounding for Kokoro, ZONOS3 and LFM3-Audio.
 

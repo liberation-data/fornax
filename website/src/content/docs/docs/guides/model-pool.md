@@ -46,8 +46,10 @@ Closing the pool unloads everything.
   the budget is a target, not a hard limit.
 - **Idle models are unloaded in the background** once they have been idle longer than the timeout. Pass `null` for
   no timeout.
-- **One user at a time.** Kiln's models aren't thread-safe, so a model has one lease at a time; `acquire` waits
-  until the model is free. Different models can be used from different threads at once.
+- **One user at a time.** A model has one lease at a time; `acquire` waits until the model is free (on a fair
+  semaphore, which a virtual thread waits on without pinning its carrier). Different models can be used from different
+  threads at once. From virtual threads, call the model's `...Async` methods and await them before closing the lease:
+  see [Threading](/docs/guides/threading/#with-a-modelpool).
 
 ## Sizes
 
