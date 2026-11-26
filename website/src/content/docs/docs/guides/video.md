@@ -87,6 +87,29 @@ var request = new DiffusionModel.VideoRequest("the vase turns slowly on the whee
 The `VideoRequest` methods return a new request each time (it is a record), so chain them. `withRefAudio` passes a
 reference clip to models that are driven by speech (such as Wan2.2 S2V).
 
+## Sing to a song (audio to video)
+
+Give LTX a soundtrack and it generates the picture to it: a singer's mouth follows the words, a hand strums on the
+beat. `withAudio` cuts the clip-length section from a start time (in seconds) and holds it as the soundtrack:
+
+```java
+import java.nio.file.Path;
+
+var request = new DiffusionModel.VideoRequest(
+        "close-up of a singer at a vintage microphone, his jaw opening and closing in time with the words. "
+                + "Audio: a man singing a country song.", 768, 448, 97, 24, 8, 1.0, 7)
+        .withExtra(Map.of("sample.method", "euler", "sample.scheduler", "ltx2"))
+        .withInitImage(ImageIO.read(new File("singer.png")))
+        .withAudio(Path.of("song.wav"), 25.9);   // 97 frames at 24 fps: 25.9 s to 29.9 s
+var video = model.generateVideo(request);     // video.audio() is the song section
+```
+
+The song is encoded with LTX's audio VAE and held fixed in the joint audio and video latent while the picture is
+denoised, as ComfyUI's LTX audio-to-video workflow does. So the clip's soundtrack is the section you gave, through the
+audio VAE (close to the original, not bit for bit: lay the original over the final cut if that matters). It needs the
+audio VAE (`audio_vae_path`) and works with first and last frames and with the two-stage recipe. Endless Country drove
+its lip-sync shots with a vocals-only stem (split from the mix) and laid the full mix over the cut.
+
 LTX was trained on compressed frames. ComfyUI's LTX workflow passes each keyframe through H.264 at CRF 18 first, and
 Kiln's example can do the same (`-Ppreprocess=18`), though in tests it made no visible difference.
 
@@ -162,6 +185,7 @@ on `./gradlew video`) keep each GPU submission short enough. See [Troubleshootin
 ./gradlew video --args='clip.mp4 "the vase turns slowly" first.png last.png' -Pwidth=672 -Pheight=448 -Pframes=121
 ./gradlew video --args='clip.mp4 "a potter at a wheel" first.png' -Precipe=two-stage
 ./gradlew video --args='clip.mp4 "a potter at a wheel"' -Pmodel=dev -Paudio=false
+./gradlew video --args='clip.mp4 "a singer at a microphone, singing" singer.png' -Psong=song.wav -Psong.start=25.9 -Pframes=97
 ```
 
 The example writes the frames and the soundtrack beside the `.mp4` and joins them with ffmpeg (which must be on the

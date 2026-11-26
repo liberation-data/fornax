@@ -51,8 +51,11 @@ public final class DiffusionModel implements AutoCloseable {
     }
 
     /**
-     * A video request. initImage / endImage (optional) pin the first / last frame (LTX, Wan); refAudio (optional)
-     * drives speech-to-video models (Wan2.2 S2V, MiniMax-H3). extra takes any other sd.cpp video option key.
+     * A video request. initImage / endImage (optional) pin the first / last frame (LTX, Wan). refAudio (optional)
+     * drives speech-to-video models (Wan2.2 S2V, MiniMax-H3); with LTX it is the soundtrack itself (audio to video):
+     * it is encoded with LTX's audio VAE and held fixed while the picture is generated to it, so a singer's mouth
+     * follows the song. LTX needs it at least as long as the clip ({@link #withAudio} cuts it to fit). extra takes any
+     * other sd.cpp video option key.
      */
     public record VideoRequest(String prompt, int width, int height, int frames, int fps, int steps, double cfg, long seed,
                                BufferedImage initImage, BufferedImage endImage, Audio refAudio, Map<String, Object> extra) {
@@ -64,6 +67,22 @@ public final class DiffusionModel implements AutoCloseable {
         public VideoRequest withEndImage(BufferedImage i) { return new VideoRequest(prompt, width, height, frames, fps, steps, cfg, seed, initImage, i, refAudio, extra); }
         public VideoRequest withRefAudio(Audio a) { return new VideoRequest(prompt, width, height, frames, fps, steps, cfg, seed, initImage, endImage, a, extra); }
         public VideoRequest withExtra(Map<String, Object> e) { return new VideoRequest(prompt, width, height, frames, fps, steps, cfg, seed, initImage, endImage, refAudio, e); }
+
+        /** The clip's length in seconds: frames / fps. */
+        public double seconds() { return frames / (double) fps; }
+
+        /**
+         * Animates to {@code audio} from {@code startSeconds}: the clip-length section from there (padded with
+         * silence past the end) becomes {@link #refAudio}. With LTX it is the output's soundtrack.
+         */
+        public VideoRequest withAudio(Audio audio, double startSeconds) {
+            return withRefAudio(audio.section(startSeconds, seconds()));
+        }
+
+        /** {@link #withAudio(Audio, double)} from a WAV file. */
+        public VideoRequest withAudio(java.nio.file.Path wav, double startSeconds) throws java.io.IOException {
+            return withAudio(Audio.readWav(wav.toFile()), startSeconds);
+        }
     }
 
     /** Generated video: its frames, frame rate, and the soundtrack when the model makes one (LTX with an audio VAE). */
@@ -183,18 +202,7 @@ public final class DiffusionModel implements AutoCloseable {
             MemorySegment opt = (MemorySegment) Sd.vid_gen_opt_create.invokeExact();
             List<MemorySegment> owned = new java.util.ArrayList<>();
             try {
-                Map<String, Object> o = new LinkedHashMap<>();
-                o.put("prompt", r.prompt());
-                o.put("width", r.width());
-                o.put("height", r.height());
-                o.put("video_frames", r.frames());
-                o.put("fps", r.fps());
-                o.put("sample.steps", r.steps());
-                o.put("sample.guidance.txt_cfg", r.cfg());
-                o.put("seed", r.seed());
-                o.putAll(r.extra());
-                checkHires(o);
-                applyAll(opt, o, tmp);
+                applyAll(opt, videoOptions(r), tmp);
                 if (r.initImage() != null) setTensor(opt, "init_image", owned, toTensor(r.initImage(), tmp), tmp);
                 if (r.endImage() != null) setTensor(opt, "end_image", owned, toTensor(r.endImage(), tmp), tmp);
                 if (r.refAudio() != null) {
@@ -227,16 +235,38 @@ public final class DiffusionModel implements AutoCloseable {
         finally { Sd.CALL.remove(); }
     }
 
+    /** The sd.cpp video options for a request (its images and audio go in as tensors, not options). */
+    static Map<String, Object> videoOptions(VideoRequest r) {
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("prompt", r.prompt());
+        o.put("width", r.width());
+        o.put("height", r.height());
+        o.put("video_frames", r.frames());
+        o.put("fps", r.fps());
+        o.put("sample.steps", r.steps());
+        o.put("sample.guidance.txt_cfg", r.cfg());
+        o.put("seed", r.seed());
+        o.putAll(r.extra());
+        checkHires(o);
+        return o;
+    }
+
+    /** sd audio tensors are F32 [C, N], channel first: interleaved samples. */
+    static float[] interleave(Audio audio) {
+        int n = audio.left().length;
+        float[] interleaved = new float[n * 2];
+        for (int i = 0; i < n; i++) { interleaved[2 * i] = audio.left()[i]; interleaved[2 * i + 1] = audio.right()[i]; }
+        return interleaved;
+    }
+
     private static void setTensor(MemorySegment opt, String key, List<MemorySegment> owned, MemorySegment t, Arena a) throws Throwable {
         owned.add(t);
         Sd.check((int) Sd.opt_set_tensor.invokeExact(opt, a.allocateFrom(key), t), "set " + key);
     }
 
-    /** sd audio tensors are F32 [C, N], channel first: interleaved samples. */
     static MemorySegment audioTensor(Audio audio, Arena a) throws Throwable {
         int n = audio.left().length;
-        float[] interleaved = new float[n * 2];
-        for (int i = 0; i < n; i++) { interleaved[2 * i] = audio.left()[i]; interleaved[2 * i + 1] = audio.right()[i]; }
+        float[] interleaved = interleave(audio);
         MemorySegment shape = a.allocateFrom(JAVA_LONG, 2, n);
         MemorySegment data = a.allocateFrom(JAVA_FLOAT, interleaved);
         MemorySegment t = (MemorySegment) Sd.tensor_create.invokeExact(Sd.SD_TENSOR_F32, 2L, shape, data, (long) interleaved.length * 4);

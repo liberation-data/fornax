@@ -187,4 +187,29 @@ class AudioTest {
         huge.put("RIFF".getBytes()).putInt(20).put("WAVE".getBytes()).put("LIST".getBytes()).putInt(0x7ffffff8);
         assertThrows(IOException.class, () -> Audio.readWav(huge.array()));
     }
+
+    @Test
+    void aSectionStartsAtItsOffsetAndKeepsBothSides() {
+        float[] l = new float[10], r = new float[10];
+        for (int i = 0; i < 10; i++) { l[i] = i; r[i] = -i; }
+        Audio s = new Audio(l, r, 10).section(0.3, 0.4);
+        assertArrayEquals(new float[] {3, 4, 5, 6}, s.left());
+        assertArrayEquals(new float[] {-3, -4, -5, -6}, s.right());
+        assertEquals(10, s.sampleRate());
+    }
+
+    @Test
+    void aSectionPastTheEndIsPaddedWithSilence() {
+        Audio s = Audio.ofMono(new float[] {1, 1, 1, 1}, 4).section(0.5, 1.0);
+        assertArrayEquals(new float[] {1, 1, 0, 0}, s.left());
+        assertArrayEquals(new float[4], Audio.ofMono(new float[] {1}, 4).section(2, 1).left());
+    }
+
+    @Test
+    void aSectionHasCeilSecondsTimesRateSamples() {
+        Audio a = Audio.ofMono(new float[48000 * 5], 48000);
+        assertEquals(98000, a.section(1, 49 / 24.0).left().length);   // 2.0416 s at 48 kHz, rounded up
+        assertThrows(IllegalArgumentException.class, () -> a.section(-1, 1));
+        assertThrows(IllegalArgumentException.class, () -> a.section(0, 0));
+    }
 }

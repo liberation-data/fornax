@@ -14,6 +14,23 @@ public record Audio(float[] left, float[] right, int sampleRate) {
     /** Mono audio: the same samples on both sides. */
     public static Audio ofMono(float[] samples, int sampleRate) { return new Audio(samples, samples.clone(), sampleRate); }
 
+    /**
+     * {@code seconds} of this audio from {@code start} (both in seconds), padded with silence where it runs past the
+     * end: always {@code ceil(seconds * sampleRate)} samples.
+     */
+    public Audio section(double start, double seconds) {
+        if (start < 0 || seconds <= 0 || !Double.isFinite(start) || !Double.isFinite(seconds))
+            throw new IllegalArgumentException("section needs start >= 0 and seconds > 0, got " + start + ", " + seconds);
+        int from = (int) Math.round(start * sampleRate), n = (int) Math.ceil(seconds * sampleRate - 1e-9);
+        float[] l = new float[n], r = new float[n];
+        int copy = Math.max(0, Math.min(n, left.length - from));
+        if (copy > 0) {
+            System.arraycopy(left, from, l, 0, copy);
+            System.arraycopy(right, from, r, 0, copy);
+        }
+        return new Audio(l, r, sampleRate);
+    }
+
     /** The two sides mixed down to one channel. */
     public float[] mono() {
         float[] m = new float[left.length];
