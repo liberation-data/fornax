@@ -57,6 +57,8 @@ class FetchTest {
     @Test void aFileByName() throws Exception {
         assertEquals("README.md", hub().fetch(REPO + ":README.md", PullListener.NONE).get("model").getFileName().toString());
         assertEquals("m-Q8_0.gguf", hub().fetch(REPO + ":m-Q8_0.gguf", PullListener.NONE).get("gguf").getFileName().toString());
+        // an mmproj isn't a model a tag picks, but by its name it is the file (a TTS model's mmproj is given this way)
+        assertEquals("mmproj-m-F16.gguf", hub().fetch(REPO + ":mmproj-m-F16.gguf", PullListener.NONE).get("gguf").getFileName().toString());
     }
 
     @Test void aRepoWithOneModelNeedsNoTagAndTheMmprojIsntAModel() throws Exception {

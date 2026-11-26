@@ -3,6 +3,9 @@ package org.liberationdata.fornax.whisper;
 import org.liberationdata.fornax.Audio;
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.NativeLibrary;
+import org.liberationdata.fornax.hub.ModelCatalog;
+import org.liberationdata.fornax.hub.ModelReferences;
+import org.liberationdata.fornax.hub.ModelSet;
 import org.liberationdata.fornax.whisper.Transcript.Segment;
 import org.liberationdata.fornax.whisper.Words.RawSegment;
 import org.liberationdata.fornax.whisper.Words.Token;
@@ -16,6 +19,7 @@ import java.lang.invoke.MethodType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 import static java.lang.foreign.ValueLayout.ADDRESS;
 import static java.lang.foreign.ValueLayout.JAVA_BYTE;
@@ -112,6 +116,21 @@ public final class WhisperModel implements AutoCloseable {
 
         public String path() { return HfCache.require(repo, file).toString(); }
         public boolean downloaded() { return HfCache.find(repo, file).isPresent(); }
+
+        /**
+         * The alignment of the entry a model reference or catalogue alias names ({@code whisper-base.en},
+         * {@code ggerganov/whisper.cpp:ggml-base.en.bin}), else {@link Alignment#NONE}. A path is never looked up.
+         */
+        static Alignment alignmentOf(String model) {
+            if (ModelReferences.isPath(model)) return Alignment.NONE;
+            var alias = ModelCatalog.byName(model.strip());
+            String file;
+            if (alias.isPresent()) file = alias.get().parts().getFirst().primary().file();
+            else if (model.startsWith(REPO + ":") || model.startsWith(REPO + "@")) file = model.substring(model.lastIndexOf(':') + 1);
+            else return Alignment.NONE;
+            for (Weights w : values()) if (w.file.equals(file)) return w.alignment;
+            return Alignment.NONE;
+        }
 
         /** By name, ignoring case and '-', '_', '.': "large-v3-turbo", "base.en", "large-v3-turbo-q8_0". */
         public static Weights named(String name) {
@@ -253,12 +272,18 @@ public final class WhisperModel implements AutoCloseable {
     private Words.VadTimeline timeline;
     private Throwable callbackError;
 
+    private static final ModelReferences.Engine ENGINE = new ModelReferences.Engine("WhisperModel", "speech-to-text models",
+            Set.of(ModelSet.Kind.TRANSCRIPTION), Set.of("model"), "a whisper.cpp model");
+
     /**
+     * @param modelPath a whisper.cpp model file, or a model reference ({@code ggerganov/whisper.cpp:ggml-base.en.bin})
+     *                  or catalogue alias ({@code whisper-base.en}), downloaded on first use
      * @param alignment the model's DTW alignment heads, or {@link Alignment#NONE}
      * @param gpu false runs on the CPU (on a machine with no GPU, also set {@code -Dfornax.allowCpu=true}: Fornax refuses
      *            to load its GPU build there otherwise)
      */
     public WhisperModel(String modelPath, Alignment alignment, boolean gpu) {
+        modelPath = ModelReferences.locate(modelPath, ENGINE).map(f -> ModelReferences.file(f, ENGINE).toString()).orElse(modelPath);
         try (Arena a = Arena.ofConfined()) {
             handle = (MemorySegment) CREATE.invokeExact(a.allocateFrom(modelPath), gpu ? 1 : 0, 0, 1, alignment.preset);
             if (handle.equals(MemorySegment.NULL)) throw new IllegalStateException("fornax_whisper_create: " + error());
@@ -269,8 +294,11 @@ public final class WhisperModel implements AutoCloseable {
 
     public WhisperModel(String modelPath, Alignment alignment) { this(modelPath, alignment, true); }
 
-    /** A model file without DTW: word times come from whisper's timestamp tokens. */
-    public WhisperModel(String modelPath) { this(modelPath, Alignment.NONE, true); }
+    /**
+     * A model file without DTW: word times come from whisper's timestamp tokens. A reference or alias to one of the
+     * {@link Weights} files ({@code whisper-large-v3-turbo}) loads with that entry's alignment, as {@link Weights} does.
+     */
+    public WhisperModel(String modelPath) { this(modelPath, Weights.alignmentOf(modelPath), true); }
 
     public WhisperModel(Weights w) { this(w.path(), w.alignment, true); }
 

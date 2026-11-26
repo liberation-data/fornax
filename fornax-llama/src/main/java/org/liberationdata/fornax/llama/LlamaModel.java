@@ -12,10 +12,8 @@ import org.liberationdata.fornax.Wire;
 import org.liberationdata.fornax.Worker;
 import org.liberationdata.fornax.WorkerCrashedException;
 import org.liberationdata.fornax.hub.FornaxHub;
-import org.liberationdata.fornax.hub.ModelCatalog;
-import org.liberationdata.fornax.hub.ModelRef;
+import org.liberationdata.fornax.hub.ModelReferences;
 import org.liberationdata.fornax.hub.ModelSet;
-import org.liberationdata.fornax.hub.PullListener;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -34,6 +32,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -434,32 +434,24 @@ public final class LlamaModel implements AutoCloseable {
      * was given.
      */
     private static String[] locate(String gguf, String mmproj, Mode mode) {
-        Objects.requireNonNull(gguf, "ggufPath");
-        try { if (Files.exists(Path.of(gguf))) return new String[]{gguf, mmproj}; }   // the usual case: no hub needed
-        catch (java.nio.file.InvalidPathException notAPath) { /* a reference's ':' on Windows */ }
-        return locate(gguf, mmproj, mode, FornaxHub.standard());
+        return pick(gguf, mmproj, mode, ModelReferences.locate(gguf, ENGINE));
     }
 
     /** {@link #locate(String, String, Mode)} with the given hub; anything that isn't a GGUF model is refused before downloading. */
     static String[] locate(String gguf, String mmproj, Mode mode, FornaxHub hub) {
-        if (ModelRef.urlHint(gguf).isPresent()) ModelRef.parse(gguf);   // throws, naming the reference to use instead
-        if (!hub.isReference(gguf)) return new String[]{gguf, mmproj};
-        var alias = ModelCatalog.byName(gguf.strip());   // refused before fetching: an image model's files are gigabytes
-        if (alias.isPresent() && alias.get().kind() != ModelSet.Kind.CHAT && alias.get().kind() != ModelSet.Kind.VISION)
-            throw new IllegalArgumentException(gguf + " is a " + alias.get().kind().name().toLowerCase(java.util.Locale.ROOT) + " model ("
-                    + alias.get().engine() + "); LlamaModel loads language and vision models");
-        Map<String, Path> files;
-        try {
-            ModelSet set = alias.isPresent() ? alias.get() : hub.resolve(ModelRef.parse(gguf));   // fetch, checked first
-            if (set.parts().stream().noneMatch(p -> p.role().equals("gguf")))
-                throw new IllegalArgumentException(gguf + " isn't a GGUF language model (it names "
-                        + set.parts().stream().map(p -> p.primary().file()).toList() + ")");
-            files = hub.pull(set, PullListener.logging());
-        } catch (IOException e) { throw new UncheckedIOException(gguf + ": " + e.getMessage(), e); }
+        return pick(gguf, mmproj, mode, ModelReferences.locate(gguf, ENGINE, hub));
+    }
+
+    private static String[] pick(String gguf, String mmproj, Mode mode, Optional<Map<String, Path>> fetched) {
+        if (fetched.isEmpty()) return new String[]{gguf, mmproj};
+        Map<String, Path> files = fetched.get();
         String mm = mmproj != null || mode != Mode.CHAT ? mmproj
                 : files.containsKey("mmproj") ? files.get("mmproj").toString() : null;
         return new String[]{files.get("gguf").toString(), mm};
     }
+
+    private static final ModelReferences.Engine ENGINE = new ModelReferences.Engine("LlamaModel", "language and vision models",
+            Set.of(ModelSet.Kind.CHAT, ModelSet.Kind.VISION), Set.of("gguf"), "a GGUF language model");
 
     /**
      * The model in a worker process of its own, behind the same API: chat, chatJson, extract, complete, streaming,

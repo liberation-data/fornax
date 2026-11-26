@@ -60,6 +60,21 @@ class TtsModelIT {
         assertTrue(rms(a.left()) > 0.01);
     }
 
+    /** The alias brings its mmproj; a reference to the model needs a reference (or path) to the mmproj too. */
+    @Test
+    void loadsByAliasOrReference() {
+        try (var byAlias = new TtsModel("kokoro")) {
+            assertEquals(model.voices(), byAlias.voices());
+        }
+        String repo = TtsModel.Weights.KOKORO.repo;
+        try (var byRef = new TtsModel(repo + ":F32", repo + ":mmproj-Kokoro-82M-F16.gguf")) {
+            assertTrue(byRef.speak("Hello.", "af_heart").seconds() > 0.3);
+        }
+        var e = assertThrows(NullPointerException.class, () -> new TtsModel(repo + ":F32", null));
+        assertTrue(e.getMessage().contains("needs its mmproj"), e.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> new TtsModel("whisper-base.en"));
+    }
+
     @Test
     void rejectsAnUnknownVoice() {
         var e = assertThrows(IllegalStateException.class, () -> model.speak(TEXT, "nobody"));

@@ -28,7 +28,8 @@ per file, into the same cache. The rest of this page is the Java API.
 ## By reference
 
 `fetch` takes a model by name, downloads whatever of it is missing, and returns its files by role. This is what
-`new LlamaModel("owner/repo:Q4_K_M")` does:
+`new LlamaModel("owner/repo:Q4_K_M")` does, and `WhisperModel`, `TtsModel` and `DemucsModel` too. Each refuses an
+alias or file it can't load before downloading anything:
 
 ```java
 Map<String, Path> files = hub.fetch("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M", PullListener.logging());
@@ -38,7 +39,7 @@ Map<String, Path> vlm = hub.fetch("qwen3-vl-4b", PullListener.logging());   // a
 ```
 
 The name is a catalogue alias, or a `ModelRef`: `owner/repo[@revision][:tag]`, the form `fornax pull` takes. The tag
-is a quant, matched against the repo's GGUF file names ignoring case, or a file's name or path. With no tag, the repo
+is a quant, matched against the repo's GGUF file names ignoring case, or a file's name or path (an mmproj only this way). With no tag, the repo
 must hold one GGUF model, not counting mmproj files. A split GGUF brings all its parts. A tag that matches several
 files fails and lists them. A model already in the cache needs no request to the Hub (with no revision, or a commit); otherwise `fetch` reads the
 repo's file list first. `hub.isReference(s)` says whether a string is a name to fetch rather than a path.

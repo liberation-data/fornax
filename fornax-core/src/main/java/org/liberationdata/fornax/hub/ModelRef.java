@@ -77,8 +77,8 @@ public record ModelRef(String repo, String revision, String tag) {
 
     /**
      * The files of this reference's model among a repo's paths, the one to load first: a tag that is a file's path or
-     * name takes that file (a split GGUF with its other parts); otherwise the GGUF model the tag picks, or with no tag
-     * the repo's only one. What {@link FornaxHub#fetch} downloads and {@code fornax pull owner/repo:TAG} selects.
+     * name takes that file (a split GGUF with its other parts, an mmproj on its own); otherwise the GGUF model the tag
+     * picks, or with no tag the repo's only one. What {@link FornaxHub#fetch} downloads and {@code fornax pull owner/repo:TAG} selects.
      *
      * @throws HubException ({@link HubException.Reason#NOT_FOUND}) when nothing matches
      * @throws IllegalArgumentException when several models match, naming them
@@ -91,7 +91,7 @@ public record ModelRef(String repo, String revision, String tag) {
      */
     List<String> pick(java.util.Collection<String> paths, boolean strict) throws HubException {
         Map<String, List<String>> models = GgufFiles.models(paths);
-                if (tag != null && !GgufFiles.isGguf(tag)) {
+        if (tag != null && (!GgufFiles.isGguf(tag) || GgufFiles.isAuxiliary(tag))) {   // a file by name: models() skips mmproj
             List<String> named = paths.stream().filter(p -> p.equals(tag) || GgufFiles.name(p).equals(tag)).toList();
             if (named.size() == 1) return named;
             if (named.size() > 1) {

@@ -88,6 +88,15 @@ speed: about 50% longer than without DTW in the test above.
 `new WhisperModel(Weights)` finds the file in the Hugging Face cache; if it isn't there, it fails with the
 `hf download` command that fetches it. `Weights.named("base.en")` finds one by name.
 
+The path can also be a [model reference](/docs/guides/models/#by-reference) or a catalogue alias, downloaded on first
+use. One that names a `Weights` file gets that entry's alignment:
+
+```java
+new WhisperModel("whisper-base.en");                                   // an alias, with DTW
+new WhisperModel("ggerganov/whisper.cpp:ggml-large-v3-turbo-q8_0.bin");  // a file in a repo, with DTW
+new WhisperModel("ggerganov/whisper.cpp:ggml-small.en.bin", WhisperModel.Alignment.SMALL_EN);
+```
+
 | `Weights` | File | Size | Notes |
 |---|---|---|---|
 | `LARGE_V3_TURBO` | `ggml-large-v3-turbo-q5_0.bin` | 574 MB | the default: 99 languages, close to large-v3's accuracy, much faster |

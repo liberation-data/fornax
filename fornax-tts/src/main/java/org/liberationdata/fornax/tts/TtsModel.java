@@ -5,6 +5,8 @@ import org.liberationdata.fornax.Call;
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.ModelThread;
 import org.liberationdata.fornax.NativeLibrary;
+import org.liberationdata.fornax.hub.ModelReferences;
+import org.liberationdata.fornax.hub.ModelSet;
 import org.liberationdata.fornax.StreamOverflowException;
 
 import java.lang.foreign.Arena;
@@ -13,9 +15,13 @@ import java.lang.foreign.MemorySegment;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
@@ -144,8 +150,26 @@ public final class TtsModel implements AutoCloseable {
     private final List<String> voices;
     private final ModelThread thread;
 
-    /** @param gpuLayers -1 offloads every layer. @param contextSize 0 uses llama.cpp's default for the model. */
+    private static final ModelReferences.Engine ENGINE = new ModelReferences.Engine("TtsModel", "text-to-speech models",
+            Set.of(ModelSet.Kind.SPEECH), Set.of("gguf"), "a GGUF speech model");
+
+    /**
+     * @param modelPath  the model's GGUF, or a model reference or catalogue alias, downloaded on first use: an alias
+     *                   ({@code kokoro}) brings its mmproj; a reference ({@code ggml-org/Kokoro-82M-GGUF:F32}) needs it
+     *                   given too
+     * @param mmprojPath the model's mmproj, or a reference to it
+     *                   ({@code ggml-org/Kokoro-82M-GGUF:mmproj-Kokoro-82M-F16.gguf}); null with an alias
+     * @param gpuLayers  -1 offloads every layer
+     * @param contextSize 0 uses llama.cpp's default for the model
+     */
     public TtsModel(String modelPath, String mmprojPath, int gpuLayers, int contextSize) {
+        String given = modelPath;
+        Optional<Map<String, Path>> model = ModelReferences.locate(given, ENGINE);
+        if (mmprojPath == null && model.isPresent() && model.get().containsKey("mmproj")) mmprojPath = model.get().get("mmproj").toString();
+        if (mmprojPath == null) throw new NullPointerException("mmprojPath: " + given + " needs its mmproj (its voices and audio decoder)");
+        String mm = mmprojPath;
+        mmprojPath = ModelReferences.locate(mm, ENGINE).map(f -> f.get("gguf").toString()).orElse(mm);
+        modelPath = model.map(f -> f.get("gguf").toString()).orElse(given);
         try (Arena a = Arena.ofConfined()) {
             handle = (MemorySegment) CREATE.invokeExact(a.allocateFrom(modelPath), a.allocateFrom(mmprojPath), gpuLayers, contextSize);
             if (handle.equals(MemorySegment.NULL)) throw new IllegalStateException("fornax_tts_create: " + error());
@@ -164,6 +188,9 @@ public final class TtsModel implements AutoCloseable {
     }
 
     public TtsModel(String modelPath, String mmprojPath) { this(modelPath, mmprojPath, -1, 0); }
+
+    /** A catalogue alias ({@code kokoro}), with its mmproj, downloaded on first use. */
+    public TtsModel(String alias) { this(alias, null, -1, 0); }
 
     public TtsModel(Weights w) { this(w.model(), w.mmproj()); }
 

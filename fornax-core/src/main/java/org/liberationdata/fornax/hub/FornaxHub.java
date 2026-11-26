@@ -201,7 +201,8 @@ public final class FornaxHub {
         return out;
     }
 
-    private Optional<ModelSet> alias(String name) { return catalogue.stream().filter(m -> m.isNamed(name.strip())).findFirst(); }
+    /** The set in this hub's catalogue with this id or alias. */
+    Optional<ModelSet> alias(String name) { return catalogue.stream().filter(m -> m.isNamed(name.strip())).findFirst(); }
 
     /** One part per file: the first as "gguf" (or "model"), a split GGUF's others by path. */
     private static ModelSet refSet(ModelRef ref, String revision, List<String> files) {

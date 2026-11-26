@@ -253,6 +253,17 @@ class DemucsModelIT {
         assertTrue(e.getMessage().contains("/nonexistent/htdemucs.gguf"), e.getMessage());
     }
 
+    /** A reference to the file loads it from the cache; an alias isn't a stem model. */
+    @Test
+    void loadsByReference() {
+        var w = DemucsModel.Weights.HTDEMUCS;
+        try (var byRef = new DemucsModel(w.repo + ":" + w.file)) {
+            assertEquals(demucs.sources(), byRef.sources());
+        }
+        var e = assertThrows(IllegalArgumentException.class, () -> new DemucsModel("qwen3-0.6b"));
+        assertTrue(e.getMessage().endsWith("DemucsModel loads stem-separation models"), e.getMessage());
+    }
+
     @Test
     void closeIsIdempotentAndLaterCallsAreRefused() {
         var m = new DemucsModel(DemucsModel.Weights.HTDEMUCS);

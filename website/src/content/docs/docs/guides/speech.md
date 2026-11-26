@@ -51,12 +51,16 @@ its files are there.
 | `VOXCPM2` | none: describe one (see below) | Apache-2.0 | 2B, 48 kHz; slow, about 0.8× real time on the 8060S |
 | `QWEN3_TTS` | none: give it a reference clip (see below) | Apache-2.0 | Qwen3-TTS 1.7B Base |
 
-Any other TTS GGUF that llama.cpp runs works too: pass both paths.
+Any other TTS GGUF that llama.cpp runs works too: pass both paths. Either can be a
+[model reference](/docs/guides/models/#by-reference) instead, downloaded on first use, and the catalogue alias
+`kokoro` brings both files:
 
 ```java
 try (var tts = new TtsModel("/models/model.gguf", "/models/mmproj.gguf")) {   // or (model, mmproj, gpuLayers, contextSize)
     // ...
 }
+new TtsModel("kokoro");
+new TtsModel("ggml-org/Kokoro-82M-GGUF:F32", "ggml-org/Kokoro-82M-GGUF:mmproj-Kokoro-82M-F16.gguf");
 ```
 
 Call `voices()` for a model's exact voice names. Check each model's licence before you use what it makes.
