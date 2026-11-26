@@ -134,6 +134,16 @@ class WhisperParamsTest {
         assertEquals("ggml-silero-v6.2.0.bin", VadWeights.SILERO_V6_2_0.file);
     }
 
+    @Test
+    void withoutSpeechTheLanguageIsTheOneAskedFor() {
+        // whisper.cpp returns before setting its language when VAD finds no speech, leaving the previous call's
+        assertEquals("de", WhisperParams.languageWithoutSpeech("de", true));
+        assertNull(WhisperParams.languageWithoutSpeech(null, true));
+        assertNull(WhisperParams.languageWithoutSpeech("auto", true));
+        assertNull(WhisperParams.languageWithoutSpeech("", true));
+        assertEquals("en", WhisperParams.languageWithoutSpeech("de", false));  // an English-only model
+    }
+
     static String string(MemorySegment p, String field) {
         return p.get(ADDRESS, WhisperParams.offset(field)).reinterpret(Long.MAX_VALUE).getString(0);
     }

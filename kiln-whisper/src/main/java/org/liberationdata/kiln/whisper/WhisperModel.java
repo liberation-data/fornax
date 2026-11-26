@@ -324,7 +324,10 @@ public final class WhisperModel implements AutoCloseable {
             List<Segment> segments = Words.fitToWords(Words.snapToVoice(Words.assemble(raw), pcm16k, SAMPLE_RATE));
             StringBuilder text = new StringBuilder();
             for (RawSegment s : raw) text.append(s.text());
-            return new Transcript(text.toString().strip(), NativeLibrary.string((MemorySegment) LANGUAGE.invokeExact(handle)), segments);
+            String language = vad != null && (int) N_VAD_SEGMENTS.invokeExact(handle) == 0
+                    ? WhisperParams.languageWithoutSpeech(o.language(), multilingual)
+                    : NativeLibrary.string((MemorySegment) LANGUAGE.invokeExact(handle));
+            return new Transcript(text.toString().strip(), language, segments);
         } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { this.listener = null; this.pcm = null; this.vad = null; this.timeline = null; }
     }

@@ -58,6 +58,15 @@ final class WhisperParams {
         return p;
     }
 
+    /**
+     * When VAD finds no speech, whisper.cpp returns before it detects or sets the language, so its own is the previous
+     * call's: report the one asked for instead, or null when it was to be detected.
+     */
+    static String languageWithoutSpeech(String requested, boolean multilingual) {
+        if (!multilingual) return "en";
+        return requested == null || requested.isEmpty() || requested.equals("auto") ? null : requested;
+    }
+
     static long offset(String field) { return LAYOUT.byteOffset(MemoryLayout.PathElement.groupElement(field)); }
 
     static MemorySegment cstr(Arena a, String s) { return s == null ? MemorySegment.NULL : a.allocateFrom(s); }
