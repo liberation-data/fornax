@@ -97,7 +97,7 @@ public final class ModelThread implements AutoCloseable {
             throw new IllegalStateException("a call to " + name + " was made from inside one of its own callbacks");
         engine.lock();
         try {
-            return runLocked(new Call(this), body);
+            return runLocked(new Call(this), body, false);
         } finally {
             engine.unlock();
         }
@@ -214,9 +214,10 @@ public final class ModelThread implements AutoCloseable {
 
     // ---- internals ----
 
-    private <T> T runLocked(Call call, Function<Call, T> body) {
+    /** @param queued an async call, which close() fails with a CancellationException even once it has left the queue */
+    private <T> T runLocked(Call call, Function<Call, T> body, boolean queued) {
         synchronized (state) {
-            if (closed) throw new IllegalStateException(name + " is closed");
+            if (closed) throw queued ? new CancellationException(name + " was closed") : new IllegalStateException(name + " is closed");
             if (call.stopRequested()) throw new CancellationException("cancelled before it started");
             if (nativeReset != null) nativeReset.run();
             current = call;
@@ -276,7 +277,7 @@ public final class ModelThread implements AutoCloseable {
             T result;
             engine.lock();
             try {
-                result = runLocked(call, body);
+                result = runLocked(call, body, true);
             } catch (Throwable t) {
                 complete(() -> future.completeExceptionally(t));
                 return;

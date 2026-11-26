@@ -171,8 +171,9 @@ Limits:
 - **A model doesn't stop while it loads its weights.** stable-diffusion.cpp loads lazily on the first run, and only
   checks for a cancel when sampling starts.
 
-An async call that is cancelled completes its future with a `CancellationException`. A blocking call stopped by
-`cancel()` returns what the engine returns, as in the table above.
+An async call whose future is cancelled (or times out) completes it with that `CancellationException` (or
+`TimeoutException`). A call stopped by `cancel()`, blocking or async, returns what the engine returns, as in the table
+above: an async `chatAsync` stopped that way completes normally, with the text so far.
 
 ## Close
 

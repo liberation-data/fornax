@@ -365,6 +365,41 @@ class ModelThreadTest {
         assertEquals(List.of("returned", "destroy"), log);
     }
 
+    /** The model's thread, once it has taken a job off the queue and is waiting for the engine lock. */
+    static Thread workerWaitingForTheEngine(String name) throws InterruptedException {
+        for (int i = 0; i < 5000; i++) {
+            for (var e : Thread.getAllStackTraces().entrySet()) {
+                if (!e.getKey().getName().equals("kiln-" + name)) continue;
+                for (var frame : e.getValue()) if (frame.getClassName().endsWith("ModelThread$Job")) return e.getKey();
+            }
+            Thread.sleep(1);
+        }
+        throw new AssertionError("the model thread never picked up the job");
+    }
+
+    @Test
+    void closeFailsAnAsyncCallThatLeftTheQueueButHadNotStartedWithCancellation() throws Exception {
+        var t = new ModelThread("dequeued", () -> {});
+        var started = new CountDownLatch(1);
+        var blocking = Thread.ofPlatform().start(() -> t.run(call -> { started.countDown(); return generate(call, 100_000, null); }));
+        assertTrue(started.await(5, TimeUnit.SECONDS));
+        var waiting = t.submit(call -> 1);
+        workerWaitingForTheEngine("dequeued");  // out of the queue, behind the blocking call for the lock
+        t.close();
+        blocking.join();
+        assertThrows(CancellationException.class, () -> waiting.get(10, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void futuresStillCompleteWhenTheStreamExecutorRejects() throws Exception {
+        try (var t = new ModelThread("fake", () -> {})) {
+            assertThrows(IllegalArgumentException.class, () -> t.streamOn(Runnable::run, 0));
+            t.streamOn(r -> { throw new java.util.concurrent.RejectedExecutionException("shut down"); }, 8);
+            assertEquals(1, t.submit(call -> 1).get(10, TimeUnit.SECONDS));
+            assertInstanceOf(IllegalStateException.class, cause(t.submit(call -> { throw new IllegalStateException("x"); })));
+        }
+    }
+
     @Test
     void concurrentClosesFreeOnceAndAllWait() throws Exception {
         AtomicInteger destroys = new AtomicInteger();

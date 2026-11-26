@@ -105,7 +105,8 @@ public final class LlamaModel implements AutoCloseable {
 
     /**
      * Stops the generation in progress (from any thread, including its own callback) after the current token; the
-     * call returns what was generated so far. Works for every call, streaming or not. A call that hasn't started yet
+     * call returns what was generated so far ({@link #extract} throws a {@link CancellationException} instead). Works
+     * for every call, streaming or not, blocking or async. A call that hasn't started yet
      * isn't affected: cancel its future instead.
      */
     public void cancel() { thread.cancel(); }
