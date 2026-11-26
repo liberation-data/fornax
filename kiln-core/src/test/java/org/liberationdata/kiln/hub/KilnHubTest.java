@@ -157,20 +157,33 @@ class KilnHubTest {
         assertEquals(List.of(f.etag() + " bytes=100000-"), fake.ranges);
     }
 
-    @Test void aTransferThatNeverFinishesGivesUpAfterItsRetriesAndKeepsThePartialFile() throws Exception {
+    @Test void aConnectionThatDropsOftenButMakesProgressEachTimeKeepsGoing() throws Exception {
+        var f = fake.add(REPO, "big.gguf", 300_000, true);
+        fake.chunked = true;
+        fake.dropEveryAfter = 10_000;   // thirty short responses, far more than five
+
+        Map<String, Path> files = hub().pull(set("one", Part.of("model", REPO, "big.gguf")), PullListener.NONE);
+
+        assertArrayEquals(f.content(), Files.readAllBytes(files.get("model")));
+        assertEquals(30, fake.gets(f));
+    }
+
+    @Test void aTransferThatStopsGettingAnywhereGivesUpAfterFiveTriesAndKeepsThePartialFile() throws Exception {
         var f = fake.add(REPO, "big.gguf", 300_000, true);
         var set = set("one", Part.of("model", REPO, "big.gguf"));
         fake.chunked = true;
         fake.dropEveryAfter = 10_000;
+        fake.stallAt = 50_000;   // five tries that add bytes, then five that add none
 
         IOException e = assertThrows(IOException.class, () -> hub().pull(set, PullListener.NONE));
 
         assertFalse(e instanceof HubException, "a connection that keeps failing is not the Hub's answer: " + e);
-        assertEquals(5, fake.gets(f), "five attempts, then it gives up");
+        assertEquals(10, fake.gets(f), "five tries with progress, then five without, then it gives up");
         Path part = new CacheLayout(cache).incomplete(REPO, f.etag());
         assertEquals(50_000, Files.size(part), "each attempt's bytes are kept");
 
         fake.dropEveryAfter = 0;
+        fake.stallAt = 0;
         Map<String, Path> files = hub().pull(set, PullListener.NONE);
         assertArrayEquals(f.content(), Files.readAllBytes(files.get("model")));
         assertTrue(fake.ranges.contains(f.etag() + " bytes=50000-"), "the next pull resumes: " + fake.ranges);

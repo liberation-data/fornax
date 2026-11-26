@@ -92,28 +92,28 @@ final class HubHttp {
     }
 
     /**
-     * Downloads {@code f} into {@code part}, resuming from what is already there, retrying a dropped connection, and
-     * checking its size and hash: sha256 for an LFS etag, git's blob sha1 for a git etag. A mismatch deletes
-     * {@code part}. {@code progress} receives the file's bytes on disk so far.
+     * Downloads {@code f} into {@code part}, resuming from what is already there, retrying a dropped connection (until
+     * five tries in a row add nothing), and checking its size and hash: sha256 for an LFS etag, git's blob sha1 for a git
+     * etag. A mismatch deletes {@code part}. {@code progress} receives the file's bytes on disk so far.
      */
     void download(RemoteFile f, Path part, LongConsumer progress, Cancel cancel) throws IOException {
         URI uri = URI.create(endpoint + "/" + f.source().repo() + "/resolve/" + f.commit() + "/" + encodePath(f.source().file()));
         Digest digest = Digest.of(f);
-        IOException last = null;
-        for (int attempt = 1; attempt <= ATTEMPTS; attempt++) {
+        // a dropped connection resumes from what we have; it gives up after ATTEMPTS drops in a row that added nothing
+        for (int stalled = 0; ; ) {
+            long before = Files.exists(part) ? Files.size(part) : 0;
             try {
                 fetch(uri, f, part, digest, progress, cancel);
-                last = null;
                 break;
             } catch (HubException e) {
                 throw e;
             } catch (IOException e) {
                 cancel.check();   // a cancel closes the stream, which lands here
-                last = e;         // a dropped connection: resume from what we have
-                cancel.sleep(retryDelay.multipliedBy(attempt));
+                stalled = (Files.exists(part) ? Files.size(part) : 0) > before ? 0 : stalled + 1;
+                if (stalled == ATTEMPTS) throw e;
+                cancel.sleep(retryDelay.multipliedBy(stalled + 1));
             }
         }
-        if (last != null) throw last;
         long have = Files.size(part);
         if (f.size() >= 0 && have != f.size()) {
             Files.deleteIfExists(part);

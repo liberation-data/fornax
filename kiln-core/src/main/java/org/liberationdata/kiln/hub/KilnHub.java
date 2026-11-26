@@ -559,7 +559,7 @@ public final class KilnHub {
         /** No network: a pull of a missing part fails at once (default: whether {@code HF_HUB_OFFLINE} is set). */
         public Builder offline(boolean offline) { this.offline = offline; return this; }
 
-        /** The pause before retrying a dropped connection, times the attempt number (default 1 s). */
+        /** The pause before retrying a dropped connection, growing with each try in a row that adds no bytes (default 1 s). */
         public Builder retryDelay(Duration delay) { this.retryDelay = delay; return this; }
 
         /** The sets {@link KilnHub#evict(ModelSet)} keeps shared files for (default {@link ModelCatalog#all()}). */

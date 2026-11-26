@@ -37,7 +37,8 @@ there, it makes no network requests at all.
 A pull:
 
 - **resumes.** A download in progress is kept as `blobs/<hash>.incomplete`. If the connection drops, the pull
-  retries with an HTTP `Range` request from the last byte received. If the pull is cancelled or the process exits, the
+  retries with an HTTP `Range` request from the last byte received, for as long as each try adds bytes; it gives up
+  after five tries in a row that add none. If the pull is cancelled or the process exits, the
   next pull continues from the same place. `hf download` uses the same file name, so either tool can finish a download
   the other started.
 - **verifies.** Each file is checked against the hash the Hub gives for it: the SHA-256 of an LFS file (the
