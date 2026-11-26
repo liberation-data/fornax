@@ -269,6 +269,9 @@ native/build.sh vulkan            # or hip | cuda | metal | cpu; optionally list
 applies Fornax's patches from `native/patches/` (when a pin or a patch changes, it first resets that engine's tracked
 files, so keep no edits of your own there), and writes the libraries to `build/native/<os>-<arch>-<backend>/`.
 The Gradle build points the examples and tests at that folder; pick another backend with `-Pfornax.backend=hip`.
+Without it, `./gradlew build` still compiles every module and runs the tests that need no engine library and no
+model (the rest skip themselves): what CI runs on every pull request (`.github/workflows/ci.yml`), along with a
+canary that publishes to a local repository and builds `samples/hello-fornax` against it.
 
 To use your own build in an application, put the libraries on `-Dfornax.library.path=<dir>` (or `FORNAX_LIBRARY_PATH`,
 or the platform loader path) and run with `--enable-native-access=ALL-UNNAMED`; an explicit path wins over a
