@@ -18,6 +18,7 @@ include 'kiln-yue2'     // yue2.cpp: YuE2 songs
 include 'kiln-whisper'  // whisper.cpp: speech to text with word timings
 include 'kiln-examples' // runnable demos (not published)
 include 'kiln-bench'    // A/B against ComfyUI's HTTP API (not published)
+include 'kiln-studio-server' // the local HTTP backend Kiln Studio (the desktop app) starts (not published)
 
 // Natives jars, org.kiln4j:kiln-natives-<os>-<arch>-<backend>: the engines' libraries from build/native/ (see
 // native/build.sh), one jar per platform and backend. A platform is included only when its libraries have been built,
