@@ -89,6 +89,7 @@ public class Search {
                     cur.setLength(0);
                 }
                 if (i == lines.size()) break;
+                if (cur.isEmpty() && line.isBlank()) continue;  // so a passage's line is its first text, not a blank before it
                 for (; line.length() > 2 * PASSAGE_CHARS; line = line.substring(2 * PASSAGE_CHARS))  // one very long line
                     out.add(new Passage(f, i + 1, line.substring(0, 2 * PASSAGE_CHARS)));
                 if (cur.isEmpty()) start = i + 1;
