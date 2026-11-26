@@ -57,20 +57,17 @@ public final class TtsModel implements AutoCloseable {
     static {
         try {
             ON_AUDIO = MethodHandles.lookup().findStatic(TtsModel.class, "onAudio",
-                    MethodType.methodType(int.class, MemorySegment.class, long.class, int.class, MemorySegment.class));
+                    MethodType.methodType(int.class, Sink.class, MemorySegment.class, long.class, int.class, MemorySegment.class));
         } catch (ReflectiveOperationException e) { throw new ExceptionInInitializerError(e); }
     }
     private record Sink(Call call, int sampleRate, Consumer<Audio> consumer) {}
 
-    private static final ThreadLocal<Sink> SINK = new ThreadLocal<>();
-
     /**
-     * The audio upcall. Nothing may escape it: an exception thrown into the engine's frames kills the JVM. So a
+     * The audio upcall, bound to its call's sink in that call's own stub (not a thread-local, which a call to another
+     * model from inside a consumer would replace and then clear). Nothing may escape it: an exception thrown into the engine's frames kills the JVM. So a
      * consumer's exception is recorded in the call, speech stops, and {@link #speak} rethrows it on return.
      */
-    private static int onAudio(MemorySegment pcm, long frames, int channels, MemorySegment user) {
-        Sink sink = SINK.get();
-        if (sink == null) return 0;
+    private static int onAudio(Sink sink, MemorySegment pcm, long frames, int channels, MemorySegment user) {
         try {
             float[] f = pcm.reinterpret(frames * channels * Float.BYTES).toArray(JAVA_FLOAT);
             sink.consumer().accept(Pcm.toAudio(f, channels, sink.sampleRate()));
@@ -231,8 +228,8 @@ public final class TtsModel implements AutoCloseable {
         try (Arena a = Arena.ofConfined()) {
             MemorySegment cb = MemorySegment.NULL;
             if (onChunk != null) {  // with a callback the engine streams (decodes chunk by chunk); without, it doesn't
-                SINK.set(new Sink(call, sampleRate, onChunk));
-                cb = NativeLibrary.linker().upcallStub(ON_AUDIO, AUDIO_CB, a);
+                cb = NativeLibrary.linker().upcallStub(
+                        MethodHandles.insertArguments(ON_AUDIO, 0, new Sink(call, sampleRate, onChunk)), AUDIO_CB, a);
             }
             MemorySegment pcm = a.allocate(ADDRESS), nFrames = a.allocate(JAVA_LONG), nGen = a.allocate(JAVA_INT);
             int rc = (int) SPEAK.invokeExact(handle, a.allocateFrom(text), cstr(a, voice), cstr(a, o.lang()), o.temperature(),
@@ -247,7 +244,6 @@ public final class TtsModel implements AutoCloseable {
             if (rc != 0) throw new IllegalStateException("tts failed (rc=" + rc + "): " + error());
             return Pcm.toAudio(f, channels, sampleRate);
         } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
-        finally { SINK.remove(); }
     }
 
     private static MemorySegment cstr(Arena a, String s) { return s == null ? MemorySegment.NULL : a.allocateFrom(s); }
