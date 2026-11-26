@@ -270,7 +270,7 @@ native/build.sh vulkan            # or hip | cuda | metal | cpu; optionally list
 applies Fornax's patches from `native/patches/` (when a pin or a patch changes, it first resets that engine's tracked
 files, so keep no edits of your own there), and writes the libraries to `build/native/<os>-<arch>-<backend>/`.
 The Gradle build points the examples and tests at that folder; pick another backend with `-Pfornax.backend=hip`. The integration tests skip any model that isn't
-downloaded; `scripts/test-models.sh` fetches the ones they use (about 16 GB, small enough for a 32 GB machine).
+downloaded; `scripts/test-models.sh` fetches the ones they use (about 20 GB, small enough for a 32 GB machine).
 
 From Linux, `./gradlew testOnMac -Pfornax.macHost=<host>` (or `scripts/test-on-mac.sh <host>`) runs the tests on a Mac
 over SSH against Metal: it copies the working tree there, builds the Metal libraries, runs `./gradlew test` and brings
