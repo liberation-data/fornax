@@ -21,6 +21,13 @@ subprojects {
     java {
         toolchain { languageVersion = JavaLanguageVersion.of(25) }
     }
+    // Built with JDK 25, for Java 22 and newer: the FFM API is final since 22. -Pkiln.testJdk=22 runs the tests there.
+    tasks.withType(JavaCompile).configureEach { options.release = 22 }
+    if (findProperty('kiln.testJdk')) {
+        tasks.withType(Test).configureEach {
+            javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(findProperty('kiln.testJdk') as int) }
+        }
+    }
 
     tasks.withType(JavaCompile).configureEach { options.compilerArgs += ['-Xlint:all,-restricted'] }
     tasks.withType(Javadoc).configureEach { options.addBooleanOption('Xdoclint:none', true) }

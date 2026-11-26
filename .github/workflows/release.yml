@@ -178,10 +178,13 @@ jobs:
         with:
           persist-credentials: false
 
+      # 22 for the tests on the oldest Java Kiln supports; 25, the last, is JAVA_HOME and builds.
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: 25
+          java-version: |
+            22
+            25
 
       # Back into build/native/<dir>, where native/build.sh left them.
       - uses: actions/download-artifact@v8
@@ -200,6 +203,10 @@ jobs:
       # The Java modules' unit tests; the engine tests skip themselves without models.
       - name: Build and test
         run: ./gradlew --no-daemon build -Pversion="$VERSION" -Pkiln.natives.require=true
+
+      # The same tests on Java 22, which the jars are compiled for (options.release in build.gradle).
+      - name: Test on Java 22
+        run: ./gradlew --no-daemon test -Pversion="$VERSION" -Pkiln.natives.require=true -Pkiln.testJdk=22 -Porg.gradle.java.installations.fromEnv=JAVA_HOME_22_X64
 
       # Everything signed, into a local repository: what a release uploads, and what a dry run stops at.
       - name: Sign into a local repository
