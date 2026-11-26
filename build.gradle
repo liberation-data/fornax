@@ -199,7 +199,7 @@ project(':fornax-demucs') {
 project(':fornax-cli') {
     apply plugin: 'application'
     // The natives, as the samples take them: a fornax-natives jar, here every one this build has (settings.gradle
-    // includes a platform when native/build.sh has built it). -Pfornax.cli.nativesVersion=0.1.0 takes this platform's
+    // includes a platform when native/build.sh has built it). -Pfornax.cli.nativesVersion=0.2.0 takes this platform's
     // from Maven Central instead, for a build without natives of its own.
     def publishedNatives = findProperty('fornax.cli.nativesVersion')
     def hostPlatform = os != 'macos' ? 'linux-x86_64-vulkan' : (arch == 'arm64' ? 'macos-aarch64-metal' : 'macos-x86_64-metal')

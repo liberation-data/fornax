@@ -20,13 +20,13 @@ fornax chat qwen3-4b "Write a haiku about a fornax"
 
   ```sh
   git clone https://github.com/liberation-data/fornax.git && cd fornax
-  native/build.sh vulkan               # the engines, or skip this and add -Pfornax.cli.nativesVersion=0.1.0 below
+  native/build.sh vulkan               # the engines, or skip this and add -Pfornax.cli.nativesVersion=0.2.0 below
   ./gradlew :fornax-cli:installDist      # -> fornax-cli/build/install/fornax-cli/bin/fornax and lib/
   export PATH="$PWD/fornax-cli/build/install/fornax-cli/bin:$PATH"
   ```
 
   The distribution's `lib/` holds the Fornax jars and the natives jar for each platform built in `build/native/`.
-  `-Pfornax.cli.nativesVersion=0.1.0` takes this platform's natives jar from Maven Central instead. Copy the
+  `-Pfornax.cli.nativesVersion=0.2.0` takes this platform's natives jar from Maven Central instead. Copy the
   `fornax-cli` folder anywhere; `bin/fornax` can also be reached through a symlink.
 
 `fornax info` shows which Java, engines and cache it uses.

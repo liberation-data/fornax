@@ -10,8 +10,8 @@ needs no native build of its own.
 For a complete app to copy, see [`samples/hello-fornax`](https://github.com/liberation-data/fornax/tree/main/samples/hello-fornax):
 a standalone Gradle and Maven project that streams a chat reply from Qwen3 4B. Fetch the model, then run
 `./gradlew run` or `mvn -q compile exec:java`. To try it against a Fornax you built, `./gradlew publishToMavenLocal`
-in the Fornax repository and run the sample with `-PfornaxLocal=true -PfornaxVersion=0.1.0-SNAPSHOT` (Gradle) or
-`-Dfornax.version=0.1.0-SNAPSHOT` (Maven).
+in the Fornax repository and run the sample with `-PfornaxLocal=true -PfornaxVersion=0.2.0-SNAPSHOT` (Gradle) or
+`-Dfornax.version=0.2.0-SNAPSHOT` (Maven).
 
 ## The artifacts
 
@@ -45,7 +45,7 @@ The Java packages keep their names: `org.liberationdata.fornax`, `org.liberation
 In `build.gradle.kts`, pick the natives jar for the machine that builds:
 
 ```kotlin
-val fornaxVersion = "0.1.0"
+val fornaxVersion = "0.2.0"
 val fornaxNatives = when {
     !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
     System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
@@ -66,7 +66,7 @@ A profile per platform, activated by the OS, names the natives jar:
 
 ```xml
 <properties>
-    <fornax.version>0.1.0</fornax.version>
+    <fornax.version>0.2.0</fornax.version>
 </properties>
 
 <dependencies>

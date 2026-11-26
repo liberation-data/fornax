@@ -26,7 +26,7 @@ try (var llm = new LlamaModel("Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {   // weig
   There is no Python, no model server, no HTTP, no JSON round trip and no second process. Weights stay resident
   between calls, and tokens stream back to a Java callback as they are produced.
 
-Fornax binds native inference engines with Java's Foreign Function & Memory API (Java 22+; Fornax 0.1.0 itself needs 25):
+Fornax binds native inference engines with Java's Foreign Function & Memory API (Java 22+; Kiln 0.1.0 itself needs 25):
 
 | Module | Engine | Models |
 |---|---|---|
@@ -83,7 +83,7 @@ unless `-Dfornax.allowCpu=true` (or `FORNAX_ALLOW_CPU=true`).
 Gradle (`build.gradle.kts`), choosing the natives jar for the machine that builds:
 
 ```kotlin
-val fornaxVersion = "0.1.0"
+val fornaxVersion = "0.2.0"
 val fornaxNatives = when {
     !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
     System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
@@ -100,7 +100,7 @@ Maven, with a profile per platform that the OS activates and that names the nati
 
 ```xml
 <properties>
-    <fornax.version>0.1.0</fornax.version>
+    <fornax.version>0.2.0</fornax.version>
 </properties>
 
 <dependencies>
@@ -348,13 +348,13 @@ server, build it from source: it needs JDK 25 to build and Java 22 or newer to r
 `PATH`).
 
 ```sh
-native/build.sh vulkan                          # the engines (or -Pfornax.cli.nativesVersion=0.1.0, below)
+native/build.sh vulkan                          # the engines (or -Pfornax.cli.nativesVersion=0.2.0, below)
 ./gradlew :fornax-cli:installDist                 # -> fornax-cli/build/install/fornax-cli/{bin,lib}
 export PATH="$PWD/fornax-cli/build/install/fornax-cli/bin:$PATH"
 ```
 
 The distribution's `lib/` holds the natives jar of each platform built in `build/native/`; with
-`-Pfornax.cli.nativesVersion=0.1.0` it takes this platform's from Maven Central instead. `FORNAX_LIBRARY_PATH` points it
+`-Pfornax.cli.nativesVersion=0.2.0` it takes this platform's from Maven Central instead. `FORNAX_LIBRARY_PATH` points it
 at other native libraries. The launcher, `bin/fornax`, takes its Java, its jars and its natives from `FORNAX_JAVA`,
 `FORNAX_CLI_LIB` and `FORNAX_LIBRARY_PATH`, or from placeholders an installer fills in; see
 [The fornax command](https://fornax4j.org/docs/guides/cli/).

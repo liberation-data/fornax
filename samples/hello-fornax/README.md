@@ -6,7 +6,7 @@ this folder out of the repository and build it anywhere.
 
 ## Prerequisites
 
-- JDK 25 for Fornax 0.1.0; later releases run on Java 22 or newer.
+- JDK 25 for Kiln 0.1.0; later releases run on Java 22 or newer.
 - A GPU driver: Vulkan on Linux x86-64 (glibc 2.39 or newer), or macOS 13.3 or newer (Metal).
 - The model, fetched with the [Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/guides/cli):
 
@@ -29,6 +29,6 @@ The version is `fornaxVersion` in `gradle.properties` and `fornax.version` in `p
 yourself, run `./gradlew publishToMavenLocal` in the Fornax repository, then:
 
 ```sh
-./gradlew run -PfornaxLocal=true -PfornaxVersion=0.1.0-SNAPSHOT  # -PfornaxLocal adds ~/.m2 to the repositories
-mvn -q compile exec:java -Dfornax.version=0.1.0-SNAPSHOT       # Maven always looks in ~/.m2 first
+./gradlew run -PfornaxLocal=true -PfornaxVersion=0.2.0-SNAPSHOT  # -PfornaxLocal adds ~/.m2 to the repositories
+mvn -q compile exec:java -Dfornax.version=0.2.0-SNAPSHOT       # Maven always looks in ~/.m2 first
 ```

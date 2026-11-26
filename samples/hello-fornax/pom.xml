@@ -9,7 +9,7 @@
 
     <properties>
         <!-- The Fornax release to build against (Gradle: gradle.properties). Override with -Dfornax.version=... -->
-        <fornax.version>0.1.0</fornax.version>
+        <fornax.version>0.2.0</fornax.version>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>

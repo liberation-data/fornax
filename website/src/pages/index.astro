@@ -119,8 +119,8 @@ val natives = when {
     else -> "macos-x86_64-metal"
 }
 dependencies {
-    implementation("org.fornax4j:fornax-llama:0.1.0")
-    runtimeOnly("org.fornax4j:fornax-natives-$natives:0.1.0")
+    implementation("org.fornax4j:fornax-llama:0.2.0")
+    runtimeOnly("org.fornax4j:fornax-natives-$natives:0.2.0")
 }`;
 
 const download = `fornax pull qwen3-4b
@@ -140,7 +140,7 @@ const build = `native/build.sh vulkan     # or hip | cuda | metal | cpu
 ./gradlew single           # an LLM writes a song, ACE-Step sings it, FLUX.2 klein paints the cover
 ./gradlew image --args='klein out.png "a neon sign that says FORNAX"'`;
 
-const installs = ['implementation("org.fornax4j:fornax-llama:0.1.0")', 'hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf'];
+const installs = ['implementation("org.fornax4j:fornax-llama:0.2.0")', 'hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf'];
 const theme = 'vitesse-dark';
 ---
 
@@ -579,7 +579,7 @@ const theme = 'vitesse-dark';
                             <li><span>Text streams token by token to any callback, such as <code>System.out::print</code>.</span></li>
                             <li><span>Tool calling with <code>chatJson</code>: OpenAI-style messages and tools in, <code>tool_calls</code> out.</span></li>
                             <li><span>Audio comes back as PCM; images as a <code>BufferedImage</code>.</span></li>
-                            <li><span>Java 22 or newer (Fornax 0.1.0 needs 25). Instances aren’t thread-safe.</span></li>
+                            <li><span>Java 22 or newer (Kiln 0.1.0 needs 25). Instances aren’t thread-safe.</span></li>
                         </ul>
                     </div>
                     <div class="panel">
@@ -849,7 +849,7 @@ const theme = 'vitesse-dark';
                         <p class="eyebrow">Getting started</p>
                         <h2>Add Fornax, fetch a model, run.</h2>
                         <p>
-                            Fornax is on Maven Central as <code>org.fornax4j</code>. You need Java 22 or newer (Fornax 0.1.0 itself needs 25),
+                            Fornax is on Maven Central as <code>org.fornax4j</code>. You need Java 22 or newer (Kiln 0.1.0 itself needs 25),
                             and on Linux your GPU’s Vulkan driver, which desktop installs already have (if not: <a href="/docs/gpu-drivers/">Installing GPU drivers</a>). Macs need nothing more.
                         </p>
                     </header>
