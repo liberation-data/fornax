@@ -47,8 +47,11 @@ try (var worker = new Worker("chat-models", Worker.Options.DEFAULT)) {
 
 Isolation covers `LlamaModel` today. The worker itself is generic: other engines need a `WorkerService` each, as
 `fornax-llama`'s `LlamaService` is.
-Within `LlamaModel` it covers chat and vision (`Mode.CHAT`). Embedding and reranking models don't run in a worker
-yet: under `fornax.isolation=process`, loading one fails with an `UnsupportedOperationException`, so load those in-process.
+Within `LlamaModel` it covers every mode: chat and vision (`Mode.CHAT`), embeddings (`Mode.EMBED`) and reranking
+(`Mode.RERANK`). Pass the mode as the constructor takes it: `LlamaModel.isolated(Weights.QWEN3_EMBEDDING_0_6B,
+Mode.EMBED)`, `isolated(gguf, gpuLayers, contextSize, Mode.RERANK)`, or `isolated(worker, gguf, gpuLayers, contextSize,
+mode)` for a shared worker. Embeddings come back through shared memory once a batch is large, so a big `embed` costs
+little more than in-process.
 
 ## When to choose it
 

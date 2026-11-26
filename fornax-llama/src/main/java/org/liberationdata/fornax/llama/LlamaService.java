@@ -1,13 +1,17 @@
 package org.liberationdata.fornax.llama;
 
 import org.liberationdata.fornax.Call;
+import org.liberationdata.fornax.Scored;
 import org.liberationdata.fornax.Wire;
 import org.liberationdata.fornax.WorkerService;
+import org.liberationdata.fornax.llama.LlamaModel.EmbedOptions;
 import org.liberationdata.fornax.llama.LlamaModel.Image;
 import org.liberationdata.fornax.llama.LlamaModel.Message;
+import org.liberationdata.fornax.llama.LlamaModel.Mode;
 import org.liberationdata.fornax.llama.LlamaModel.Options;
 import org.liberationdata.fornax.llama.LlamaModel.Result;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,13 +31,16 @@ public final class LlamaService implements WorkerService {
     /** config: {@link #config}. */
     public LlamaService(byte[] config) {
         Wire.In in = new Wire.In(config);
-        model = LlamaModel.inProcess(in.string(), in.string(), in.integer(), in.integer());
+        String gguf = in.string(), mmproj = in.string();
+        Mode mode = Mode.valueOf(in.string());
+        model = LlamaModel.inProcess(gguf, mmproj, mode, in.integer(), in.integer());
     }
 
     @Override public byte[] call(String method, byte[] args, Call call, Consumer<byte[]> events) {
         Wire.In in = new Wire.In(args == null ? new byte[0] : args);
         return switch (method) {
-            case "vision" -> new Wire.Out().bool(model.supportsVision()).toBytes();
+            case "info" -> new Wire.Out().bool(model.supportsVision())
+                    .integer(model.mode() == Mode.EMBED ? model.embeddingSize() : 0).toBytes();
             case "chat" -> {
                 List<Message> messages = messages(in);
                 Options o = options(in);
@@ -51,6 +58,15 @@ public final class LlamaService implements WorkerService {
                 Consumer<String> p = in.bool() ? pieces(events) : null;
                 yield result(images.isEmpty() ? model.completeOn(call, prompt, o, p) : model.completeImages(call, prompt, images, o, p));
             }
+            case "embed" -> {
+                List<String> texts = strings(in);
+                String prefix = in.string();
+                yield embeddings(model.embedOn(call, texts, new EmbedOptions(prefix, in.bool())));
+            }
+            case "rerank" -> {
+                String query = in.string();
+                yield scores(model.rerankOn(call, query, strings(in)));
+            }
             default -> throw new UnsupportedOperationException("LlamaService has no method " + method);
         };
     }
@@ -61,8 +77,8 @@ public final class LlamaService implements WorkerService {
 
     // ---- the encoding, shared with LlamaModel's isolated side ----
 
-    static byte[] config(String gguf, String mmproj, int gpuLayers, int contextSize) {
-        return new Wire.Out().string(gguf).string(mmproj).integer(gpuLayers).integer(contextSize).toBytes();
+    static byte[] config(String gguf, String mmproj, Mode mode, int gpuLayers, int contextSize) {
+        return new Wire.Out().string(gguf).string(mmproj).string(mode.name()).integer(gpuLayers).integer(contextSize).toBytes();
     }
 
     static byte[] chatArgs(List<Message> messages, Options o, boolean stream) {
@@ -84,6 +100,45 @@ public final class LlamaService implements WorkerService {
         return options(images(out, images), o).bool(stream).toBytes();
     }
 
+    static byte[] embedArgs(List<String> texts, EmbedOptions o) {
+        return strings(new Wire.Out(), texts).string(o.prefix()).bool(o.normalize()).toBytes();
+    }
+
+    static byte[] rerankArgs(String query, List<String> documents) {
+        return strings(new Wire.Out().string(query), documents).toBytes();
+    }
+
+    /** Embeddings as a count, a length and the floats in one block (a big batch goes through shared memory). */
+    static byte[] embeddings(float[][] v) {
+        int dim = v.length == 0 ? 0 : v[0].length;
+        ByteBuffer floats = ByteBuffer.allocate(Math.multiplyExact(v.length, dim) * Float.BYTES);
+        for (float[] e : v) for (float x : e) floats.putFloat(x);
+        return new Wire.Out().integer(v.length).integer(dim).bytes(floats.array()).toBytes();
+    }
+
+    static float[][] decodeEmbeddings(byte[] b) {
+        Wire.In in = new Wire.In(b);
+        int n = in.integer(), dim = in.integer();
+        ByteBuffer floats = ByteBuffer.wrap(in.bytes());
+        float[][] v = new float[n][dim];
+        for (float[] e : v) for (int i = 0; i < dim; i++) e[i] = floats.getFloat();
+        return v;
+    }
+
+    static byte[] scores(List<Scored> scores) {
+        Wire.Out out = new Wire.Out().integer(scores.size());
+        for (Scored s : scores) out.integer(s.index()).floatValue(s.score());
+        return out.toBytes();
+    }
+
+    static List<Scored> decodeScores(byte[] b) {
+        Wire.In in = new Wire.In(b);
+        int n = in.integer();
+        List<Scored> scores = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) scores.add(new Scored(in.integer(), in.floatValue()));
+        return scores;
+    }
+
     static Result decodeResult(byte[] b) {
         Wire.In in = new Wire.In(b);
         return new Result(in.string(), in.integer(), in.integer());
@@ -101,6 +156,19 @@ public final class LlamaService implements WorkerService {
         out.integer(images.size());
         for (Image img : images) out.integer(img.width()).integer(img.height()).bytes(img.rgb());
         return out;
+    }
+
+    private static Wire.Out strings(Wire.Out out, List<String> strings) {
+        out.integer(strings.size());
+        for (String s : strings) out.string(s);
+        return out;
+    }
+
+    static List<String> strings(Wire.In in) {
+        int n = in.integer();
+        List<String> strings = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) strings.add(in.string());
+        return strings;
     }
 
     static List<Image> images(Wire.In in) {
