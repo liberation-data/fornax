@@ -285,7 +285,7 @@ public final class WhisperModel implements AutoCloseable {
      *            to load its GPU build there otherwise)
      */
     public WhisperModel(String modelPath, Alignment alignment, boolean gpu) {
-        modelPath = ModelReferences.locate(modelPath, ENGINE).map(f -> ModelReferences.file(f, ENGINE).toString()).orElse(modelPath);
+        modelPath = ModelReferences.path(modelPath, ENGINE);
         try (Arena a = Arena.ofConfined()) {
             handle = (MemorySegment) CREATE.invokeExact(a.allocateFrom(modelPath), gpu ? 1 : 0, 0, 1, alignment.preset);
             if (handle.equals(MemorySegment.NULL)) throw new IllegalStateException("fornax_whisper_create: " + error());

@@ -161,9 +161,7 @@ final class Engines {
 
     // ComfyUI's int8 LTX keeps biases, norms and embedders in bf16; ggml's Vulkan and CPU backends can't add bf16 to f32,
     // so those (~0.9 GB) are widened to f32 at load, as VideoClip does (docs/engine-notes.md). The int8 linears are untouched.
-    static final String LTX_BF16_TO_F32 = ".*\\.bias=f32,.*_norm\\.weight=f32,.*to_gate_logits\\.weight=f32,"
-            + ".*adaln_single.*\\.weight=f32,.*(patchify_proj|proj_out)\\.weight=f32,"
-            + ".*(learnable_registers|keyframes_abs_pos_embedding)=f32";
+    static final String LTX_BF16_TO_F32 = DiffusionModel.Config.LTX_BF16_TO_F32;
 
     /** LTX-2.5, as VideoClip loads it; without an audio_vae part it makes video alone. */
     static Filmmaker ltx(Catalog.Model m) {

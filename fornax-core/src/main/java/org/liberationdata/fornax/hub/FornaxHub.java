@@ -201,6 +201,9 @@ public final class FornaxHub {
         return out;
     }
 
+    /** The sets this hub knows by name. */
+    List<ModelSet> catalogue() { return catalogue; }
+
     /** The set in this hub's catalogue with this id or alias. */
     Optional<ModelSet> alias(String name) { return catalogue.stream().filter(m -> m.isNamed(name.strip())).findFirst(); }
 

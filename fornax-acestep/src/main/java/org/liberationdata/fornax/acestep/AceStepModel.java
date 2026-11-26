@@ -4,9 +4,15 @@ import org.liberationdata.fornax.Audio;
 import org.liberationdata.fornax.Call;
 import org.liberationdata.fornax.ModelThread;
 import org.liberationdata.fornax.NativeLibrary;
+import org.liberationdata.fornax.hub.ModelReferences;
+import org.liberationdata.fornax.hub.ModelSet;
 
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 
@@ -41,8 +47,37 @@ public final class AceStepModel implements AutoCloseable {
     private final MemorySegment handle;
     private final ModelThread thread;
 
-    /** lmPath may be null to skip the 5 Hz LM (DiT-only: caption + lyrics drive generation directly). */
+    private static final ModelReferences.Engine SET = new ModelReferences.Engine("AceStepModel", "ACE-Step song models",
+            Set.of(ModelSet.Kind.SONG), Set.of(), "an ACE-Step set");
+    private static final ModelReferences.Engine FILE = new ModelReferences.Engine("AceStepModel",
+            "one file per path here (pass a set's name alone for the whole set)", Set.of(), Set.of("gguf"), "a GGUF");
+
+    /**
+     * The catalogue set with this name, kept loaded, downloaded on first use: {@code "ace-step-turbo"} (the DiT alone,
+     * with caption and lyrics), {@code "ace-step"} (turbo with the 4B lyric LM), {@code "ace-step-xl-turbo"} or
+     * {@code "ace-step-xl"}.
+     */
+    public AceStepModel(String model) { this(model, true); }
+
+    /** {@link #AceStepModel(String)}; keepLoaded false frees each stage's weights between generations. */
+    public AceStepModel(String model, boolean keepLoaded) { this(ModelReferences.set(model, SET, "acestep.cpp"), keepLoaded); }
+
+    private AceStepModel(Map<String, Path> files, boolean keepLoaded) {
+        this(files.containsKey("lm") ? files.get("lm").toString() : null, files.get("text_encoder").toString(),
+                files.get("dit").toString(), files.get("vae").toString(), keepLoaded);
+    }
+
+    /**
+     * Each path may be a model reference instead ({@code Serveurperso/ACE-Step-1.5-GGUF:vae-BF16.gguf}), downloaded on
+     * first use. lmPath may be null to skip the 5 Hz LM (DiT-only: caption + lyrics drive generation directly).
+     */
     public AceStepModel(String lmPath, String textEncPath, String ditPath, String vaePath, boolean keepLoaded) {
+        if (lmPath != null) ModelReferences.check(lmPath, FILE);   // every argument refused before any download
+        for (String p : new String[]{textEncPath, ditPath, vaePath}) ModelReferences.check(Objects.requireNonNull(p, "path"), FILE);
+        lmPath = lmPath == null ? null : ModelReferences.path(lmPath, FILE);
+        textEncPath = ModelReferences.path(textEncPath, FILE);
+        ditPath = ModelReferences.path(ditPath, FILE);
+        vaePath = ModelReferences.path(vaePath, FILE);
         try (Arena a = Arena.ofConfined()) {
             MemorySegment lm = lmPath == null ? MemorySegment.NULL : a.allocateFrom(lmPath);
             handle = (MemorySegment) CREATE.invokeExact(lm,

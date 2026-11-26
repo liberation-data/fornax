@@ -114,4 +114,56 @@ class ModelReferencesTest {
         assertInstanceOf(HubException.class, e.getCause());
         assertTrue(e.getMessage().startsWith("ggerganov/whisper.cpp:ggml-huge.bin: "), e.getMessage());
     }
+
+    static final ModelReferences.Engine SONGS = new ModelReferences.Engine("AceStepModel", "ACE-Step song models",
+            Set.of(Kind.SONG), Set.of(), "an ACE-Step set");
+
+    static List<ModelSet> songs() {
+        return List.of(
+                ModelSet.of("ace", Kind.SONG, "ACE", "acestep.cpp",
+                        Part.of("dit", "stems/htdemucs-GGUF", "htdemucs-F32.gguf"), Part.of("vae", "stems/htdemucs-GGUF", "htdemucs_6s-F32.gguf"))
+                        .withAliases("song:ace"),
+                ModelSet.of("yue", Kind.SONG, "YuE", "yue2.cpp", Part.of("model", "stems/htdemucs-GGUF", "htdemucs-F32.gguf")),
+                ModelSet.of("tiny", Kind.TRANSCRIPTION, "tiny", "whisper.cpp", Part.of("model", "ggerganov/whisper.cpp", "ggml-tiny.bin")));
+    }
+
+    @Test void aSetByNameIsDownloadedWithEveryRole() {
+        Map<String, Path> files = ModelReferences.set("song:ace", SONGS, "acestep.cpp", hub(songs()));
+        assertEquals(Set.of("dit", "vae"), files.keySet());
+        assertEquals("htdemucs_6s-F32.gguf", files.get("vae").getFileName().toString());
+        assertTrue(Files.isRegularFile(files.get("dit")));
+    }
+
+    @Test void aSetOfAnotherKindOrEngineIsRefusedBeforeAnyRequest() {
+        var e = assertThrows(IllegalArgumentException.class, () -> ModelReferences.set("yue", SONGS, "acestep.cpp", hub(songs())));
+        assertEquals("yue is a song model (yue2.cpp); AceStepModel loads ACE-Step song models", e.getMessage());
+        e = assertThrows(IllegalArgumentException.class, () -> ModelReferences.set("tiny", SONGS, null, hub(songs())));
+        assertEquals("tiny is a transcription model (whisper.cpp); AceStepModel loads ACE-Step song models", e.getMessage());
+        assertEquals(0, fake.heads.get());
+        assertTrue(fake.gets.isEmpty());
+    }
+
+    @Test void aNameThatIsntASetListsTheOnesThatFit() throws Exception {
+        Path file = Files.writeString(dir.resolve("dit.gguf"), "x");
+        for (String name : List.of("stems/htdemucs-GGUF:htdemucs-F32.gguf", file.toString(), "nothing")) {
+            var e = assertThrows(IllegalArgumentException.class, () -> ModelReferences.set(name, SONGS, "acestep.cpp", hub(songs())));
+            assertEquals(name + " isn't a model set Fornax knows; AceStepModel loads ACE-Step song models by name (ace), "
+                    + "or each file by path or reference", e.getMessage());
+        }
+        assertEquals(List.of(), fake.listings);
+    }
+
+    @Test void aSetThatCantBeDownloadedFailsAsTheHubSays() {
+        var missing = ModelSet.of("gone", Kind.SONG, "Gone", "acestep.cpp", Part.of("dit", "stems/htdemucs-GGUF", "missing.gguf"));
+        var e = assertThrows(java.io.UncheckedIOException.class, () -> ModelReferences.set("gone", SONGS, "acestep.cpp", hub(List.of(missing))));
+        assertTrue(e.getMessage().startsWith("gone: "), e.getMessage());
+    }
+
+    @Test void aPathIsKeptAndAReferenceBecomesItsFile() throws Exception {
+        Path file = Files.writeString(dir.resolve("vae.gguf"), "x");
+        assertEquals(file.toString(), ModelReferences.path(file.toString(), STEMS, hub(List.of())));
+        assertTrue(ModelReferences.path("stems/htdemucs-GGUF:htdemucs-F32.gguf", STEMS, hub(List.of())).endsWith("htdemucs-F32.gguf"));
+        var e = assertThrows(IllegalArgumentException.class, () -> ModelReferences.path("song:ace", STEMS, hub(songs())));
+        assertTrue(e.getMessage().startsWith("song:ace is a song model (acestep.cpp); DemucsModel loads"), e.getMessage());
+    }
 }

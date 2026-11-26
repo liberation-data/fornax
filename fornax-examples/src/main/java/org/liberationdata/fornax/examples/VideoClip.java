@@ -20,9 +20,7 @@ import java.util.Map;
  * Needs ffmpeg on the PATH to write the .mp4 (frames and audio are kept beside it either way).
  */
 public class VideoClip {
-    static final String BF16_TO_F32 = ".*\\.bias=f32,.*_norm\\.weight=f32,.*to_gate_logits\\.weight=f32,"
-            + ".*adaln_single.*\\.weight=f32,.*(patchify_proj|proj_out)\\.weight=f32,"
-            + ".*(learnable_registers|keyframes_abs_pos_embedding)=f32";
+    static final String BF16_TO_F32 = DiffusionModel.Config.LTX_BF16_TO_F32;
 
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {

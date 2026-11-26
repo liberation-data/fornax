@@ -41,12 +41,11 @@ Fornax binds native inference engines with Java's Foreign Function & Memory API 
 Images and songs work the same way, and a vision language model takes images in:
 
 ```java
-try (var songs = new AceStepModel(lm, textEncoder, dit, vae, true)) {
+try (var songs = new AceStepModel("ace-step")) {   // a catalogue set: its four files, downloaded on first use
     songs.generate(requestJson).audio().writeWav(new File("song.wav"));
 }
 
-try (var images = new DiffusionModel(DiffusionModel.Config.builder()
-        .diffusionModel(flux).vae(vae).llm(textEncoder).build())) {
+try (var images = new DiffusionModel(DiffusionModel.Config.builder().model("flux2-klein").build())) {
     BufferedImage img = images.generate(new DiffusionModel.Request("a neon sign", 1024, 1024, 20, 4.0, 7)).get(0);
 }
 
@@ -139,20 +138,17 @@ Vulkan. For ROCm (HIP), CUDA or anything else, build the libraries yourself (see
 
 ## Quick start (from source)
 
-The fastest way to see Fornax work: build the engines, fetch three models, and run the demo. One Java program
-has Qwen3 4B write a country song, ACE-Step 1.5 sing it and FLUX.2 [klein] paint its cover, all in one JVM.
+The fastest way to see Fornax work: build the engines and run the demo. One Java program has Qwen3 4B write a
+country song, ACE-Step 1.5 sing it and FLUX.2 [klein] paint its cover, all in one JVM.
 
 ```sh
 native/build.sh vulkan            # or hip | cuda | metal | cpu (see Building)
-./gradlew :fornax-cli:installDist   # the fornax command (see The fornax command)
-export PATH="$PWD/fornax-cli/build/install/fornax-cli/bin:$PATH"
-fornax pull qwen3-4b                # Qwen3 4B Instruct
-fornax pull ace-step                # ACE-Step 1.5 turbo with its 4B lyric LM: four files
-fornax pull flux2-klein             # FLUX.2 [klein]: three files, from three repos
 ./gradlew single                  # writes single/single.wav, single/cover.png and single/lyrics.txt
 ```
 
-`hf download` works too (the files are listed under [Models](#models)); both use the Hugging Face cache.
+The first run downloads the three models into the Hugging Face cache, logging each file; later runs need no network.
+To fetch them ahead of time, run `fornax pull qwen3-4b`, `fornax pull ace-step-turbo` and `fornax pull flux2-klein`,
+or `hf download` (the files are listed under [Models](#models)).
 To try models without writing code, use [Fornax Studio](https://github.com/liberation-data/fornax-studio).
 
 ## Status
