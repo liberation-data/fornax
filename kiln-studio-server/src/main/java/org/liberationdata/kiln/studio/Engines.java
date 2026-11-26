@@ -4,6 +4,7 @@ import org.liberationdata.kiln.Audio;
 import org.liberationdata.kiln.acestep.AceStepModel;
 import org.liberationdata.kiln.llama.LlamaModel;
 import org.liberationdata.kiln.sd.DiffusionModel;
+import org.liberationdata.kiln.sd.Sd;
 import org.liberationdata.kiln.yue2.Yue2Model;
 
 import java.awt.Color;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * The studio's view of each engine: what a pooled model can do, behind an interface, so an engine can be swapped for a
@@ -96,6 +98,23 @@ final class Engines {
         };
     }
 
+    private static final ThreadLocal<StepSink> STEPS = new ThreadLocal<>();
+
+    /**
+     * stable-diffusion.cpp's progress callback is process-wide, so two models generating at once (an image and a video)
+     * would share one sink. It is called on the thread generating, as a blocking Kiln call runs on its caller's: each
+     * run's steps go to the sink that thread set with {@link #stepping}.
+     */
+    static final Sd.ProgressSink PROGRESS = (s, n, t) -> {
+        StepSink sink = STEPS.get();
+        if (sink != null) sink.step(s, n, t);
+    };
+
+    static <T> T stepping(StepSink onStep, Supplier<T> run) {
+        STEPS.set(onStep);
+        try { return run.get(); } finally { STEPS.remove(); }
+    }
+
     static Painter diffusion(Catalog.Model m) {
         var cfg = DiffusionModel.Config.builder()
                 .diffusionModel(m.path("diffusion_model").toString())
@@ -103,12 +122,10 @@ final class Engines {
                 .llm(m.path("llm").toString())
                 .build();
         var model = new DiffusionModel(cfg);
+        DiffusionModel.onProgress(PROGRESS);
         return new Painter() {
             @Override public BufferedImage paint(DiffusionModel.Request r, StepSink onStep) {
-                // stable-diffusion.cpp's progress callback is process-wide; the pool lets one request use a model at a time.
-                DiffusionModel.onProgress(onStep::step);
-                try { return model.generate(r).get(0); }
-                finally { DiffusionModel.onProgress((s, n, t) -> {}); }
+                return stepping(onStep, () -> model.generate(r).get(0));
             }
 
             @Override public void close() { model.close(); }
@@ -159,11 +176,10 @@ final class Engines {
                 .set("tensor_type_rules", LTX_BF16_TO_F32)
                 .build();
         var model = new DiffusionModel(cfg);
+        DiffusionModel.onProgress(PROGRESS);
         return new Filmmaker() {
             @Override public DiffusionModel.Video film(DiffusionModel.VideoRequest r, StepSink onStep) {
-                DiffusionModel.onProgress(onStep::step);
-                try { return model.generateVideo(r); }
-                finally { DiffusionModel.onProgress((s, n, t) -> {}); }
+                return stepping(onStep, () -> model.generateVideo(r));
             }
 
             @Override public void close() { model.close(); }

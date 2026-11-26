@@ -290,7 +290,8 @@ JSON schema. The app starts it; to run it on its own:
 ./gradlew :kiln-studio-server:studioJar   # one runnable jar, which the app ships
 ```
 
-Like every Kiln engine, a GPU build refuses to start on a machine with no GPU unless `KILN_ALLOW_CPU=true`.
+On Linux, as with every Kiln engine, a GPU build refuses to load a model on a machine with no usable GPU (the request's
+error says what to install) unless `KILN_ALLOW_CPU=true` is set in the server's environment.
 
 ## Roadmap
 

@@ -186,10 +186,10 @@ public final class StudioServer {
                 var r = lease.model().chat(messages, options, piece -> {
                     if (first.get() == 0) first.set(System.nanoTime());
                     pieces.incrementAndGet();
-                    sse.send("token", Json.obj("text", piece));
+                    sse.stream("token", Json.obj("text", piece));
                 });
                 sse.send("done", timing(t0, first.get(), r.promptTokens(), r.generatedTokens(), Json.obj("text", r.text())));
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | LinkageError e) {
                 sse.send("error", Json.obj("message", message(e)));
             }
         }
@@ -217,7 +217,7 @@ public final class StudioServer {
                     if (req.get("seed") != null) call.put("seed", Json.num(req, "seed", -1));
                     String reply = lease.model().chatJson(Json.write(call), piece -> {
                         if (first.get() == 0) first.set(System.nanoTime());
-                        sse.send("token", Json.obj("text", piece));
+                        sse.stream("token", Json.obj("text", piece));
                     });
                     Map<String, Object> r = Json.object(reply);
                     var usage = r.get("usage") instanceof Map<?, ?> u ? (Map<String, Object>) u : Map.<String, Object>of();
@@ -249,7 +249,7 @@ public final class StudioServer {
                 // chatJson streams only the reply's words, not its reasoning or tool calls: over the whole exchange, then.
                 done.put("tokensPerSecond", generated / Math.max(1e-9, (double) done.get("seconds")));
                 sse.send("done", done);
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | LinkageError e) {
                 sse.send("error", Json.obj("message", message(e)));
             }
         }
@@ -275,14 +275,14 @@ public final class StudioServer {
         try (var sse = new Sse(ex)) {
             try (var lease = leaseSaying(sse, m, Engines.Painter.class)) {
                 long t0 = System.nanoTime();
-                var img = lease.model().paint(request, (s, n, secs) -> sse.send("progress", Json.obj("step", s, "steps", n, "secondsPerStep", secs)));
+                var img = lease.model().paint(request, (s, n, secs) -> sse.stream("progress", Json.obj("step", s, "steps", n, "secondsPerStep", secs)));
                 double seconds = (System.nanoTime() - t0) / 1e9;
                 String name = "image-" + stamp() + ".png";
                 ImageIO.write(img, "png", studio.outputs().resolve(name).toFile());
                 sse.send("done", Json.obj("url", "/api/outputs/" + name, "file", studio.outputs().resolve(name).toString(),
                         "width", width, "height", height, "steps", steps, "cfg", cfg, "seed", seed, "seconds", seconds,
                         "secondsPerStep", seconds / Math.max(1, steps), "stub", studio.stubbed(Catalog.Kind.image)));
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | LinkageError e) {
                 sse.send("error", Json.obj("message", message(e)));
             }
         }
@@ -346,7 +346,7 @@ public final class StudioServer {
                         "seconds", seconds, "audioSeconds", r.audio().seconds(), "realtime", r.audio().seconds() / Math.max(1e-9, seconds),
                         "request", new Json.Raw(r.resolvedRequestJson() != null ? r.resolvedRequestJson() : requestJson),
                         "score", r.score(), "license", m.license(), "stub", studio.stubbed(Catalog.Kind.song)));
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | LinkageError e) {
                 sse.send("error", Json.obj("message", message(e)));
             }
         }
@@ -410,7 +410,7 @@ public final class StudioServer {
                 var last = new AtomicInteger();
                 var video = lease.model().film(request, (s, n, secs) -> {
                     if (s < last.getAndSet(s)) stage.incrementAndGet();
-                    sse.send("progress", Json.obj("step", s, "steps", n, "secondsPerStep", secs, "stage", stage.get(),
+                    sse.stream("progress", Json.obj("step", s, "steps", n, "secondsPerStep", secs, "stage", stage.get(),
                             "stages", twoStage ? 2 : 1));
                 });
                 double seconds = (System.nanoTime() - t0) / 1e9;
@@ -427,7 +427,7 @@ public final class StudioServer {
                         "width", f0.getWidth(), "height", f0.getHeight(), "frames", video.frames().size(), "fps", video.fps(),
                         "videoSeconds", video.seconds(), "audio", video.audio() != null, "steps", steps, "cfg", cfg, "seed", seed,
                         "twoStage", twoStage, "seconds", seconds, "stub", studio.stubbed(Catalog.Kind.video)));
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | LinkageError e) {
                 sse.send("error", Json.obj("message", message(e)));
             }
         }
@@ -488,7 +488,7 @@ public final class StudioServer {
                 var first = new AtomicLong();
                 java.util.function.Consumer<String> onToken = piece -> {
                     if (first.get() == 0) first.set(System.nanoTime());
-                    sse.send("token", Json.obj("text", piece));
+                    sse.stream("token", Json.obj("text", piece));
                 };
                 Map<String, Object> reply;
                 try (var lease = leaseSaying(sse, m, Engines.Seer.class)) {
@@ -520,7 +520,7 @@ public final class StudioServer {
                         Json.obj("text", text, "json", parsed, "finishReason", reply.get("finish_reason"),
                                 "width", width, "height", height, "read", read, "readSeconds", read == null ? null : readSeconds,
                                 "filledBy", filler == null ? null : filler.id(), "stub", studio.stubbed(Catalog.Kind.vision))));
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | LinkageError e) {
                 sse.send("error", Json.obj("message", message(e)));
             }
         }
@@ -656,10 +656,14 @@ public final class StudioServer {
                 + "-" + UUID.randomUUID().toString().substring(0, 6);
     }
 
-    /** What went wrong, in words: the cause's, where Kiln wrapped a native failure in a RuntimeException of its own. */
+    /**
+     * What went wrong, in words: the cause's, where Kiln wrapped a native failure in a RuntimeException of its own, or
+     * where an engine's class failed to load before (NoClassDefFoundError, whose cause holds the first failure's words).
+     */
     private static String message(Throwable e) {
         Throwable t = e;
-        while (t.getCause() != null && (t.getMessage() == null || t.getMessage().equals(t.getCause().toString()))) t = t.getCause();
+        while (t.getCause() != null && (t instanceof LinkageError || t.getMessage() == null
+                || t.getMessage().equals(t.getCause().toString()))) t = t.getCause();
         return t.getMessage() != null ? t.getMessage() : t.toString();
     }
 

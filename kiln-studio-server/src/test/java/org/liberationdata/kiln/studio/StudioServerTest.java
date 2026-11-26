@@ -120,6 +120,50 @@ class StudioServerTest {
         assertTrue(((Number) done.get("generatedTokens")).intValue() > 0);
     }
 
+    private static final String QWEN = "chat:Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf";
+
+    @Test void aPageThatLeavesStopsTheGeneration() throws Exception {
+        // The stub says 500 words, 20 ms each: ten seconds, unless the page going stops it.
+        String body = "{\"model\": \"" + QWEN + "\", \"messages\": [{\"role\": \"user\", \"content\": \""
+                + "word ".repeat(500) + "\"}]}";
+        try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+            byte[] b = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            socket.getOutputStream().write(("POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
+                    + "Content-Length: " + b.length + "\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            socket.getOutputStream().write(b);
+            var in = new java.io.BufferedReader(new java.io.InputStreamReader(socket.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
+            for (String line; (line = in.readLine()) != null && !line.equals("event: token"); ) {}
+        }
+        // The model is free again within moments, not when the abandoned reply would have ended.
+        long t0 = System.nanoTime();
+        var done = event(call("POST", "/api/chat", "{\"model\": \"" + QWEN + "\", \"messages\": [{\"role\": \"user\", \"content\": \"hi\"}]}").body(), "done");
+        assertEquals("(stub) You said: hi", done.get("text"));
+        assertTrue(System.nanoTime() - t0 < 5_000_000_000L, "waited " + (System.nanoTime() - t0) / 1e9 + " s for the abandoned reply");
+    }
+
+    @Test void anEngineThatCannotLoadSaysWhyInTheStream() throws Exception {
+        // Chat on its real engine, which can't load here: Kiln refuses a missing library, or a GPU build on a machine
+        // with no GPU, with an UnsatisfiedLinkError (an Error, so not a RuntimeException), then NoClassDefFoundError.
+        var real = new Studio(new Catalog(dir.resolve("hub")), 1L << 30, null,
+                EnumSet.complementOf(EnumSet.of(Catalog.Kind.chat)), dir.resolve("outputs"));
+        var bare = new StudioServer(real, 0, null);
+        bare.start();
+        try {
+            String body = "{\"model\": \"" + QWEN + "\", \"messages\": [{\"role\": \"user\", \"content\": \"hi\"}]}";
+            List<String> messages = new java.util.ArrayList<>();
+            for (int i = 0; i < 2; i++) {
+                var r = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + bare.port() + "/api/chat"))
+                        .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+                messages.add(event(r.body(), "error").get("message").toString());
+            }
+            // The second time too, it says why (not only that the class could not be initialised).
+            assertTrue(messages.get(1).contains(messages.get(0)), messages.toString());
+        } finally {
+            bare.stop();
+            real.close();
+        }
+    }
+
     @Test void toolsDemoAnswers() throws Exception {
         String s = call("POST", "/api/chat/tools", "{\"model\": \"chat:Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf\","
                 + "\"messages\": [{\"role\": \"user\", \"content\": \"2+2?\"}]}").body();

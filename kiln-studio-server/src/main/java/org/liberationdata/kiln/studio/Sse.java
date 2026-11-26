@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -13,8 +14,9 @@ import java.util.concurrent.TimeUnit;
 /**
  * A reply sent as server-sent events: {@code event: name} and {@code data: json}, flushed as each is sent.
  *
- * <p>{@link #send} never throws. Tokens are sent from inside a native callback (an FFM upcall), where an exception
- * would end the JVM; once the page has gone, sending just stops, and {@link #open} says so.
+ * <p>{@link #send} never throws: once the page has gone, sending just stops, and {@link #open} says so. A model's
+ * callback sends with {@link #stream} instead, which throws then: Kiln stops the generation and rethrows it from the
+ * call, so a page that leaves frees the model for the next request rather than holding it to the end.
  *
  * <p>A comment is sent every {@link #keepAliveMillis} while nothing else is: a model loading, or a video's decode, can
  * say nothing for minutes, and the studio's proxy (Node's fetch) gives up on a reply silent for five.
@@ -52,6 +54,11 @@ final class Sse implements AutoCloseable {
 
     boolean send(String event, Object data) {
         return write("event: " + event + "\ndata: " + Json.write(data) + "\n\n");
+    }
+
+    /** {@link #send}, from a model's callback: throws a CancellationException once the page has gone. */
+    void stream(String event, Object data) {
+        if (!send(event, data)) throw new CancellationException("the page has gone");
     }
 
     private synchronized boolean write(String block) {
