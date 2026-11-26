@@ -20,7 +20,7 @@ try (var llm = new LlamaModel("Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {   // weig
   There is no Python, no model server, no HTTP, no JSON round trip and no second process. Weights stay resident
   between calls, and tokens stream back to a Java callback as they are produced.
 
-Kiln binds native inference engines with Java's Foreign Function & Memory API (Java 22+, built and tested on 25):
+Kiln binds native inference engines with Java's Foreign Function & Memory API (Java 22+; Kiln 0.1.0 itself needs 25):
 
 | Module | Engine | Models |
 |---|---|---|
