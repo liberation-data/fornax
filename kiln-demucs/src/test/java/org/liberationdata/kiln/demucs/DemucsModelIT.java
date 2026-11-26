@@ -208,6 +208,21 @@ class DemucsModelIT {
         }
     }
 
+    /**
+     * close() or separate() on the same model from its own callback would free the weights under the running native
+     * call, or wait for itself: both are refused, the refusal comes back from the outer call, and the model still works.
+     */
+    @Test
+    void closeOrSeparateFromItsOwnCallbackIsRefused() {
+        var e = assertThrows(IllegalStateException.class,
+                () -> demucs.separate(mix, DemucsModel.Options.DEFAULT, (done, total) -> demucs.close()));
+        assertTrue(e.getMessage().contains("close()"), e.getMessage());
+        e = assertThrows(IllegalStateException.class, () -> demucs.separate(mix, DemucsModel.Options.DEFAULT,
+                (done, total) -> demucs.separate(slice(mix, 0, 1))));
+        assertTrue(e.getMessage().contains("own callbacks"), e.getMessage());
+        assertEquals(4, demucs.separate(slice(mix, 0, 1)).names().size());
+    }
+
     @Test
     void separatesAsyncAndCancelsThroughTheFuture() {
         Stems s = demucs.separateAsync(slice(mix, 0, 3)).join();
