@@ -176,6 +176,12 @@ public final class Worker implements AutoCloseable {
         try { return current != null && !current.dead ? current.sharedDir : null; } finally { lock.unlock(); }
     }
 
+    /** The wait before the next restart, measured from the last crash; zero when the last call succeeded: for tests. */
+    Duration nextBackoff() {
+        lock.lock();
+        try { return crashesInARow == 0 ? Duration.ZERO : Duration.ofNanos(backoffNanos()); } finally { lock.unlock(); }
+    }
+
     /** Whether {@link #close()} has been called. */
     public boolean isClosed() {
         lock.lock();
