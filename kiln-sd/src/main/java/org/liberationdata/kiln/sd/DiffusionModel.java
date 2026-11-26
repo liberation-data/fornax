@@ -8,9 +8,14 @@ import java.awt.image.BufferedImage;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.StructLayout;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 
@@ -37,16 +42,136 @@ public final class DiffusionModel implements AutoCloseable {
             public Builder diffusionModel(String p) { o.put("diffusion_model_path", p); return this; }
             public Builder vae(String p) { o.put("vae_path", p); return this; }
             public Builder llm(String p) { o.put("llm_path", p); return this; }
+            /**
+             * A ControlNet model, used by requests with a {@link Request#controlImage()}. FLUX.1 Controls and Flex.2
+             * take the control image natively and need none.
+             */
+            public Builder controlNet(String p) { o.put("control_net_path", p); return this; }
             public Builder set(String key, Object value) { o.put(key, value); return this; }
             public Config build() { return new Config(Map.copyOf(o)); }
         }
     }
 
-    /** Per-request options. */
+    /**
+     * A LoRA adapter applied to one request, at {@code weight} (1 is full strength; negative weights subtract it).
+     *
+     * <p>stable-diffusion.cpp reads LoRAs in the common formats (kohya / sd-scripts, diffusers / PEFT, ai-toolkit) and
+     * maps their tensor names onto the loaded model's family, so a LoRA works with the family it was trained for: SD
+     * 1.x/2.x/XL/3, FLUX.1, FLUX.2 (klein included), Qwen-Image and Qwen-Image-Edit, Z-Image, Wan and others. Kiln
+     * has rendered with one on FLUX.2 [klein] base 4B, and compiled the Qwen-Image-Edit Lightning recipe. A LoRA
+     * for another family fails or has no effect, so check what it was trained on.
+     *
+     * <p>The engine applies a LoRA to the diffusion model, the text encoder or both, whichever it has tensors for.
+     * How it is applied (merged into the weights, or at run time) is the context option {@code lora_apply_mode}:
+     * {@code auto} (the default), {@code immediately} or {@code at_runtime}.
+     */
+    public record Lora(Path file, float weight) {
+        public Lora {
+            Objects.requireNonNull(file, "file");
+            if (!Float.isFinite(weight)) throw new IllegalArgumentException("LoRA weight must be finite, was " + weight);
+        }
+
+        public Lora(Path file) { this(file, 1f); }
+    }
+
+    /**
+     * Per-request options.
+     *
+     * <ul>
+     *   <li>{@code refImages}: reference images, for models that edit or compose from them (FLUX.2, Qwen-Image-Edit,
+     *       FLUX.1 Kontext).</li>
+     *   <li>{@code initImage} and {@code strength} (img2img): start from this image instead of noise. {@code strength}
+     *       is how much of the schedule is re-run, from 0 (keep the image) to 1 (ignore it); {@code null} means the
+     *       engine's 0.75. The image is fitted to {@code width} x {@code height}.</li>
+     *   <li>{@code maskImage} (inpainting): only the white parts of the init image are repainted. It needs an init
+     *       image of the same size. Any model can inpaint this way (the mask limits the denoising); dedicated inpaint
+     *       models (SD inpaint, FLUX.1 Fill) also get the masked image as conditioning.</li>
+     *   <li>{@code controlImage} and {@code controlStrength}: a ControlNet hint (edges, depth, pose), with
+     *       {@link Config.Builder#controlNet(String)}, fitted to {@code width} x {@code height}. {@code null} strength
+     *       means the engine's 0.9. Models that take the hint natively (FLUX.1 Controls, Flex.2) ignore the
+     *       strength.</li>
+     *   <li>{@code loras}: LoRA adapters for this request.</li>
+     *   <li>{@code extra}: any other stable-diffusion.cpp image option, under its own key.</li>
+     * </ul>
+     *
+     * Settings the engine would silently ignore are refused when the request is generated: a strength or mask
+     * without an init image, a control strength without a control image, or an option with its own field set in
+     * {@code extra} instead.
+     */
     public record Request(String prompt, int width, int height, int steps, double cfg, long seed,
-                          List<BufferedImage> refImages, Map<String, Object> extra) {
+                          List<BufferedImage> refImages, Map<String, Object> extra,
+                          BufferedImage initImage, Double strength, BufferedImage maskImage,
+                          BufferedImage controlImage, Double controlStrength, List<Lora> loras) {
+        public Request {
+            refImages = refImages == null ? List.of() : List.copyOf(refImages);
+            extra = extra == null ? Map.of() : Map.copyOf(extra);
+            loras = loras == null ? List.of() : List.copyOf(loras);
+            if (strength != null && !(strength >= 0 && strength <= 1))
+                throw new IllegalArgumentException("strength must be between 0 and 1, was " + strength);
+            if (controlStrength != null && !(controlStrength >= 0 && Double.isFinite(controlStrength)))
+                throw new IllegalArgumentException("controlStrength must be finite and at least 0, was " + controlStrength);
+        }
+
+        public Request(String prompt, int width, int height, int steps, double cfg, long seed,
+                       List<BufferedImage> refImages, Map<String, Object> extra) {
+            this(prompt, width, height, steps, cfg, seed, refImages, extra, null, null, null, null, null, List.of());
+        }
+
         public Request(String prompt, int width, int height, int steps, double cfg, long seed) {
             this(prompt, width, height, steps, cfg, seed, List.of(), Map.of());
+        }
+
+        public Request withRefImages(List<BufferedImage> r) { return new Request(prompt, width, height, steps, cfg, seed, r, extra, initImage, strength, maskImage, controlImage, controlStrength, loras); }
+        public Request withExtra(Map<String, Object> e) { return new Request(prompt, width, height, steps, cfg, seed, refImages, e, initImage, strength, maskImage, controlImage, controlStrength, loras); }
+        /** img2img from {@code image}, at the engine's default strength (0.75). */
+        public Request withInitImage(BufferedImage image) { return new Request(prompt, width, height, steps, cfg, seed, refImages, extra, image, strength, maskImage, controlImage, controlStrength, loras); }
+        /** img2img from {@code image}: {@code strength} 0 keeps it, 1 ignores it. */
+        public Request withInitImage(BufferedImage image, double strength) { return new Request(prompt, width, height, steps, cfg, seed, refImages, extra, image, strength, maskImage, controlImage, controlStrength, loras); }
+        /** Inpainting: repaint only the white parts of the init image. */
+        public Request withMaskImage(BufferedImage mask) { return new Request(prompt, width, height, steps, cfg, seed, refImages, extra, initImage, strength, mask, controlImage, controlStrength, loras); }
+        /** A ControlNet hint, at the engine's default strength (0.9). */
+        public Request withControlImage(BufferedImage image) { return new Request(prompt, width, height, steps, cfg, seed, refImages, extra, initImage, strength, maskImage, image, controlStrength, loras); }
+        public Request withControlImage(BufferedImage image, double controlStrength) { return new Request(prompt, width, height, steps, cfg, seed, refImages, extra, initImage, strength, maskImage, image, controlStrength, loras); }
+        public Request withLoras(List<Lora> l) { return new Request(prompt, width, height, steps, cfg, seed, refImages, extra, initImage, strength, maskImage, controlImage, controlStrength, l); }
+        public Request withLoras(Lora... l) { return withLoras(List.of(l)); }
+
+        /** Engine keys that have their own Request field: setting them in extra as well is refused. */
+        static final List<String> TYPED_KEYS = List.of("strength", "control_strength", "init_image", "mask_image",
+                "control_image", "ref_images", "loras");
+
+        /**
+         * The scalar engine options for this request (images and LoRAs are set separately), after refusing settings
+         * the engine would silently ignore.
+         */
+        Map<String, Object> options() {
+            for (String k : TYPED_KEYS)
+                if (extra.containsKey(k))
+                    throw new IllegalArgumentException("'" + k + "' has its own Request field; set it there, not in extra");
+            if (initImage == null) {
+                if (strength != null)
+                    throw new IllegalArgumentException("strength only applies to img2img: give an initImage too, or drop strength");
+                if (maskImage != null)
+                    throw new IllegalArgumentException("maskImage marks what to repaint in the initImage: give an initImage too");
+            }
+            if (maskImage != null && (maskImage.getWidth() != initImage.getWidth() || maskImage.getHeight() != initImage.getHeight()))
+                throw new IllegalArgumentException("maskImage is " + maskImage.getWidth() + "x" + maskImage.getHeight()
+                        + " but initImage is " + initImage.getWidth() + "x" + initImage.getHeight() + "; they must match");
+            if (controlStrength != null && controlImage == null)
+                throw new IllegalArgumentException("controlStrength only applies with a controlImage");
+            for (Lora l : loras)
+                if (!Files.isRegularFile(l.file())) throw new IllegalArgumentException("LoRA file not found: " + l.file());
+            Map<String, Object> o = new LinkedHashMap<>();
+            o.put("prompt", prompt);
+            o.put("width", width);
+            o.put("height", height);
+            o.put("sample.steps", steps);
+            o.put("sample.guidance.txt_cfg", cfg);
+            o.put("seed", seed);
+            if (strength != null) o.put("strength", strength);
+            if (controlStrength != null) o.put("control_strength", controlStrength);
+            o.putAll(extra);
+            checkHires(o);
+            return o;
         }
     }
 
@@ -133,27 +258,27 @@ public final class DiffusionModel implements AutoCloseable {
     public List<BufferedImage> generate(Request r) { return thread.run(c -> generateOn(c, r)); }
 
     private List<BufferedImage> generateOn(Call call, Request r) {
+        Map<String, Object> o = r.options();
         Sd.CALL.set(call);
         try (Arena tmp = Arena.ofConfined()) {
             MemorySegment opt = (MemorySegment) Sd.img_gen_opt_create.invokeExact();
-            MemorySegment[] refs = new MemorySegment[r.refImages().size()];
+            List<MemorySegment> owned = new ArrayList<>();
             try {
-                Map<String, Object> o = new LinkedHashMap<>();
-                o.put("prompt", r.prompt());
-                o.put("width", r.width());
-                o.put("height", r.height());
-                o.put("sample.steps", r.steps());
-                o.put("sample.guidance.txt_cfg", r.cfg());
-                o.put("seed", r.seed());
-                o.putAll(r.extra());
-                checkHires(o);
                 applyAll(opt, o, tmp);
-                if (refs.length > 0) {
-                    for (int i = 0; i < refs.length; i++) refs[i] = toTensor(r.refImages().get(i), tmp);
-                    MemorySegment arr = tmp.allocate(ADDRESS, refs.length);
-                    for (int i = 0; i < refs.length; i++) arr.setAtIndex(ADDRESS, i, refs[i]);
-                    Sd.check((int) Sd.opt_set_tensors.invokeExact(opt, tmp.allocateFrom("ref_images"), arr, (long) refs.length), "set ref_images");
+                if (!r.refImages().isEmpty()) {
+                    MemorySegment arr = tmp.allocate(ADDRESS, r.refImages().size());
+                    for (int i = 0; i < r.refImages().size(); i++) {
+                        MemorySegment t = toTensor(r.refImages().get(i), tmp);
+                        owned.add(t);
+                        arr.setAtIndex(ADDRESS, i, t);
+                    }
+                    Sd.check((int) Sd.opt_set_tensors.invokeExact(opt, tmp.allocateFrom("ref_images"), arr, (long) r.refImages().size()), "set ref_images");
                 }
+                if (r.initImage() != null) setTensor(opt, "init_image", owned, toTensor(r.initImage(), tmp), tmp);
+                if (r.maskImage() != null) setTensor(opt, "mask_image", owned, toMaskTensor(r.maskImage(), tmp), tmp);
+                if (r.controlImage() != null) setTensor(opt, "control_image", owned, toTensor(r.controlImage(), tmp), tmp);
+                if (!r.loras().isEmpty())
+                    Sd.check((int) Sd.opt_set_loras.invokeExact(opt, tmp.allocateFrom("loras"), loraArray(r.loras(), tmp), (long) r.loras().size()), "set loras");
                 MemorySegment out = tmp.allocate(ADDRESS);
                 out.set(ADDRESS, 0, MemorySegment.NULL);
                 int status = (int) Sd.generate_image.invokeExact(ctx, opt, out);
@@ -161,18 +286,37 @@ public final class DiffusionModel implements AutoCloseable {
                 try {
                     checkRun(call, status, "sd_generate_image");
                     long n = (long) Sd.result_get_image_count.invokeExact(result);
-                    var images = new java.util.ArrayList<BufferedImage>();
+                    var images = new ArrayList<BufferedImage>();
                     for (long i = 0; i < n; i++) images.add(fromTensor((MemorySegment) Sd.result_get_image.invokeExact(result, i)));
                     return images;
                 } finally {
                     if (!result.equals(MemorySegment.NULL)) Sd.result_free.invokeExact(result);
                 }
             } finally {
-                for (MemorySegment t : refs) if (t != null) Sd.tensor_free.invokeExact(t);
+                for (MemorySegment t : owned) Sd.tensor_free.invokeExact(t);
                 Sd.opt_free.invokeExact(opt);
             }
         } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { Sd.CALL.remove(); }
+    }
+
+    /** sd_lora_t: { bool is_high_noise; float multiplier; const char* path; } */
+    static final StructLayout LORA = MemoryLayout.structLayout(
+            JAVA_BOOLEAN.withName("is_high_noise"), MemoryLayout.paddingLayout(3),
+            JAVA_FLOAT.withName("multiplier"), ADDRESS.withName("path"));
+
+    /** An sd_lora_t array for these LoRAs, with absolute paths, allocated in {@code a}. */
+    static MemorySegment loraArray(List<Lora> loras, Arena a) {
+        long size = LORA.byteSize();
+        long weight = LORA.byteOffset(MemoryLayout.PathElement.groupElement("multiplier"));
+        long path = LORA.byteOffset(MemoryLayout.PathElement.groupElement("path"));
+        MemorySegment arr = a.allocate(LORA, loras.size());
+        for (int i = 0; i < loras.size(); i++) {
+            arr.set(JAVA_BOOLEAN, i * size, false);   // high-noise LoRAs are for Wan2.2's second expert; images have none
+            arr.set(JAVA_FLOAT, i * size + weight, loras.get(i).weight());
+            arr.set(ADDRESS, i * size + path, a.allocateFrom(loras.get(i).file().toAbsolutePath().toString()));
+        }
+        return arr;
     }
 
     public Video generateVideo(VideoRequest r) { return thread.run(c -> generateVideoOn(c, r)); }
@@ -181,7 +325,7 @@ public final class DiffusionModel implements AutoCloseable {
         Sd.CALL.set(call);
         try (Arena tmp = Arena.ofConfined()) {
             MemorySegment opt = (MemorySegment) Sd.vid_gen_opt_create.invokeExact();
-            List<MemorySegment> owned = new java.util.ArrayList<>();
+            List<MemorySegment> owned = new ArrayList<>();
             try {
                 Map<String, Object> o = new LinkedHashMap<>();
                 o.put("prompt", r.prompt());
@@ -212,7 +356,7 @@ public final class DiffusionModel implements AutoCloseable {
                 try {
                     checkRun(call, status, "sd_generate_video");
                     long n = (long) Sd.result_get_image_count.invokeExact(result);
-                    var frames = new java.util.ArrayList<BufferedImage>((int) n);
+                    var frames = new ArrayList<BufferedImage>((int) n);
                     for (long i = 0; i < n; i++) frames.add(fromTensor((MemorySegment) Sd.result_get_image.invokeExact(result, i)));
                     int fps = (int) Sd.result_get_fps.invokeExact(result);
                     return new Video(frames, fps, fromAudio((MemorySegment) Sd.result_get_audio.invokeExact(result)));
@@ -311,14 +455,63 @@ public final class DiffusionModel implements AutoCloseable {
     }
 
     static MemorySegment toTensor(BufferedImage img, Arena a) throws Throwable {
+        return u8Tensor(rgb(img), 3, img.getWidth(), img.getHeight(), a);
+    }
+
+    /** A mask as one grey channel, the way sd-cli loads one (stb_image's luma, (77 R + 150 G + 29 B) / 256). */
+    static MemorySegment toMaskTensor(BufferedImage img, Arena a) throws Throwable {
+        return u8Tensor(grey(img), 1, img.getWidth(), img.getHeight(), a);
+    }
+
+    /** Interleaved RGB rows; a grey image's level goes to all three channels. */
+    static byte[] rgb(BufferedImage img) {
         int w = img.getWidth(), h = img.getHeight();
         byte[] px = new byte[w * h * 3];
+        byte[] levels = greyLevels(img);
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++) {
-                int rgb = img.getRGB(x, y), i = (y * w + x) * 3;
+                int i = (y * w + x) * 3;
+                if (levels != null) { px[i] = px[i + 1] = px[i + 2] = levels[y * w + x]; continue; }
+                int rgb = img.getRGB(x, y);
                 px[i] = (byte) (rgb >> 16); px[i + 1] = (byte) (rgb >> 8); px[i + 2] = (byte) rgb;
             }
-        MemorySegment shape = a.allocateFrom(JAVA_LONG, 3, w, h);
+        return px;
+    }
+
+    static byte[] grey(BufferedImage img) {
+        byte[] levels = greyLevels(img);
+        if (levels != null) return levels;
+        int w = img.getWidth(), h = img.getHeight();
+        byte[] px = new byte[w * h];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                int rgb = img.getRGB(x, y);
+                px[y * w + x] = (byte) ((((rgb >> 16) & 0xff) * 77 + ((rgb >> 8) & 0xff) * 150 + (rgb & 0xff) * 29) >> 8);
+            }
+        return px;
+    }
+
+    /**
+     * A grey image's stored levels as 8 bits (16-bit ones keep the high byte, as stb_image does), or null for any
+     * other image. Not getRGB: ImageIO reads a greyscale PNG as linear grey, and getRGB converts that to sRGB (100
+     * becomes 168), which would move a mask's 0.5 threshold and brighten a depth hint compared with sd-cli.
+     */
+    static byte[] greyLevels(BufferedImage img) {
+        if (img.getColorModel().getColorSpace().getType() != java.awt.color.ColorSpace.TYPE_GRAY) return null;
+        int bits = img.getColorModel().getComponentSize(0), w = img.getWidth(), h = img.getHeight();
+        var raster = img.getRaster();
+        byte[] px = new byte[w * h];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                int s = raster.getSample(x, y, 0);
+                px[y * w + x] = (byte) (bits >= 8 ? s >> (bits - 8) : s * 255 / ((1 << bits) - 1));
+            }
+        return px;
+    }
+
+    /** A U8 [C, W, H] tensor (channel first in shape, so the bytes are interleaved rows). */
+    static MemorySegment u8Tensor(byte[] px, int channels, int w, int h, Arena a) throws Throwable {
+        MemorySegment shape = a.allocateFrom(JAVA_LONG, channels, w, h);
         MemorySegment data = a.allocateFrom(JAVA_BYTE, px);
         MemorySegment t = (MemorySegment) Sd.tensor_create.invokeExact(Sd.SD_TENSOR_U8, 3L, shape, data, (long) px.length);
         if (t.equals(MemorySegment.NULL)) throw new Sd.SdException("sd_tensor_create: " + Sd.lastError());

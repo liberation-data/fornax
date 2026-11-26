@@ -67,6 +67,8 @@ export default defineConfig({
                         { slug: 'docs/guides/images' },
                         { slug: 'docs/guides/video' },
                         { slug: 'docs/guides/songs' },
+                        { slug: 'docs/guides/models' },
+                        { slug: 'docs/guides/cli', badge: { text: 'Next', variant: 'default' } },
                         { slug: 'docs/guides/model-pool' },
                         { slug: 'docs/guides/threading', badge: { text: 'Next', variant: 'default' } },
                         { slug: 'docs/guides/gpu-backends' }

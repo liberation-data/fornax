@@ -1,0 +1,19 @@
+diff --git a/src/dgl/models/lora.cpp b/src/dgl/models/lora.cpp
+index 039244e..30cc1f1 100644
+--- a/src/dgl/models/lora.cpp
++++ b/src/dgl/models/lora.cpp
+@@ -17,9 +17,12 @@ namespace sd::dgl::models {
+             return LORA_APPLY_AT_RUNTIME;
+ 
+         const auto& tensors  = loader.get_tensor_storage_map();
+-        const bool quantized = std::any_of(tensors.begin(), tensors.end(), [](const auto& entry) {
++        // fp8 weights count as quantized here: merging a LoRA into them immediately needs a CPY into F8_E4M3/E5M2,
++        // which the GPU backends (Vulkan at least) cannot run, and ggml aborts the process.
++        const auto is_f8 = [](ggml_type type) { return type == GGML_TYPE_F8_E4M3 || type == GGML_TYPE_F8_E5M2; };
++        const bool quantized = std::any_of(tensors.begin(), tensors.end(), [&](const auto& entry) {
+             const auto& tensor = entry.second;
+-            return tensor.w4_convrot_kind ||
++            return tensor.w4_convrot_kind || is_f8(tensor.type) || (tensor.expected_type < GGML_TYPE_COUNT && is_f8(tensor.expected_type)) ||
+                    (!tensor.is_int8_tensorwise &&
+                     (ggml_is_quantized(tensor.type) ||
+                      (tensor.expected_type < GGML_TYPE_COUNT && ggml_is_quantized(tensor.expected_type))));

@@ -20,7 +20,12 @@ Package `org.liberationdata.kiln`. The engine modules depend on it.
 
 | Type | |
 |---|---|
-| `HfCache` | finds files in the Hugging Face cache: `root()`, `find(repo, path)`, `require(repo, path)`, `requireAny(repo, path, ...)` |
+| `HfCache` | finds files in the Hugging Face cache: `root()`, `home()`, `find(repo, path)`, `require(repo, path)`, `requireAny(repo, path, ...)`, and the cache's contents: `repos(root)`, `files(root, repo)` |
+| `hub.KilnHub` | pulls, finds, reports and evicts model sets: `standard()`, `builder()`, `pull(set, listener)`, `pullAsync`, `plan`, `status`, `find`, `require`, `evict`. See [Downloading models](/docs/guides/models/) |
+| `hub.ModelSet` | a model as a set of files by role: `id`, `kind`, `title`, `engine`, `parts`, `license`, `gated`, `aliases`; `Part` (role and sources), `Source` (repo, file, revision) |
+| `hub.ModelCatalog` | the models Kiln's examples, CLI and Studio use: `all()`, `of(kind)`, `byName`, `require` |
+| `hub.ModelFolders` | folders searched after the cache (a ComfyUI `models/`): `configured()`, `find(part)` |
+| `hub.PullProgress`, `PullTask`, `PullPlan`, `ModelStatus`, `Eviction`, `HubException`, `HubToken` | a pull's progress, a background pull, its sizes, what is on disk, what eviction did, failures by reason, and where the token comes from |
 | `ModelPool` | keeps models loaded within a memory budget: `acquire(key, sizeBytes, loader)` returns a `Lease`; `unload`, `unloadAll`, `entries`, `loadedBytes`, `sizeOf(Path...)`. See [ModelPool and memory](/docs/guides/model-pool/) |
 | `ModelPool.Lease<M>` | a borrowed model: `model()`; `close()` gives it back |
 | `ModelPool.Entry` | a snapshot of one pooled model: `key`, `sizeBytes`, `loaded`, `inUse`, `lastUsed` |
@@ -85,10 +90,12 @@ Package `org.liberationdata.kiln.sd`. See [Images](/docs/guides/images/) and [Vi
 | `generateAsync(Request)`, `generateVideoAsync(VideoRequest)`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops a run at the next step (it throws `CancellationException`) |
 | `modelVersion()` | the model stable-diffusion.cpp detected |
 | `onProgress(sink)`, `onLog(sink)` | process-wide progress (step, steps, seconds per step) and log callbacks |
-| `DiffusionModel.Config` | `builder()`: `diffusionModel`, `vae`, `llm`, and `set(key, value)` for any context option |
-| `DiffusionModel.Request` | `prompt`, `width`, `height`, `steps`, `cfg`, `seed`, plus `refImages` and an `extra` options map |
+| `DiffusionModel.Config` | `builder()`: `diffusionModel`, `vae`, `llm`, `controlNet`, and `set(key, value)` for any context option |
+| `DiffusionModel.Request` | `prompt`, `width`, `height`, `steps`, `cfg`, `seed`, plus `refImages` and an `extra` options map; `withRefImages`, `withInitImage(image[, strength])` (img2img), `withMaskImage` (inpainting), `withControlImage(image[, strength])` (ControlNet), `withLoras`, `withExtra`. Settings the engine would ignore (a strength or mask without an init image, a control strength without a control image, a typed key in `extra`) throw `IllegalArgumentException` from `generate` |
+| `DiffusionModel.Lora` | `file`, `weight` (default 1): a LoRA for one request |
 | `DiffusionModel.VideoRequest` | the same, plus `frames` and `fps`; `withInitImage`, `withEndImage`, `withRefAudio`, `withExtra` |
 | `DiffusionModel.Video` | `frames`, `fps`, `audio` (or `null`), `seconds()` |
+| `Upscaler` | an ESRGAN-family upscaler: `new Upscaler(path[, tileSize])`, `scale()`, `upscale(image[, factor])` (a power of `scale()`), `upscaleAsync(...)` on its own thread; it can't be cancelled mid-pass |
 | `Sd` | the raw bindings to stable-diffusion.cpp's C API; `Sd.SdException` is what a failed call throws |
 
 Option keys are stable-diffusion.cpp's, from its
@@ -127,7 +134,9 @@ Package `org.liberationdata.kiln.whisper`. See [Speech to text](/docs/guides/spe
 | `multilingual()`, `type()`, `cancel()` | English-only or not, the model size, and stopping a call from another thread |
 | `WhisperModel.Weights` | the models Kiln knows by name: `LARGE_V3_TURBO`, `LARGE_V3_TURBO_Q8_0`, `BASE_EN`; `named(...)`, `path()`, `downloaded()`, `alignment` |
 | `WhisperModel.Alignment` | the DTW alignment heads for a model size (`LARGE_V3_TURBO`, `BASE_EN`, ...), or `NONE` |
-| `WhisperModel.Options` | `language`, `translate`, `initialPrompt`, `threads`, `beamSize`, `temperature`; `DEFAULT` and a `with...` for each |
+| `WhisperModel.Options` | `language`, `translate`, `initialPrompt`, `threads`, `beamSize`, `temperature`, `conditionOnPreviousText`, `suppressNonSpeech`, `temperatureIncrement`, `entropyThreshold`, `logProbThreshold`, `noSpeechThreshold`, `vad`; `DEFAULT` and a `with...` for each |
+| `WhisperModel.Vad` | voice activity detection: `Vad.of(path)` or `Vad.of(VadWeights)`, then `withThreshold`, `withMinSpeechMs`, `withMinSilenceMs`, `withMaxSpeechSeconds`, `withSpeechPadMs`, `withOverlapSeconds` |
+| `WhisperModel.VadWeights` | Silero VAD models by name: `SILERO_V6_2_0`, `SILERO_V5_1_2`; `named(...)`, `path()`, `downloaded()` |
 | `WhisperModel.Listener` | `progress(percent)` and `segment(segment)` as the transcription runs |
 | `Transcript` | `text`, `language`, `segments`; `words()`, `wordsTsv()`, `srt()`, `vtt()` |
 | `Transcript.Segment`, `Transcript.Word` | `start`, `end` (seconds), `text`; a segment's `words`, a word's `probability` |
@@ -160,4 +169,7 @@ used end to end.
 | `-Dkiln.vulkan.maxNodesPerSubmit` | graph nodes per Vulkan submission |
 | `KILN_VERBOSE` | the engines' own logs; `debug` for everything from stable-diffusion.cpp |
 | `KILN_ACESTEP_VAE_CHUNK` | ACE-Step's VAE decode tile, in frames (512) |
-| `HF_HUB_CACHE`, `HF_HOME` | where `HfCache` looks |
+| `HF_HUB_CACHE`, `HF_HOME` | where `HfCache` and `KilnHub` look |
+| `-Dkiln.modelDirs`, `KILN_MODEL_DIRS` | model folders `KilnHub` searches after the cache |
+| `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`), `HF_TOKEN_PATH`, `HF_ENDPOINT`, `HF_HUB_OFFLINE` | `KilnHub`'s token for gated repos, the Hub to download from, and no network |
+| `KILN_JAVA`, `KILN_CLI_LIB` | the `kiln` launcher's Java and jars folder (see [The kiln command](/docs/guides/cli/#the-launcher)) |

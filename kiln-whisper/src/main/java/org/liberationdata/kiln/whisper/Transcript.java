@@ -8,7 +8,8 @@ import java.util.Locale;
  * times) and the words in them, each with its own start, end and probability. Times are in seconds from the start of
  * the audio.
  *
- * @param language the language transcribed (detected, unless one was given), e.g. "en"
+ * @param language the language transcribed (detected, unless one was given), e.g. "en"; null when it was to be
+ *        detected and VAD found no speech
  */
 public record Transcript(String text, String language, List<Segment> segments) {
     public Transcript {

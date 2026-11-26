@@ -109,11 +109,79 @@ var options = WhisperModel.Options.DEFAULT
         .withInitialPrompt("Kiln, ggml, ComfyUI")   // names and spellings to expect
         .withBeamSize(1)                // greedy: faster; 5 (the default) is a little more accurate
         .withThreads(8)                 // 0 or less is whisper.cpp's default
-        .withTemperature(-1);           // below 0 is the default: 0, raised when a window fails its checks
+        .withTemperature(-1)            // below 0 is the default: 0, raised when a window fails its checks
+        .withVad(WhisperModel.VadWeights.SILERO_V6_2_0);   // transcribe only the speech (see below)
 ```
 
 large-v3-turbo was trained to transcribe, not to translate, so it translates poorly; for translation, use a full
 large or medium model.
+
+The rest of the options decide what Whisper does when a 30 s window goes wrong. The defaults are whisper.cpp's.
+
+| Option | Default | What it does |
+|---|---|---|
+| `vad` | none | a `Vad`: transcribe only the speech that voice activity detection finds |
+| `conditionOnPreviousText` | `true` | prompt each 30 s window with the text before it, which keeps spelling, punctuation and casing consistent |
+| `temperatureIncrement` | `0.2` | when a window fails one of the two checks below, decode it again this much hotter, up to 1.0 (0 never retries) |
+| `entropyThreshold` | `2.4` | fail a window whose last 32 tokens have less entropy than this: repetitive text (the most is ln 32, about 3.47) |
+| `logProbThreshold` | `-1` | fail a window whose average token log-probability is below this |
+| `noSpeechThreshold` | `0.6` | drop a window more likely than this to be silence that also fails the log-probability check |
+| `suppressNonSpeech` | `false` | never output non-speech tokens (♪, brackets, quotes, ...) |
+
+Each window of a transcription can draw on the text before it, but one transcription never draws on another, so
+transcribing the same audio twice gives the same text.
+
+## Silence, music and repeated lines
+
+In long silence, or under music with no voice, Whisper can hallucinate. Most often it repeats the last line it heard
+until the audio ends, or writes "Thank you." The line usually comes from the window before: its text is the prompt
+for the next window.
+
+Voice activity detection (VAD) fixes this at the source. [Silero VAD](https://github.com/snakers4/silero-vad) finds the
+speech first, and Whisper hears only that: the speech segments joined, with 0.1 s of silence between them. Times in
+the `Transcript` are still on the original audio. Kiln maps the DTW word times back itself, because whisper.cpp maps
+only its own timestamps. The VAD model is under 1 MB and runs on the CPU:
+
+```sh
+hf download ggml-org/whisper-vad ggml-silero-v6.2.0.bin
+```
+
+```java
+var options = WhisperModel.Options.DEFAULT.withVad(WhisperModel.VadWeights.SILERO_V6_2_0);
+// or a file, with whisper.cpp's VAD settings to tune
+var tuned = WhisperModel.Options.DEFAULT.withVad(WhisperModel.Vad.of("/models/ggml-silero-v6.2.0.bin")
+        .withThreshold(0.5f)            // speech probability for a 32 ms frame to count as speech
+        .withMinSpeechMs(250)           // shorter speech is dropped
+        .withMinSilenceMs(100)          // this much silence ends a segment
+        .withSpeechPadMs(30));          // padding either side of each segment
+```
+
+`VadWeights` names `SILERO_V6_2_0` (the version whisper.cpp's README uses) and `SILERO_V5_1_2`. whisper.cpp keeps the
+first VAD model it loads until the `WhisperModel` is closed.
+
+The test case was a song's vocal stem (189 s). After the last lyric, at 158 s, the rest is near-silence and a few
+held notes. With the defaults, large-v3-turbo wrote "Oh, what do you want me to kill me?" 24 times from 160 s to the
+end. Each option on its own, scored against the 29 vocal onsets before 158 s:
+
+| Options | Outro (after 158 s) | Word start vs onset: median | Within 100 ms |
+|---|---|---|---|
+| defaults | the line 24 times (217 words) | 28 ms | 84% |
+| `withVad(SILERO_V6_2_0)` | nothing | 28 ms | 88% |
+| `withConditionOnPreviousText(false)` | "Thank you." | 28 ms | 84% |
+| `withEntropyThreshold(2.8f)` | ". . . Thank you." | 28 ms | 84% |
+| `withSuppressNonSpeech(true)` | "Thank you." twice | 26 ms | 92% |
+
+All of them stop the repeats. They differ in what else they change:
+
+- **VAD** keeps the text and its punctuation, and is faster, since Whisper decodes less audio. It's the one to use
+  for songs, stems, and recordings with long pauses. It isn't the default because it needs the extra model file.
+- **`conditionOnPreviousText(false)`** costs nothing to set up, but without the text before it each window punctuates
+  on its own, so sentences sometimes run together ("a multi-state sin How the hell"). Speech without long silences
+  doesn't need it.
+- **A higher `entropyThreshold`** kept the lyrics word for word here. A song's real refrains are repetitive too,
+  though, and a window that fails is decoded again, hotter and less accurately, so raise it with care.
+- **`suppressNonSpeech(true)`** also stopped the repeats, but it changed more than the symbols it suppresses: most
+  commas and full stops went, and "ten" became "10".
 
 ## Progress and streaming
 
@@ -143,5 +211,7 @@ under half a second once it is in the page cache.
 ./gradlew transcribe --args='talk.wav'                                 # writes talk.words.tsv and talk.srt
 ./gradlew transcribe --args='talk.wav --language de --translate'
 ./gradlew transcribe --args='talk.wav --beam 1 --prompt "Kiln, ggml"' -Pmodel=base.en
+./gradlew transcribe --args='vocals.wav --vad'                         # Silero VAD v6.2.0; or --vad silero-v5.1.2, --vad file.bin
+./gradlew transcribe --args='talk.wav --no-context --entropy 2.8'      # also --suppress-nst, --temperature-inc, --logprob, --no-speech
 ./gradlew transcribe --args='talk.wav' -Pmodel=/path/ggml-model.bin       # any ggml Whisper file, timed without DTW
 ```

@@ -36,6 +36,31 @@ surprises you.
 - **HIP graphs overflow a JVM thread's stack.** ggml's HIP backend captures the graph as a HIP graph, and ROCm's
   `hip::Graph::ScheduleOneNode` recurses once per node. On a JVM thread (smaller stack than a CLI's 8 MB main
   thread) LTX segfaults in libamdhip64 during text encoding. `GGML_CUDA_DISABLE_GRAPHS=1` fixes it, and Kiln sets it by default (`-Dkiln.gpu.graphs=true` turns graphs back on).
+- **Image options the engine ignores without a word.** `strength` only reaches the program when there is an
+  `init_image`, and `control_strength` only with a `control_image`; otherwise both are accepted and dropped. (A
+  `mask_image` without an init image does fail, but only once generation starts.) LoRAs flagged `is_high_noise`
+  are skipped for images. `DiffusionModel.Request` has fields for these and refuses the combinations that would be
+  ignored.
+- **sd-cli and the C API take LoRAs differently.** sd-cli wants `--lora-model-dir` and `<lora:name:weight>` tags in
+  the prompt, which it strips; the C API takes a `loras` array of paths and weights. The compiled program is the
+  same (`scripts/compare-with-sdcli.sh` showed it for FLUX.2 klein and Qwen-Image-Edit 2511), so compare with the
+  tag in sd-cli's prompt and without it in Kiln's.
+- **A LoRA on fp8 weights aborted the process.** The default `lora_apply_mode=auto` merged the LoRA into fp8
+  weights (FLUX.2 klein's `-fp8` files) "immediately", which needs a copy into F8_E4M3 that Vulkan can't run:
+  `ggml-backend.cpp: pre-allocated tensor ... cannot run the operation (CPY)`, then SIGABRT. sd-cli does the same.
+  `native/patches/stable-diffusion.cpp/0002` makes `auto` treat fp8 like quantized weights and apply LoRAs at run
+  time; without the patch, `.set("lora_apply_mode", "at_runtime")` works around it.
+- **Qwen-Image-Edit 2511 needs `zero_cond_t`.** The engine enables it when the weights contain an
+  `__index_timestep_zero__` tensor (Comfy-Org's bf16 file does). Files without it need
+  `model_args = "qwen_image_zero_cond_t=true"`, or edits degrade badly, again with no error.
+- **Qwen-Image-Edit 2511 in bf16 doesn't fit Vulkan's GPU heap on the 8060S.** RADV exposes about 64 GB of the
+  128 GB as device memory. The 41 GB bf16 transformer plus the text encoder tracked 50.7 GB, and the first sampling
+  step then wanted 1.5 GB of compute with about 0.6 GB free (sd-cli fails the same way). `params_backend=te=cpu` did
+  not change the total. `params_backend=*=cpu` (sd-cli's `--offload-to-cpu`) keeps a RAM copy of every weight and
+  stages GPU copies on top; on unified memory that doubles the footprint, and the machine ran out of memory. Use an
+  fp8 or GGUF build of the model, or raise the GTT limit.
+- **sd-cli loads a mask as one grey channel** (stb_image's luma); `DiffusionModel` sends masks the same way, so a
+  mask's threshold at 0.5 falls on the same pixels.
 - **Fedora's ROCm lives in `/usr`**, not `/opt/rocm`; `native/build.sh hip` falls back to `/usr/lib64`.
 - **Cancel only reaches a run that has started.** `sd_cancel_generation` is thread-safe, but an idle context ignores
   it, so a cancel that lands just before `sd_generate_image` begins is lost. Kiln asks again from the progress callback.
@@ -69,6 +94,20 @@ surprises you.
   average, ends from 0.76 s to 0.08 s (synthesized narration with known gaps). Whisper's timestamp tokens (no DTW)
   were worse: starts up to 0.5 s early or late, and ends that ran into the next sentence.
 - **large-v3-turbo's segment times are coarse**, often whole seconds. Kiln fits each segment to its words.
+- **`no_context` is per call, not per window.** It only clears the text a previous `whisper_full` call left in the
+  state (and is on by default). Each 30 s window within a call is still prompted with the text before it, up to
+  `n_max_text_ctx` tokens; OpenAI's `condition_on_previous_text=False` is `n_max_text_ctx = 0`. The shim always sets
+  `no_context`, so transcriptions are independent, and `Options.conditionOnPreviousText(false)` sets
+  `n_max_text_ctx` to 0.
+- **VAD doesn't map DTW times.** With `vad` on, whisper.cpp transcribes the speech segments joined (each plus
+  `samples_overlap` of the audio after it, with 0.1 s of silence between) and maps segment and token `t0`/`t1` back to
+  the original audio, but not `t_dtw`. `Words.VadTimeline` rebuilds that layout from `whisper_full_get_vad_segment_t0`
+  and `_t1` and maps DTW times the way `whisper_map_token_time_segment_aware` does. VAD runs on the CPU, and the
+  state keeps the first VAD model it loads, whatever path a later call gives.
+- **Repeats in silence.** On a sung vocal stem with a near-silent 30 s outro, large-v3-turbo repeated the last line 24
+  times with the defaults. VAD, `n_max_text_ctx = 0`, `entropy_thold` 2.8 and `suppress_nst` each stopped it (the
+  speech-to-text guide has the numbers). `suppress_nst` also took out most commas and full stops, though they aren't
+  on its list.
 - **SPIRV-Headers.** whisper.cpp v1.9.6's ggml finds SPIRV-Headers but doesn't link the target into ggml-vulkan, so the
   headers must be on the compiler's include path. Fedora's `spirv-headers-devel` puts them in `/usr/include`; for a
   private install, pass `CMAKE_EXTRA="-DCMAKE_CXX_FLAGS=-I<prefix>/include"`.
