@@ -12,6 +12,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 
 import static java.lang.foreign.ValueLayout.ADDRESS;
@@ -98,9 +99,12 @@ public final class TtsModel implements AutoCloseable {
         public String mmproj() { return HfCache.require(repo, mmprojFile).toString(); }
         public boolean downloaded() { return HfCache.find(repo, modelFile).isPresent() && HfCache.find(repo, mmprojFile).isPresent(); }
 
-        /** By name, ignoring case and '-' vs '_': "kokoro", "zonos3", "lfm3-audio", "tiny-voca", "chatterbox-turbo", ... */
+        /**
+         * By name, ignoring case and '-' vs '_': "kokoro", "zonos3", "lfm3-audio", "tiny-voca", "chatterbox-turbo", ...
+         * Upper-cased in {@link Locale#ROOT}, so a Turkish default locale doesn't turn "lfm3-audio" into "LFM3_AUDİO".
+         */
         public static Weights named(String name) {
-            return valueOf(name.toUpperCase().replace('-', '_'));
+            return valueOf(name.toUpperCase(Locale.ROOT).replace('-', '_'));
         }
     }
 
@@ -158,6 +162,11 @@ public final class TtsModel implements AutoCloseable {
     /**
      * Speaks text with a voice (null for the model's default). onChunk (optional) streams the audio as it's decoded;
      * the returned Audio holds all of it either way.
+     *
+     * <p>A voice is one of {@link #voices()}, a word the model takes in its prompt (LFM3-Audio's "male"), or
+     * {@code "@<path>"}: a WAV or MP3 clip to speak like, for the models that clone (VoxCPM2, Qwen3-TTS). A
+     * {@code <path>.txt} beside the clip, holding what it says, lets the model continue that speaker rather than only
+     * imitate the sound, which holds an accent much steadier.
      */
     public Audio speak(String text, String voice, Options o, Consumer<Audio> onChunk) {
         cancelled = false;

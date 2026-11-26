@@ -161,7 +161,9 @@ var config = DiffusionModel.Config.builder()
         .build();
 ```
 
-An unknown key, or a value of the wrong type, fails with an `Sd.SdException` that names the key.
+A key or value the engine rejects fails with an `Sd.SdException` that names the key. A Java type Kiln can't pass
+(anything but `Boolean`, `Integer`, `Long`, another `Number`, `String` or `float[]`) fails with an
+`IllegalArgumentException`.
 
 ## Progress and logs
 

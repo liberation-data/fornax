@@ -56,7 +56,7 @@ hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Emb
 hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors
 hf download Comfy-Org/flux2-dev split_files/vae/flux2-vae.safetensors
 hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetensors
-./gradlew single                  # writes single.wav, cover.png and lyrics.txt
+./gradlew single                  # writes single/single.wav, single/cover.png and single/lyrics.txt
 ```
 
 To try models without writing code, use [Kiln Studio](https://github.com/liberation-data/kiln-studio).

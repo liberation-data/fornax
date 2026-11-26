@@ -26,6 +26,8 @@ const REPO = 'https://github.com/liberation-data/kiln';
 // Kiln Studio's latest release and the installers it attached, for the download buttons in the Studio section. None
 // (the repository still private, no release yet, or GitHub out of reach): the section says they are on their way.
 const [studio, studioPublic] = await Promise.all([studioRelease(), studioRepoPublic()]);
+// Download Kiln Studio (the hero, the closing call) goes to the buttons, or to the section that says they are coming.
+const studioHref = studio ? '#get-studio' : '#studio';
 const DESCRIPTION = 'Open models as plain Java calls: chat, vision, documents, images, songs, video and speech, running on your GPU, inside your JVM.';
 
 // The link preview: the video's title card (logo, kiln4j, tagline), 1200×630, at an absolute URL on the site's domain.
@@ -453,7 +455,7 @@ const theme = 'vitesse-dark';
                     ))}
                     <span class="sr" role="status"></span>
                 </div>
-                <p class="status">Early · Apache 2.0 · a Liberation Data project · <a href="#get-studio">Download Kiln Studio</a></p>
+                <p class="status">Early · Apache 2.0 · a Liberation Data project · <a href={studioHref}>Download Kiln Studio</a></p>
             </div>
         </header>
 
@@ -547,7 +549,7 @@ const theme = 'vitesse-dark';
                 <div class="wrap">
                     <header>
                         <p class="eyebrow">Engines and models</p>
-                        <h2>Four engines, one module each.</h2>
+                        <h2>Four engines, five modules.</h2>
                         <p>Each module binds one engine. Use one, or put several in the same JVM.</p>
                     </header>
                     <div class="row">
@@ -557,6 +559,13 @@ const theme = 'vitesse-dark';
                             <p class="via">on <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a></p>
                             <p>Any GGUF language model.</p>
                             <ul class="models"><li>Qwen</li><li>Llama</li><li>Gemma</li><li>Mistral</li><li>…</li></ul>
+                        </article>
+                        <article class="card engine">
+                            <p class="eyebrow">Speech</p>
+                            <h3>kiln-tts</h3>
+                            <p class="via">on <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a></p>
+                            <p>Text to speech, with built-in voices or a reference clip.</p>
+                            <ul class="models"><li>Kokoro</li><li>ZONOS3</li><li>LFM3-Audio</li><li>VoxCPM2</li><li>Qwen3-TTS</li><li>…</li></ul>
                         </article>
                         <article class="card engine">
                             <p class="eyebrow">Images</p>
@@ -777,7 +786,6 @@ const theme = 'vitesse-dark';
                     </div>
                     <ul>
                         <li><span>Test and document the HIP, CUDA and Metal builds; prebuilt native libraries per platform.</span></li>
-                        <li><span>Video through stable-diffusion.cpp: Wan and LTX.</span></li>
                                                 <li><span><code>kiln-embabel</code>: an Embabel Agent <code>LlmService</code> and <code>LocalModelSource</code>.</span></li>
                         <li><span>An optional OpenAI-compatible server.</span></li>
                         <li><span>Vision-language models through llama.cpp’s <code>mtmd</code>.</span></li>
@@ -803,7 +811,7 @@ const theme = 'vitesse-dark';
                     <div class="actions">
                         <a href={REPO} class="button primary">Kiln on GitHub</a>
                         <a href="/docs/getting-started/" class="button ghost">Getting started</a>
-                        <a href="#get-studio" class="button ghost">Download Kiln Studio</a>
+                        <a href={studioHref} class="button ghost">Download Kiln Studio</a>
                     </div>
                 </div>
             </section>
@@ -833,20 +841,25 @@ const theme = 'vitesse-dark';
             {
                 const flames = document.querySelector<HTMLElement>('.dark .flames');
                 const still = matchMedia('(prefers-reduced-motion: reduce), (max-width: 800px)');
-                if (flames && !still.matches) {
+                if (flames) {
                     const frames = [...flames.querySelectorAll('img')];
                     let shown = 0, queued = false;
+                    const show = (k: number) => { if (k !== shown) { frames[shown].classList.remove('on'); frames[k].classList.add('on'); shown = k; } };
                     const update = () => {
                         queued = false;
+                        // Turned still since (a narrower window, reduced motion switched on): back to the first frame, unmoved.
+                        if (still.matches) { show(0); for (const f of frames) f.style.transform = ''; return; }
                         const box = flames.getBoundingClientRect();
                         if (box.bottom < 0 || box.top > innerHeight) return;
-                        const k = Math.floor(scrollY / 40) % frames.length;
-                        if (k !== shown) { frames[shown].classList.remove('on'); frames[k].classList.add('on'); shown = k; }
+                        show(Math.floor(scrollY / 40) % frames.length);
                         const drift = (box.top + box.height / 2 - innerHeight / 2) * -0.2;
                         for (const f of frames) f.style.transform = `translateY(${drift.toFixed(1)}px)`;
                     };
-                    addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(update); } }, { passive: true });
-                    for (const f of frames) f.loading = 'eager';
+                    const queue = () => { if (!queued) { queued = true; requestAnimationFrame(update); } };
+                    addEventListener('scroll', queue, { passive: true });
+                    addEventListener('resize', queue);
+                    still.addEventListener('change', () => { if (!still.matches) for (const f of frames) f.loading = 'eager'; queue(); });
+                    if (!still.matches) for (const f of frames) f.loading = 'eager';
                     update();
                 }
             }
@@ -859,7 +872,10 @@ const theme = 'vitesse-dark';
                         await navigator.clipboard.writeText(button.dataset.copy ?? '');
                         button.classList.add('done');
                         if (status) status.textContent = 'Copied';
-                        setTimeout(() => button.classList.remove('done'), 1200);
+                        setTimeout(() => {
+                            button.classList.remove('done');
+                            if (status) status.textContent = '';
+                        }, 1200);
                     } catch {
                         /* No clipboard (an insecure context): the command is on screen to select. */
                     }
@@ -930,7 +946,8 @@ const theme = 'vitesse-dark';
             };
             const playVideo = () => {
                 const player = document.querySelector<HTMLElement>('.explainer .player');
-                if (!player) return;
+                // Once it has said it can't play, the hero's pill doesn't try again.
+                if (!player || player.querySelector('.unplayable')) return;
                 // Started by the hero's pill, the poster's own listener is still waiting.
                 player.removeEventListener('click', playVideo);
                 const video = document.createElement('video');

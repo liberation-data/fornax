@@ -25,7 +25,8 @@ void kiln_tts_info(kiln_tts * h, int32_t * sample_rate, int32_t * n_channels, in
 // Name of the idx-th predefined voice, NULL when out of range. Voice 0 is the model's default.
 const char * kiln_tts_voice_name(kiln_tts * h, int32_t idx);
 
-// Speaks text. voice: a predefined voice name, a model-specific voice word, or NULL/"" for the model's default.
+// Speaks text. voice: a predefined voice name, a model-specific voice word, "@<file>" for a WAV or MP3 reference clip
+// to speak like (with its transcript in "<file>.txt" if that exists), or NULL/"" for the model's default.
 // lang: NULL/"" for the model's default. temperature < 0 = the model's default. seed 0xFFFFFFFF = random.
 // speed <= 0 = the model's own pace (only some models take another value). max_frames <= 0 = the model's limit.
 // cb (optional) streams the audio as it is decoded. *out_pcm (interleaved float, malloc'd, free it with

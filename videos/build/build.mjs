@@ -3,7 +3,7 @@
  * the video's folder, videos/<name>/, unless they say otherwise. Ported from the Embabel Worlds landing page's video
  * build (worlds-landing/videos/build/build.mjs), without its publishing, review, hero cards and sting.
  *
- *   1. Voices each scene with Deepgram (DEEPGRAM_API_KEY), into narration/. A scene whose words have not changed is
+ *   1. Voices each scene with Deepgram (DEEPGRAM_API_KEY) or Kiln (`voice: kiln:...`), into narration/. A scene whose words have not changed is
  *      not sent again: narration/<n>.txt holds what its mp3 says. Committed, so a rebuild needs no key.
  *   2. Renders each card in cards/ (HTML, 1920 × 1080, sharing shared/cards/card.css) to a PNG with Chrome or
  *      Chromium, and gives it a slow push-in.
@@ -20,7 +20,8 @@
  * `--final` renders at 60fps with push-ins drawn from 8K (drafts are 30fps from 4K); `--pace=1.1` overrides the
  * script's pace. Needs ffmpeg, and Chrome or Chromium (CHROME_PATH, else /usr/bin/chromium-browser, else Chrome).
  *
- * A script's header may set `voice:`, `pace:`, `tail:` (silence after each scene's last word, 0.7 s), `opening:`
+ * A script's header may set `voice:` (a Deepgram voice, or `kiln:<model>`, `kiln:<model>:<voice>` or
+ * `kiln:<model>:@<clip>` for one voiced through Kiln's SpeakBatch, with `voice-prompt:` and `voice-seed:`), `pace:`, `tail:` (silence after each scene's last word, 0.7 s), `opening:`
  * (silence before the first word, 0.5 s), `duck: on` and `outro: a.mp4 | b.mp4` (the first that exists).
  */
 import { createHash } from 'node:crypto';
@@ -126,7 +127,13 @@ async function voiceScenes({ voice, voicePrompt, voiceSeed, scenes }) {
         const mp3 = join(VIDEO, 'narration', `${scene.n}.mp3`);
         const said = join(VIDEO, 'narration', `${scene.n}.txt`);
         /* A reference clip (`@file`) and its transcript (`file.txt`) are keyed by content, so changing either re-voices. */
-        const ref = kiln && voice.match(/:@(.+)$/)?.[1];
+        const clip = kiln ? voice.match(/:@(.+)$/)?.[1] : undefined;
+        const ref = clip ? resolve(VIDEO, clip) : undefined;
+        /* voices/ is not committed: without the clip, --no-voice cuts with the narration on disk. */
+        if (ref && !existsSync(ref)) {
+            if (args.has('--no-voice') && existsSync(mp3)) continue;
+            throw new Error(`scene ${scene.n}: the reference clip ${ref} is missing`);
+        }
         const refHash = ref ? ` ref ${createHash('sha256').update(readFileSync(ref)).update(existsSync(`${ref}.txt`) ? readFileSync(`${ref}.txt`) : '').digest('hex').slice(0, 16)}` : '';
         const want = `${kiln ? `${voice}${refHash} seed ${voiceSeed} ${voicePrompt}`.trim() : voice}\n${spoken(scene.words)}`;
         if (existsSync(mp3) && existsSync(said) && readFileSync(said, 'utf8') === want) continue;
@@ -136,7 +143,9 @@ async function voiceScenes({ voice, voicePrompt, voiceSeed, scenes }) {
         /* Each stretch between pauses is voiced on its own, then joined with the silence the pause asks for. */
         const pieces = spoken(scene.words).split(new RegExp(PAUSE.source));
         // `kiln:<model>` or `kiln:<model>:<voice>` (a named voice the model ships, e.g. kiln:zonos3:Rupert).
-        const [kilnModel, kilnVoice = ''] = voice.slice(5).split(':');
+        // A reference clip's path is the video folder's; SpeakBatch runs in the repository's root, so it gets it absolute.
+        const [kilnModel, named = ''] = voice.slice(5).split(':');
+        const kilnVoice = ref ? `@${ref}` : named;
         const parts = kiln ? voiceInKiln(scene, pieces, kilnModel, voicePrompt, voiceSeed, kilnVoice) : [];
         for (let k = 0; !kiln && k < pieces.length; k += 2) {
             if (k > 0) parts.push(Number(pieces[k - 1] ?? 0.65) || 0.65);
@@ -227,9 +236,12 @@ function cardClip(png, seconds, out) {
  */
 const FOOTAGE_SKIP = 0.6, FOOTAGE_MAX_SPEED = 3;
 function footageCard(mp4, seconds, out) {
-    const length = duration(mp4) - FOOTAGE_SKIP;
+    const total = duration(mp4);
+    // A take shorter than the skip keeps its last quarter second, rather than seeking past its end to no frames at all.
+    const skip = Math.min(FOOTAGE_SKIP, Math.max(0, total - 0.25));
+    const length = total - skip;
     const speed = Math.min(FOOTAGE_MAX_SPEED, Math.max(1, length / seconds));
-    const start = FOOTAGE_SKIP + Math.max(0, length - seconds * speed);
+    const start = skip + Math.max(0, length - seconds * speed);
     ffmpeg('-ss', start.toFixed(3), '-i', mp4, '-an', '-vf',
         `setpts=(PTS-STARTPTS)/${speed.toFixed(4)},scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=${FPS},tpad=stop_mode=clone:stop_duration=${seconds},format=yuv420p`,
         '-frames:v', String(Math.round(seconds * FPS)), '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', out);

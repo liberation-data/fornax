@@ -147,8 +147,8 @@ It was also about 2.7× faster per LTX step on the Radeon 8060S (44 s against 11
 first step). Build it with `native/build.sh hip`; see [Choosing a GPU backend](/docs/guides/gpu-backends/#hip-rocm).
 Kiln turns off ggml's HIP graphs by default, which would otherwise overflow a JVM thread's stack on LTX.
 
-For shorter clips on Vulkan, tiled VAE decoding and `-Dkiln.vulkan.maxNodesPerSubmit=8` keep each GPU submission
-short enough. See [Troubleshooting](/docs/troubleshooting/#long-gpu-work-loses-the-device).
+For shorter clips on Vulkan, tiled VAE decoding and `-Dkiln.vulkan.maxNodesPerSubmit=8` (`-Pkiln.vulkan.maxNodesPerSubmit=8`
+on `./gradlew video`) keep each GPU submission short enough. See [Troubleshooting](/docs/troubleshooting/#long-gpu-work-loses-the-device).
 
 ## Render small first
 
