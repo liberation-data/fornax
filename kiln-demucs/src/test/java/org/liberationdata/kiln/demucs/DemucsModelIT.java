@@ -138,6 +138,33 @@ class DemucsModelIT {
         for (int i = 1; i < seen.size(); i++) assertTrue(seen.get(i)[0] > seen.get(i - 1)[0]);
     }
 
+    static int segmentPasses(Audio audio, DemucsModel.Options o) {
+        int[] total = {0};
+        demucs.separate(audio, o, (done, t) -> total[0] = t);
+        return total[0];
+    }
+
+    /** Each option crosses FFM as its own argument; each one changes what the engine does. */
+    @Test
+    void optionsReachTheEngine() {
+        var o = DemucsModel.Options.DEFAULT;
+        int plain = segmentPasses(mix, o);
+        assertEquals(2 * plain, segmentPasses(mix, o.withShifts(2)), "a pass per shift");
+        assertTrue(segmentPasses(mix, o.withOverlap(0.5f)) > plain, "more overlap, more segments");
+        Audio clip = slice(mix, 0, 3);
+        float[] a = demucs.separate(clip, o.withShifts(1).withSeed(1)).get("drums").left();
+        float[] b = demucs.separate(clip, o.withShifts(1).withSeed(2)).get("drums").left();
+        assertFalse(Arrays.equals(a, b), "the seed picks the shift");
+    }
+
+    @Test
+    void runsOnTheCpu() {
+        try (var cpu = new DemucsModel(DemucsModel.Weights.HTDEMUCS.path(), false, 0)) {
+            assertEquals("CPU", cpu.backend());
+            assertEquals(48000, cpu.separate(slice(mix, 0, 1)).vocals().left().length);
+        }
+    }
+
     @Test
     void cancelsFromTheProgressCallbackAndKeepsWorking() {
         assertThrows(CancellationException.class,

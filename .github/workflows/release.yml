@@ -62,7 +62,7 @@ jobs:
     name: Natives (${{ matrix.platform }})
     needs: version
     runs-on: ${{ matrix.runner }}
-    # From cold, four copies of ggml (and on Vulkan its shaders four times over); the cache below keeps them while
+    # From cold, six copies of ggml (and on Vulkan its shaders six times over); the cache below keeps them while
     # native/ and the engines' sources stay the same.
     timeout-minutes: 180
     strategy:

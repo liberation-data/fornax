@@ -58,6 +58,9 @@ class StemsTest {
     void namesAndAudioMustPair() {
         assertThrows(IllegalArgumentException.class, () -> Stems.of(List.of("vocals"), List.of()));
         assertThrows(IllegalArgumentException.class, () -> Stems.of(List.of(), List.of()));
+        // a repeated name would silently drop a stem from names(), backing() and mix()
+        var e = assertThrows(IllegalArgumentException.class, () -> Stems.of(List.of("vocals", "vocals"), List.of(a(1, 1), a(2, 2))));
+        assertTrue(e.getMessage().contains("vocals"), e.getMessage());
     }
 
     /** backing() and mix() add the stems sample by sample, so they must line up. */

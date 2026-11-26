@@ -36,7 +36,7 @@ The natives, one jar per platform and GPU backend, each with all seven engines' 
 | `kiln-natives-macos-aarch64-metal` | macOS 13.3 or newer on Apple silicon | Metal |
 | `kiln-natives-macos-x86_64-metal` | macOS 13.3 or newer on Intel | Metal |
 
-On Linux, the GPU's Vulkan driver must be installed; it usually is. The Linux natives jar is about 100 MB.
+On Linux, the GPU's Vulkan driver must be installed; it usually is. The Linux natives jar is about 130 MB.
 
 The Java packages keep their names: `org.liberationdata.kiln`, `org.liberationdata.kiln.llama` and so on.
 

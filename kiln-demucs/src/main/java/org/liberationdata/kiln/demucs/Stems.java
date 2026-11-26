@@ -31,7 +31,7 @@ public final class Stems {
             Audio a = audio.get(i);
             if (a.sampleRate() != first.sampleRate() || a.left().length != first.left().length || a.right().length != first.left().length)
                 throw new IllegalArgumentException("stem \"" + names.get(i) + "\" has a different rate or length from \"" + names.getFirst() + "\"");
-            m.put(names.get(i), a);
+            if (m.put(names.get(i), a) != null) throw new IllegalArgumentException("two stems named \"" + names.get(i) + "\"");
         }
         return new Stems(Collections.unmodifiableMap(m), first.sampleRate());
     }
