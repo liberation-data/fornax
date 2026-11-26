@@ -1,5 +1,6 @@
 package org.liberationdata.fornax.cli;
 
+import org.liberationdata.fornax.hub.RepoIndex;
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.NativeLibrary;
 import org.liberationdata.fornax.hub.HubToken;

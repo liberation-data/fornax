@@ -63,6 +63,8 @@ class ModelsTest {
         assertFalse(several.getMessage().contains("mmproj"), several.getMessage());
         var none = assertThrows(Main.Failure.class, () -> Models.resolve("some/Multi-GGUF:IQ2", hub));
         assertTrue(none.getMessage().contains("fornax pull some/Multi-GGUF:IQ2"), none.getMessage());
+        var revision = assertThrows(Main.Failure.class, () -> Models.resolve("some/Multi-GGUF@dev:Q8_0", hub));
+        assertTrue(revision.getMessage().contains("drop @dev"), revision.getMessage());
         var unknown = assertThrows(Main.Failure.class, () -> Models.resolve("what", hub));
         assertTrue(unknown.getMessage().contains("qwen3-4b"), unknown.getMessage());
     }

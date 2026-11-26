@@ -1,0 +1,21 @@
+name: Feature request
+description: A model, engine, API or option Fornax should support.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you need
+      description: What you're trying to do and what stops you today. Options get added for a real need, so say whose.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The API or behaviour you'd like, if you have one in mind.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you've tried
+      description: Workarounds, or other libraries that do this.

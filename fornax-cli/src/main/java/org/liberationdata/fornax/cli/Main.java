@@ -1,5 +1,6 @@
 package org.liberationdata.fornax.cli;
 
+import org.liberationdata.fornax.hub.RepoIndex;
 import org.liberationdata.fornax.cli.Args.UsageException;
 import org.liberationdata.fornax.hub.HubException;
 import org.liberationdata.fornax.hub.FornaxHub;
