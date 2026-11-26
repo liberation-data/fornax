@@ -153,6 +153,32 @@ class RequestOptionsTest {
         assertEquals(128, g[1] & 0xff);
     }
 
+    /**
+     * ImageIO reads a greyscale PNG as a linear-grey image, and getRGB converts that to sRGB (100 becomes 168), which
+     * would move a soft mask's 0.5 threshold and brighten a depth hint. sd-cli uses the stored levels.
+     */
+    @Test
+    void greyImagesKeepTheirStoredLevels() throws IOException {
+        var g = new BufferedImage(2, 1, BufferedImage.TYPE_BYTE_GRAY);
+        g.getRaster().setSample(0, 0, 0, 100);
+        g.getRaster().setSample(1, 0, 0, 200);
+        var png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(g, "png", png);
+        var read = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(png.toByteArray()));
+        for (BufferedImage img : List.of(g, read)) {
+            byte[] grey = DiffusionModel.grey(img), rgb = DiffusionModel.rgb(img);
+            assertEquals(100, grey[0] & 0xff);
+            assertEquals(200, grey[1] & 0xff);
+            for (int c = 0; c < 3; c++) {
+                assertEquals(100, rgb[c] & 0xff);
+                assertEquals(200, rgb[3 + c] & 0xff);
+            }
+        }
+        var wide = new BufferedImage(1, 1, BufferedImage.TYPE_USHORT_GRAY);
+        wide.getRaster().setSample(0, 0, 0, 100 << 8);
+        assertEquals(100, DiffusionModel.grey(wide)[0] & 0xff, "16-bit grey drops its low byte, as stb_image does");
+    }
+
     @Test
     void upscaleFactorsArePowersOfTheModelScale() {
         assertEquals(1, Upscaler.repeats(4, 4));

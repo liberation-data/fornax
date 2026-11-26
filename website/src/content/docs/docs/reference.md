@@ -79,10 +79,12 @@ Package `org.liberationdata.kiln.sd`. See [Images](/docs/guides/images/) and [Vi
 | `generateAsync(Request)`, `generateVideoAsync(VideoRequest)`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops a run at the next step (it throws `CancellationException`) |
 | `modelVersion()` | the model stable-diffusion.cpp detected |
 | `onProgress(sink)`, `onLog(sink)` | process-wide progress (step, steps, seconds per step) and log callbacks |
-| `DiffusionModel.Config` | `builder()`: `diffusionModel`, `vae`, `llm`, and `set(key, value)` for any context option |
-| `DiffusionModel.Request` | `prompt`, `width`, `height`, `steps`, `cfg`, `seed`, plus `refImages` and an `extra` options map |
+| `DiffusionModel.Config` | `builder()`: `diffusionModel`, `vae`, `llm`, `controlNet`, and `set(key, value)` for any context option |
+| `DiffusionModel.Request` | `prompt`, `width`, `height`, `steps`, `cfg`, `seed`, plus `refImages` and an `extra` options map; `withRefImages`, `withInitImage(image[, strength])` (img2img), `withMaskImage` (inpainting), `withControlImage(image[, strength])` (ControlNet), `withLoras`, `withExtra`. Settings the engine would ignore (a strength or mask without an init image, a control strength without a control image, a typed key in `extra`) throw `IllegalArgumentException` from `generate` |
+| `DiffusionModel.Lora` | `file`, `weight` (default 1): a LoRA for one request |
 | `DiffusionModel.VideoRequest` | the same, plus `frames` and `fps`; `withInitImage`, `withEndImage`, `withRefAudio`, `withExtra` |
 | `DiffusionModel.Video` | `frames`, `fps`, `audio` (or `null`), `seconds()` |
+| `Upscaler` | an ESRGAN-family upscaler: `new Upscaler(path[, tileSize])`, `scale()`, `upscale(image[, factor])` (a power of `scale()`), `upscaleAsync(...)` on its own thread; it can't be cancelled mid-pass |
 | `Sd` | the raw bindings to stable-diffusion.cpp's C API; `Sd.SdException` is what a failed call throws |
 
 Option keys are stable-diffusion.cpp's, from its

@@ -87,7 +87,9 @@ public final class DiffusionModel implements AutoCloseable {
      *       image of the same size. Any model can inpaint this way (the mask limits the denoising); dedicated inpaint
      *       models (SD inpaint, FLUX.1 Fill) also get the masked image as conditioning.</li>
      *   <li>{@code controlImage} and {@code controlStrength}: a ControlNet hint (edges, depth, pose), with
-     *       {@link Config.Builder#controlNet(String)}. {@code null} strength means the engine's 0.9.</li>
+     *       {@link Config.Builder#controlNet(String)}, fitted to {@code width} x {@code height}. {@code null} strength
+     *       means the engine's 0.9. Models that take the hint natively (FLUX.1 Controls, Flex.2) ignore the
+     *       strength.</li>
      *   <li>{@code loras}: LoRA adapters for this request.</li>
      *   <li>{@code extra}: any other stable-diffusion.cpp image option, under its own key.</li>
      * </ul>
@@ -461,25 +463,48 @@ public final class DiffusionModel implements AutoCloseable {
         return u8Tensor(grey(img), 1, img.getWidth(), img.getHeight(), a);
     }
 
-    /** Interleaved RGB rows. */
+    /** Interleaved RGB rows; a grey image's level goes to all three channels. */
     static byte[] rgb(BufferedImage img) {
         int w = img.getWidth(), h = img.getHeight();
         byte[] px = new byte[w * h * 3];
+        byte[] levels = greyLevels(img);
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++) {
-                int rgb = img.getRGB(x, y), i = (y * w + x) * 3;
+                int i = (y * w + x) * 3;
+                if (levels != null) { px[i] = px[i + 1] = px[i + 2] = levels[y * w + x]; continue; }
+                int rgb = img.getRGB(x, y);
                 px[i] = (byte) (rgb >> 16); px[i + 1] = (byte) (rgb >> 8); px[i + 2] = (byte) rgb;
             }
         return px;
     }
 
     static byte[] grey(BufferedImage img) {
+        byte[] levels = greyLevels(img);
+        if (levels != null) return levels;
         int w = img.getWidth(), h = img.getHeight();
         byte[] px = new byte[w * h];
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++) {
                 int rgb = img.getRGB(x, y);
                 px[y * w + x] = (byte) ((((rgb >> 16) & 0xff) * 77 + ((rgb >> 8) & 0xff) * 150 + (rgb & 0xff) * 29) >> 8);
+            }
+        return px;
+    }
+
+    /**
+     * A grey image's stored levels as 8 bits (16-bit ones keep the high byte, as stb_image does), or null for any
+     * other image. Not getRGB: ImageIO reads a greyscale PNG as linear grey, and getRGB converts that to sRGB (100
+     * becomes 168), which would move a mask's 0.5 threshold and brighten a depth hint compared with sd-cli.
+     */
+    static byte[] greyLevels(BufferedImage img) {
+        if (img.getColorModel().getColorSpace().getType() != java.awt.color.ColorSpace.TYPE_GRAY) return null;
+        int bits = img.getColorModel().getComponentSize(0), w = img.getWidth(), h = img.getHeight();
+        var raster = img.getRaster();
+        byte[] px = new byte[w * h];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                int s = raster.getSample(x, y, 0);
+                px[y * w + x] = (byte) (bits >= 8 ? s >> (bits - 8) : s * 255 / ((1 << bits) - 1));
             }
         return px;
     }

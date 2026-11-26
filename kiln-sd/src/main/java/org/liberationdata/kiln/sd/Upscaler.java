@@ -93,8 +93,8 @@ public final class Upscaler implements AutoCloseable {
     private BufferedImage upscaleOn(Call call, BufferedImage image, int repeats) {
         Sd.CALL.set(call);  // so a log sink that throws fails this call rather than printing
         try (Arena tmp = Arena.ofConfined()) {
+            MemorySegment tensor = DiffusionModel.toTensor(image, tmp);  // first: if it fails there is no opt to leak
             MemorySegment opt = (MemorySegment) Sd.upscale_opt_create.invokeExact();
-            MemorySegment tensor = DiffusionModel.toTensor(image, tmp);
             try {
                 DiffusionModel.applyAll(opt, Map.of("repeats", repeats), tmp);
                 Sd.check((int) Sd.opt_set_tensor.invokeExact(opt, tmp.allocateFrom("image"), tensor), "set image");

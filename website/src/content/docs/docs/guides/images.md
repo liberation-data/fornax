@@ -157,8 +157,9 @@ var request = new DiffusionModel.Request("a glass teapot", 1024, 1024, 25, 6.0, 
         .withControlImage(cannyEdges, 0.8);     // strength defaults to 0.9
 ```
 
-The ControlNet has to match the base model family. FLUX.1 Controls and Flex.2 take the control image directly and
-need no ControlNet file.
+The control image is fitted to the request's width and height. The ControlNet has to match the base model family.
+FLUX.1 Controls and Flex.2 take the control image directly and need no ControlNet file; they also ignore the control
+strength.
 
 Kiln has run SD 1.5 with the canny ControlNet (`comfyanonymous/ControlNet-v1-1_fp16_safetensors`); the example
 below does the same:
@@ -249,6 +250,9 @@ The model's own scale (4 for x4plus, read from the weights) is what one pass giv
 twice. Factors that aren't a power of the scale are refused: resize the result for those. The model works over
 tiles of 128 input pixels by default. `new Upscaler(path, tileSize)` changes that: smaller tiles use less memory
 and keep each GPU dispatch short.
+
+`upscaleAsync` runs on the upscaler's own thread, as `generateAsync` does (see [Threading](/docs/guides/threading/)).
+stable-diffusion.cpp can't stop an upscale part way, so `close()` waits for a pass that has started.
 
 ## Z-Image
 
