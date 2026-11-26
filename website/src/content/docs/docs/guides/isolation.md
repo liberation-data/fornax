@@ -139,3 +139,6 @@ try (var lease = pool.acquire("qwen3-4b", ModelPool.sizeOf(gguf) + (100L << 20),
   behind in your JVM.
 - **After a crash**, the pooled model stays in the pool and reloads on its next call. The pool doesn't see the crash:
   the lease's call fails with `WorkerCrashedException`, and the next caller pays for the reload.
+
+To serve many models from a few workers, with affinity, one budget and priorities, see
+[Dispatch](/docs/guides/dispatch/).

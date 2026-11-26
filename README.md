@@ -214,6 +214,12 @@ costs about 15 µs a call and a microsecond a streamed token. See [Isolation](ht
 first to stay within a memory budget, optionally unloads after an idle timeout, and gives each model one user at a
 time.
 
+For servers, `Dispatch` serves many models from a few worker processes: it routes each request to the worker that
+already has its model loaded, loads models on demand within one memory budget (least recently used out first), queues
+requests as `INTERACTIVE` or `BATCH` with aging so batch work can't starve, and reloads a crashed worker's models
+elsewhere. `qwen.submit(QoS.INTERACTIVE, llm -> llm.chatAsync(messages, options))`. See
+[Dispatch](https://kiln4j.org/docs/guides/dispatch/).
+
 `LlamaModel.chatJson` does OpenAI-style chat with **tool calling**, using the model's own chat template and
 tool-call format (the same templates and parsers as llama-server): messages and tools in OpenAI's format in, a
 message with `content`, `reasoning_content` and `tool_calls` out. A `json_schema` in the request constrains the reply
