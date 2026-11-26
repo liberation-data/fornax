@@ -36,7 +36,7 @@ try (var emb = new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)) {
     String task = "Given a web search query, retrieve relevant passages that answer the query";
     float[] q = emb.embed(List.of("How hot does a kiln get?"), EmbedOptions.query(task))[0];
 
-    var best = Vectors.topK(q, d, 1).get(0);                         // Scored(index=0, score=0.69)
+    var best = Vectors.topK(q, d, 1).get(0);                         // Scored[index=0, score=0.69]
     System.out.println(docs.get(best.index()));
 }
 ```
@@ -73,7 +73,7 @@ try (var rr = new LlamaModel(Weights.QWEN3_RERANKER_0_6B, Mode.RERANK)) {
             "A pottery kiln fires stoneware at around 1200 to 1300 degrees Celsius.",
             "Nashville is the capital of Tennessee and the home of country music.",
             "A kiln is a thermally insulated chamber."));
-    // best first: [Scored(index=0, score=0.997), Scored(index=2, score=0.564), Scored(index=1, score=0.00002)]
+    // best first: [Scored[index=0, score=0.997], Scored[index=2, score=0.564], Scored[index=1, score=0.00002]]
 }
 ```
 
