@@ -26,7 +26,7 @@ surprises you.
   rule widen any tensor.
 - **Long GPU submissions hit the amdgpu compute timeout.** ggml-vulkan puts up to 100 graph nodes in each
   submission. One big decode (LTX's audio VAE at full size) can exceed the kernel's timeout and lose the device.
-  `GGML_VK_MAX_NODES_PER_SUBMIT=8` fixed it. ComfyUI never hit this, because PyTorch on ROCm launches many small
+  `GGML_VK_MAX_NODES_PER_SUBMIT=8` (`-Dkiln.vulkan.maxNodesPerSubmit=8`) fixed it. ComfyUI never hit this, because PyTorch on ROCm launches many small
   kernels.
 - **Long video on Vulkan hits the timeout even at 8 nodes per submission.** A 13 s LTX clip (313 frames) refined at
   1344×896 lost the device on the first refine step: a single attention dispatch over ~47k tokens outlasts the

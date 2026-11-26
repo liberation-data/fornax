@@ -54,9 +54,10 @@ project(':kiln-examples') {
             jvmArgs '--enable-native-access=ALL-UNNAMED'
             systemProperty 'kiln.library.path', nativeDir.absolutePath
             workingDir = rootProject.projectDir
-            // -Pmodel=... -Psteps=... etc. become system properties (only ones given on the command line)
+            // -Pmodel=... -Psteps=... etc. become system properties (only ones given on the command line), and so do
+            // NativeLibrary's tunables, which the forked JVM would not see as -D on gradlew
             def cli = gradle.startParameter.projectProperties
-            ['model', 'mmproj', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio', 'preprocess', 'hires', 'upscaler', 'refine', 'strength'].each { p ->
+            ['kiln.gpu.graphs', 'kiln.vulkan.maxNodesPerSubmit', 'model', 'mmproj', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio', 'preprocess', 'hires', 'upscaler', 'refine', 'strength'].each { p ->
                 if (cli.containsKey(p)) systemProperty p, cli[p]
             }
         }
