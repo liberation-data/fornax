@@ -76,6 +76,31 @@ int kiln_llama_chat_json_images(kiln_llama * h, const char * request_json, const
                                 const uint32_t * widths, const uint32_t * heights, int n_images,
                                 kiln_llama_token_cb cb, void * user, char ** out_response_json);
 
+// --- Embeddings and reranking (pooled output, as llama-embedding and llama-server's /embedding and /rerank) ---
+//
+// A pooled handle runs the model with llama.cpp's embeddings output and the pooling type its GGUF sets (mean, cls,
+// last; rank for a reranker), and takes only the calls below: kiln_llama_chat and the rest fail on it. Several inputs
+// go in one batch, each as its own sequence; one input may be up to n_ctx tokens. cb (optional) is called with an
+// empty piece after each batch; returning non-zero stops the call, which then fails with "cancelled" (rc 13).
+
+// rerank 0: an embedding model (its GGUF sets a pooling type other than rank). rerank 1: a reranker (rank pooling,
+// with a classifier head). n_gpu_layers: -1 = all. n_ctx: 0 = model default.
+kiln_llama * kiln_llama_create_pooled(const char * model_path, int n_gpu_layers, int n_ctx, int rerank);
+
+// The length of one embedding (floats).
+int kiln_llama_n_embd(kiln_llama * h);
+
+// Embeds n texts into out (n * kiln_llama_n_embd floats, row by row). normalize non-zero: each row L2-normalised.
+// Texts are tokenized with the vocab's own BOS/EOS added, and not parsed for special tokens.
+int kiln_llama_embed(kiln_llama * h, const char ** texts, int n, int normalize, float * out,
+                     kiln_llama_token_cb cb, void * user);
+
+// Scores n documents against a query into out_scores (n floats, in the documents' order), as llama-server's /rerank:
+// the GGUF's "rerank" prompt template with {query} and {document} filled in. For Qwen3-Reranker a score is the
+// probability (0 to 1) that the document answers the query.
+int kiln_llama_rerank(kiln_llama * h, const char * query, const char ** docs, int n, float * out_scores,
+                      kiln_llama_token_cb cb, void * user);
+
 void kiln_llama_free(void * p);
 void kiln_llama_destroy(kiln_llama * h);
 
