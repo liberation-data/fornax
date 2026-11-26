@@ -73,6 +73,10 @@ jobs:
               [ -f "$repo/$a/$VERSION/$f.asc" ] || { echo "::error::$f was not signed"; exit 1; }
             done
           done
+          for a in fornax-bom fornax-natives; do   # POMs only
+            [ -f "$repo/$a/$VERSION/$a-$VERSION.pom" ] || { echo "::error::$a-$VERSION.pom was not built"; exit 1; }
+            [ -f "$repo/$a/$VERSION/$a-$VERSION.pom.asc" ] || { echo "::error::$a-$VERSION.pom was not signed"; exit 1; }
+          done
 
       # samples/hello-fornax, a standalone build, against only that repository: the coordinates users copy resolve.
       - name: Build the sample against it

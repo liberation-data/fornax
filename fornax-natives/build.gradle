@@ -1,0 +1,32 @@
+// org.fornax4j:fornax-natives: a POM whose profiles depend on the natives jar for the host, so a Maven build takes the
+// right one with no profiles of its own. Maven activates a dependency's profiles by the building machine's OS and arch;
+// Gradle doesn't, so a Gradle build names its natives jar (see the Maven and Gradle docs).
+plugins { id 'java-platform' }
+
+// Gradle Module Metadata would describe a platform with no dependencies; without it Gradle reads the POM.
+tasks.withType(GenerateModuleMetadata).configureEach { enabled = false }
+
+// Maven's os.name and os.arch for each platform, as samples/hello-fornax/pom.xml has them.
+def activation = [
+    'linux-x86_64-vulkan': [name: 'Linux', arch: 'amd64'],
+    'macos-aarch64-metal': [family: 'mac', arch: 'aarch64'],
+    'macos-x86_64-metal' : [family: 'mac', arch: 'x86_64'],
+]
+def platforms = gradle.nativePlatforms
+def unknown = platforms.findAll { !activation.containsKey(it) }
+if (unknown) throw new GradleException("fornax-natives has no Maven OS activation for $unknown")
+
+ext.nativesProfiles = { Node project ->
+    def profiles = project.appendNode('profiles')
+    platforms.each { platform ->
+        def profile = profiles.appendNode('profile')
+        profile.appendNode('id', "fornax-$platform")
+        def os = profile.appendNode('activation').appendNode('os')
+        activation[platform].each { k, v -> os.appendNode(k, v) }
+        def dep = profile.appendNode('dependencies').appendNode('dependency')
+        dep.appendNode('groupId', 'org.fornax4j')
+        dep.appendNode('artifactId', "fornax-natives-$platform")
+        dep.appendNode('version', version.toString())
+        dep.appendNode('scope', 'runtime')
+    }
+}

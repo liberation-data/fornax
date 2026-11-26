@@ -1,0 +1,20 @@
+// org.fornax4j:fornax-bom: every published module at this release's version. Import it once (Gradle platform(), Maven
+// <scope>import</scope>) and add modules without versions.
+plugins { id 'java-platform' }
+
+javaPlatform { allowDependencies() }
+
+dependencies {
+    constraints {
+        rootProject.ext.published.keySet().each { api "org.fornax4j:$it:${project.version}" }
+        api "org.fornax4j:fornax-natives:${project.version}"
+        gradle.nativePlatforms.each { runtime "org.fornax4j:fornax-natives-$it:${project.version}" }
+    }
+}
+
+// fornax-natives is a POM, and Maven matches a managed version by type too: without <type>pom</type> here a
+// <type>pom</type> dependency on it would get no version from this BOM.
+ext.markNativesPom = { Node project ->
+    project.dependencyManagement.dependencies.dependency.findAll { it.artifactId.text() == 'fornax-natives' }
+            .each { it.appendNode('type', 'pom') }
+}

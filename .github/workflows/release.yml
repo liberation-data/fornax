@@ -224,6 +224,10 @@ jobs:
               [ -f "$repo/$a/$VERSION/$f.asc" ] || { echo "::error::$f was not signed"; exit 1; }
             done
           done
+          for a in fornax-bom fornax-natives; do   # POMs only
+            [ -f "$repo/$a/$VERSION/$a-$VERSION.pom" ] || { echo "::error::$a-$VERSION.pom was not built"; exit 1; }
+            [ -f "$repo/$a/$VERSION/$a-$VERSION.pom.asc" ] || { echo "::error::$a-$VERSION.pom was not signed"; exit 1; }
+          done
           du -ah "$repo" | grep -E '\.jar$' | sort -k2
           # The Central Portal takes deployments of up to 1 GB.
           total=$(du -sb "$repo" | cut -f1)
@@ -292,6 +296,7 @@ jobs:
                    fornax-natives-linux-x86_64-vulkan fornax-natives-macos-aarch64-metal fornax-natives-macos-x86_64-metal; do
             files+=("$base/$a/$VERSION/$a-$VERSION.pom" "$base/$a/$VERSION/$a-$VERSION.jar")
           done
+          files+=("$base/fornax-bom/$VERSION/fornax-bom-$VERSION.pom" "$base/fornax-natives/$VERSION/fornax-natives-$VERSION.pom")
           deadline=$(( $(date +%s) + 30 * 60 ))
           while :; do
             missing=0
