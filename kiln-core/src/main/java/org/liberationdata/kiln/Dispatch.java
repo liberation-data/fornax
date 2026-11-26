@@ -220,7 +220,9 @@ public final class Dispatch implements AutoCloseable {
          * Runs {@code body} with the model once the request is granted, and holds the model until the future it
          * returns completes: use the model's async methods ({@code llm -> llm.chatAsync(...)}). The returned future
          * completes with that future's result. Cancelling it (or {@code orTimeout}) while the request is queued takes
-         * it out of the queue; while it runs, it cancels the body's future, which stops a Kiln model's generation.
+         * it out of the queue; while it runs, it cancels the body's future, which stops a Kiln model's generation
+         * (return the model's own future: cancelling one derived from it doesn't). A future that never completes holds
+         * the worker for good, and a body that waits on another request to this dispatch can deadlock it.
          * @throws RejectedExecutionException (in the future) if the class's queue is full
          */
         public <T> CompletableFuture<T> submit(QoS qos, Function<? super M, ? extends CompletionStage<T>> body) {
@@ -316,6 +318,7 @@ public final class Dispatch implements AutoCloseable {
                 if (e instanceof CancellationException) {
                     lock.lock();
                     try { queue.remove(r); } finally { lock.unlock(); }
+                    reschedule();                    // it may have been holding back loads ranked below it
                 }
             });
             reschedule();
@@ -462,6 +465,7 @@ public final class Dispatch implements AutoCloseable {
             lock.lock();
             try { closingBytes -= v.spec.size; } finally { lock.unlock(); }
         }
+        if (!victims.isEmpty()) reschedule();       // a load may have been waiting for the room they freed
         Lane lane = l.lane;
         if (l.model == null) {
             try {

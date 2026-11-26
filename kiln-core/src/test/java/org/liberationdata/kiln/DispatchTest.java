@@ -162,9 +162,46 @@ class DispatchTest {
         assertEquals(List.of(), order, "small would fit now, but big is ranked first and waits for room");
         gate.complete(null);
         fb.get(30, TimeUnit.SECONDS);
-        fs.get(30, TimeUnit.SECONDS);
-        assertEquals(List.of("big", "small"), order);
+        fs.get(30, TimeUnit.SECONDS);                               // small may finish first: big's load takes longer
         assertEquals(List.of("big", "small"), d.entries().stream().map(Dispatch.Entry::key).sorted().toList());
+    }
+
+    /** The small load was held back only for the big one: once that is cancelled, it goes, while a is still in use. */
+    @Test
+    void cancellingTheLoadWaitingForRoomLetsTheLoadsBelowItGo() throws Exception {
+        var d = dispatch(3, 3);
+        var a = model(d, "a", "", 2);
+        var big = model(d, "big", "", 2);
+        var small = model(d, "small", "", 1);
+        var gate = hold(a);
+        List<String> order = Collections.synchronizedList(new ArrayList<>());
+        var fb = record(big, QoS.INTERACTIVE, "big", order);
+        awaitQueued(d, 1, 0);
+        var fs = record(small, QoS.BATCH, "small", order);
+        awaitQueued(d, 1, 1);
+        assertTrue(fb.cancel(true));
+        assertEquals("small", fs.get(30, TimeUnit.SECONDS), "small fits now, and nothing ranked above it is waiting");
+        assertFalse(gate.isDone());
+        assertEquals(List.of("small"), order);
+    }
+
+    /** Room that an unload in progress is freeing goes to the next load as soon as the unload finishes. */
+    @Test
+    void aLoadWaitingOnAnUnloadInProgressGoesWhenItFinishes() throws Exception {
+        var d = dispatch(2, 3);
+        var slow = d.register("slow", 2, w -> {
+            var i = w.open(SERVICE, null);
+            return (AutoCloseable) () -> { Thread.sleep(1500); i.close(); };
+        });
+        var a = model(d, "a", "", 2);
+        var b = model(d, "b", "", 1);
+        slow.call(QoS.INTERACTIVE, m -> 0);
+        var gate = new CompletableFuture<Object>();
+        a.submit(QoS.INTERACTIVE, i -> gate);                       // unloads slow, then holds a
+        Thread.sleep(300);
+        var fb = b.submit(QoS.INTERACTIVE, i -> CompletableFuture.completedFuture(1));
+        assertEquals(1, fb.get(30, TimeUnit.SECONDS), "b fits once slow is unloaded, while a is still in use");
+        assertFalse(gate.isDone());
     }
 
     @Test

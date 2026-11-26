@@ -34,7 +34,9 @@ try (var dispatch = new Dispatch(Dispatch.Options.of(2, 48L << 30))) {   // two 
 ```
 
 `register(key, size, loader)` names a model. Nothing loads yet. When a request for it is granted, the loader loads it
-into the worker the dispatch picked for it. `LlamaModel.isolated(worker, ...)` is the form that does this.
+into the worker the dispatch picked for it. `LlamaModel.isolated(worker, ...)` is the form that does this. The loader
+must load into the worker it is given: the dispatch can't tell if it doesn't, and an in-process model runs in your JVM,
+where a crash takes the JVM with it and its memory is still counted against the budget.
 
 A request gets the model to itself. The worker runs nothing else meanwhile.
 
@@ -93,6 +95,13 @@ the GPU's budget, or the part of it that its models may use.
   never runs, and its model never loads.
 - **Cancelling a running request** cancels the future that its body returned. For a Kiln model, that stops the
   generation in the worker, and the worker takes the next request.
+- **Return the model's own future.** A cancel reaches the generation only through the future the model returned.
+  Cancelling one derived from it (`chatAsync(...).thenApply(...)`) doesn't stop the generation, yet the dispatch gives
+  the worker back, so the next request there runs alongside it.
+- **A request holds its worker until its body's future completes,** or its lease is closed. Nothing times it out for
+  you: a body whose future never completes keeps the worker for good. Put `orTimeout` on requests that can hang.
+- **Don't wait on the same dispatch from inside a body.** A body that waits for another request to the dispatch
+  holds its worker while that request waits for one. With every worker busy (with one worker, always), neither runs.
 - **Back-pressure.** At most `maxQueued` requests (10,000 by default) wait in each class. One more fails at once with
   a `RejectedExecutionException`, so a flood of batch work doesn't stop interactive requests from queueing.
 
