@@ -261,9 +261,17 @@ class PullsTest {
         var plan = call("POST", "/api/models/plan", "{\"id\": \"locked\", \"token\": \"" + bad + "\"}");
         assertEquals(400, plan.statusCode(), plan.body());
         assertFalse(plan.body().contains("hf_secret"), plan.body());
-        String pull = call("POST", "/api/models/pull", "{\"id\": \"locked\", \"token\": \"" + bad + "\"}").body();
-        assertFalse(pull.contains("hf_secret"), pull);
-        assertFalse(pull.contains("event: done"), pull);
+        var pull = call("POST", "/api/models/pull", "{\"id\": \"locked\", \"token\": \"" + bad + "\"}");
+        assertEquals(400, pull.statusCode(), "refused before the stream begins: " + pull.body());
+        assertFalse(pull.body().contains("hf_secret"), pull.body());
+
+        for (String path : List.of("/api/models/plan", "/api/models/pull")) {   // not a string: refused, not sent to the Hub
+            int before = authorizations.size();
+            var r = call("POST", path, "{\"id\": \"locked\", \"token\": {\"t\": \"hf_secret\"}}");
+            assertEquals(400, r.statusCode(), path + " -> " + r.body());
+            assertFalse(r.body().contains("hf_secret"), r.body());
+            assertEquals(before, authorizations.size(), authorizations.toString());
+        }
     }
 
     @Test void tooLittleDiskFailsBeforeAnyDownload() throws Exception {

@@ -87,7 +87,7 @@ final class Pulls {
      * The token stripped, or null for none. One with a space or control character inside is refused here: the HTTP
      * client would refuse it too, but with the header's value, token and all, in its message, which is sent back.
      */
-    private static String checked(String t) {
+    static String checked(String t) {
         if (t == null || t.isBlank()) return null;
         String s = t.strip();
         if (!s.chars().allMatch(c -> c > 0x20 && c < 0x7f))

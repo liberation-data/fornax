@@ -106,7 +106,7 @@ public final class StudioServer {
         route("/api/models/plan", "POST", ex -> {
             var b = body(ex);
             String id = Json.str(b, "id", null);
-            try { json(ex, 200, pulls.plan(id, Json.str(b, "token", null))); }
+            try { json(ex, 200, pulls.plan(id, token(b))); }
             catch (HubException e) {   // the Hub's answer (a gated repo, say) is the page's to show, not the server's failure
                 var f = pulls.failure(pulls.set(id).id(), e);
                 f.put("error", f.get("message"));
@@ -116,9 +116,7 @@ public final class StudioServer {
         route("/api/models/pull", "POST", this::pull);
         route("/api/hub", "GET", ex -> json(ex, 200, Json.obj("tokenSet", pulls.hasToken())));
         route("/api/hub/token", "POST", ex -> {
-            Object token = body(ex).get("token");
-            if (token != null && !(token instanceof String)) throw new IllegalArgumentException("token is a string");
-            pulls.token((String) token);
+            pulls.token(token(body(ex)));
             json(ex, 200, Json.obj("tokenSet", pulls.hasToken()));
         });
         route("/api/models/pull/cancel", "POST", ex -> json(ex, 200, Json.obj("cancelled", pulls.cancel(Json.str(body(ex), "id", null)))));
@@ -674,8 +672,8 @@ public final class StudioServer {
 
     private void pull(HttpExchange ex) throws IOException {
         var b = body(ex);
-        String id = Json.str(b, "id", null), token = Json.str(b, "token", null);
-        pulls.set(id);   // an unknown id is a 400, before the stream begins
+        String id = Json.str(b, "id", null), token = token(b);
+        pulls.set(id);   // an unknown id, or a token that isn't one, is a 400, before the stream begins
         try (var sse = new Sse(ex)) {
             try { pulls.pull(id, token, sse); }
             catch (RuntimeException e) { sse.send("error", Json.obj("id", id, "message", message(e), "reason", "IO")); }
@@ -683,6 +681,13 @@ public final class StudioServer {
     }
 
     // ---- helpers ----
+
+    /** A request's {@code token}, stripped, or null for none; one that isn't a string or a token is refused, unechoed. */
+    private static String token(Map<String, Object> body) {
+        Object t = body.get("token");
+        if (t != null && !(t instanceof String)) throw new IllegalArgumentException("token is a string");
+        return Pulls.checked((String) t);
+    }
 
     /** Borrows the model, saying first when it has to be loaded, and how long that took. */
     private <M extends AutoCloseable> org.liberationdata.fornax.ModelPool.Lease<M> leaseSaying(Sse sse, Catalog.Model m, Class<M> type) {
