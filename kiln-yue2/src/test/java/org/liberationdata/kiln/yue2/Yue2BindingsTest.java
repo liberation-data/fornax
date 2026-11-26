@@ -11,6 +11,13 @@ class Yue2BindingsTest {
     void bindsEveryFunction() {
         String dir = System.getProperty("kiln.library.path");
         assumeTrue(dir != null && new java.io.File(dir, System.mapLibraryName("kiln_yue2")).isFile(), "native library not built");
-        assertDoesNotThrow(() -> Class.forName(Yue2Model.class.getName()));
+        // Binding needs no GPU, and CI runners have none: don't let Kiln's GPU check refuse the library.
+        String allowCpu = System.setProperty("kiln.allowCpu", "true");
+        try {
+            assertDoesNotThrow(() -> Class.forName(Yue2Model.class.getName()));
+        } finally {
+            if (allowCpu == null) System.clearProperty("kiln.allowCpu");
+            else System.setProperty("kiln.allowCpu", allowCpu);
+        }
     }
 }

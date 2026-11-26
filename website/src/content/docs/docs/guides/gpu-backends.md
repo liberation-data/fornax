@@ -49,6 +49,10 @@ native/build.sh vulkan
 
 Everything on the [Introduction](/docs/#status)'s results table ran on Vulkan, on an AMD Radeon 8060S.
 
+**Running it** needs your GPU's Vulkan driver and the Vulkan loader. Desktop Linux usually has both; see
+[Installing GPU drivers](/docs/gpu-drivers/) if not. Kiln won't quietly fall back to the CPU: with no GPU it stops and
+says what to install.
+
 **The driver's compute timeout.** A GPU driver resets a GPU that runs one piece of work for too long. ggml's Vulkan
 backend puts up to 100 graph nodes in each submission to the GPU, and a big decode can then run past the timeout and
 lose the device. Lower it:

@@ -150,7 +150,8 @@ public final class WhisperModel implements AutoCloseable {
 
     /**
      * @param alignment the model's DTW alignment heads, or {@link Alignment#NONE}
-     * @param gpu false runs on the CPU
+     * @param gpu false runs on the CPU (on a machine with no GPU, also set {@code -Dkiln.allowCpu=true}: Kiln refuses
+     *            to load its GPU build there otherwise)
      */
     public WhisperModel(String modelPath, Alignment alignment, boolean gpu) {
         try (Arena a = Arena.ofConfined()) {

@@ -19,8 +19,14 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 class SdCallbacksTest {
 
     static void requireNatives() {
+        // No model runs here, and CI runners have no GPU: don't let Kiln's GPU check refuse the library (and skip these).
+        String allowCpu = System.setProperty("kiln.allowCpu", "true");
         try { Class.forName(Sd.class.getName()); }
         catch (Throwable t) { assumeTrue(false, "libstable-diffusion not found: " + t); }
+        finally {
+            if (allowCpu == null) System.clearProperty("kiln.allowCpu");
+            else System.setProperty("kiln.allowCpu", allowCpu);
+        }
     }
 
     @AfterEach
