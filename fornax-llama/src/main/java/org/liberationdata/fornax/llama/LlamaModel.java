@@ -329,7 +329,7 @@ public final class LlamaModel implements AutoCloseable {
      * @param gpuLayers -1 offloads every layer. @param contextSize 0 uses the model's trained context.
      */
     public LlamaModel(String ggufPath, String mmprojPath, int gpuLayers, int contextSize) {
-        this(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize, defaultWorker(ggufPath, Mode.CHAT), true);
+        this(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize, defaultWorker(ggufPath), true);
     }
 
     /**
@@ -339,14 +339,14 @@ public final class LlamaModel implements AutoCloseable {
      *        go through the model at once.
      */
     public LlamaModel(String ggufPath, int gpuLayers, int contextSize, Mode mode) {
-        this(ggufPath, null, mode, gpuLayers, contextSize, defaultWorker(ggufPath, mode), true);
+        this(ggufPath, null, mode, gpuLayers, contextSize, defaultWorker(ggufPath), true);
     }
 
     /** A model loaded for chat, embeddings or reranking, with 8192 tokens of context. */
     public LlamaModel(String ggufPath, Mode mode) { this(ggufPath, -1, 8192, mode); }
 
     /** The worker fornax.isolation asks for, or null for in-process. */
-    private static Worker defaultWorker(String ggufPath, Mode mode) {
+    private static Worker defaultWorker(String ggufPath) {
         return Isolation.configured() == Isolation.PROCESS ? workerFor(ggufPath) : null;
     }
 
@@ -484,7 +484,7 @@ public final class LlamaModel implements AutoCloseable {
      * {@link #LlamaModel(String, int, int, Mode)}.
      */
     public LlamaModel(Weights w, int gpuLayers, int contextSize, Mode mode) {
-        this(w.model(), mode == Mode.CHAT ? w.mmproj() : null, mode, gpuLayers, contextSize, defaultWorker(w.model(), mode), true);
+        this(w.model(), mode == Mode.CHAT ? w.mmproj() : null, mode, gpuLayers, contextSize, defaultWorker(w.model()), true);
     }
 
     /** Whether this model takes images: it was loaded with an mmproj that has a vision encoder. */
