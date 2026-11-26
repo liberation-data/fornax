@@ -370,8 +370,10 @@ function voiceInKiln(scene, pieces, model, prompt, seed, named = '') {
 /* The throwaway word voiced after each stretch (see voicing), and the cut that removes it. */
 const SENTINEL = 'Okay.';
 function withoutSentinel(raw, out, n) {
-    const report = spawnSync('ffmpeg', ['-nostdin', '-nostats', '-i', raw, '-af', 'silencedetect=n=-45dB:d=0.25', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 1 << 28 }).stderr;
-    const gaps = [...report.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
+    const report = spawnSync('ffmpeg', ['-nostdin', '-nostats', '-i', raw, '-af', 'silencedetect=n=-45dB:d=0.18', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 1 << 28 }).stderr;
+    /* Only gaps after some speech: a short line ("Introducing Kiln.") can open with a silence that would otherwise be
+       taken for the gap before the throwaway word, leaving nothing. */
+    const gaps = [...report.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1])).filter((t) => t > 0.35);
     const length = duration(raw);
     const cut = gaps.filter((t) => t < length - 0.2).pop();
     if (cut === undefined || length - cut > 1.6) throw new Error(`scene ${n}: no gap before the throwaway word in ${raw}; voice it again`);
