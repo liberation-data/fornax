@@ -40,6 +40,8 @@ final class Pulls {
     private final Function<String, FornaxHub> hubs;
     private final URI endpoint;
     private final Map<String, Pull> active = new ConcurrentHashMap<>();
+    /** The token the desktop app gave from its keychain ({@link #token(String)}); in memory only. */
+    private volatile String token;
 
     /** One download, and the streams watching it. */
     private static final class Pull {
@@ -63,6 +65,19 @@ final class Pulls {
             return b.build();
         }, endpoint);
     }
+
+    /**
+     * The Hugging Face token for gated repos, from the desktop app's keychain, for every request that brings none of
+     * its own; null or blank clears it, and the hub's own (HF_TOKEN, or the token file) is used again. Held in memory
+     * only: never written, logged or sent anywhere but the Hub.
+     */
+    void token(String t) { token = t == null || t.isBlank() ? null : t.strip(); }
+
+    /** Whether the app has given a token ({@link #token(String)}). */
+    boolean hasToken() { return token != null; }
+
+    /** A request's own token, else the app's. */
+    private String tokenFor(String requested) { return requested != null && !requested.isBlank() ? requested : token; }
 
     /** The set with this id or alias ("flux2-klein" or the studio's "image:flux2-klein"). */
     ModelSet set(String name) {
@@ -97,7 +112,7 @@ final class Pulls {
      */
     Map<String, Object> plan(String name, String token) throws IOException {
         ModelSet s = set(name);
-        FornaxHub hub = hubs.apply(token);
+        FornaxHub hub = hubs.apply(tokenFor(token));
         PullPlan plan = hub.plan(s);
         Path cacheRoot = hub.cacheRoot();
         Files.createDirectories(cacheRoot);
@@ -121,7 +136,7 @@ final class Pulls {
             attached = pull != null;
             if (!attached) {
                 Pull p = pull = new Pull();
-                p.task = hubs.apply(token).pullAsync(s, progress -> {
+                p.task = hubs.apply(tokenFor(token)).pullAsync(s, progress -> {
                     p.last = progress;
                     Object data = progress(progress);
                     for (Sse w : p.watchers) if (!w.send("progress", data)) p.watchers.remove(w);

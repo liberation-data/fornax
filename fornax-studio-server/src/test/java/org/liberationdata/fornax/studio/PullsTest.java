@@ -230,6 +230,23 @@ class PullsTest {
         assertTrue(authorizations.contains("Bearer " + TOKEN));
     }
 
+    @Test void theAppsTokenIsUsedForRequestsWithoutOneAndNeverSentBack() throws Exception {
+        assertEquals(false, Json.object(call("GET", "/api/hub", null).body()).get("tokenSet"));
+        String set = call("POST", "/api/hub/token", "{\"token\": \" " + TOKEN + " \"}").body();
+        assertEquals(true, Json.object(set).get("tokenSet"));
+        assertFalse(set.contains(TOKEN));
+        assertEquals(true, Json.object(call("GET", "/api/hub", null).body()).get("tokenSet"));
+
+        assertEquals(200, call("POST", "/api/models/plan", "{\"id\": \"locked\"}").statusCode());
+        assertEquals(false, Json.object(call("POST", "/api/hub/token", "{\"token\": \"\"}").body()).get("tokenSet"));
+        assertEquals(403, call("POST", "/api/models/plan", "{\"id\": \"locked\"}").statusCode());   // cleared: no token again
+        call("POST", "/api/hub/token", "{\"token\": \"" + TOKEN + "\"}");
+        String ok = call("POST", "/api/models/pull", "{\"id\": \"locked\"}").body();
+        assertTrue(ok.contains("event: done"), ok);
+        assertFalse(ok.contains(TOKEN));
+        assertTrue(authorizations.contains("Bearer " + TOKEN), "trimmed, and sent to the Hub");
+    }
+
     @Test void tooLittleDiskFailsBeforeAnyDownload() throws Exception {
         reserveBytes = Long.MAX_VALUE / 4;
         var error = event(call("POST", "/api/models/pull", "{\"id\": \"tiny\"}").body(), "error");
