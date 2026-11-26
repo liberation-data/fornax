@@ -44,7 +44,7 @@ import java.util.regex.Pattern;
  * POST /api/inspect                asks a vision model about an image, free text or to a JSON schema (status, token, done | error)
  * GET  /api/outputs/{file}         an image, song or video made, from the studio's home
  * GET  /api/catalogue              Fornax's model sets: what of each is on disk, licence, gated, downloading
- * POST /api/models/plan  {id, token?}   what getting one would download, and the free disk ({@link Pulls#plan}); 403 (reason, termsUrl) for a gated repo
+ * POST /api/models/plan  {id, token?}   what getting one would download, and the free disk ({@link Pulls#plan}); 403 (reason, termsUrl) for a gated repo, 502 for another answer from the Hub
  * POST /api/models/pull  {id, token?}   downloads it (start, progress, done | cancelled | error), or watches its download
  * POST /api/models/pull/cancel {id}     stops its download; what has arrived stays, for the next pull to resume
  * GET  /api/hub                   {"tokenSet": ...}: whether the app has given a Hugging Face token

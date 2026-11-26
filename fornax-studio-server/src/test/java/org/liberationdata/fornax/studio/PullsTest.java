@@ -369,4 +369,33 @@ class PullsTest {
         assertEquals("tiny", error.get("id"));
         assertNotNull(error.get("message"));
     }
+
+    @Test void aPullThatFailsToStartSaysSoInItsStream() throws Exception {
+        var broken = new StudioServer(studio, 0, null, new Pulls(SETS, token -> { throw new IllegalStateException("no hub"); },
+                URI.create("http://127.0.0.1:1")));
+        broken.start();
+        try {
+            var req = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + broken.port() + "/api/models/pull"))
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"id\": \"tiny\"}")).build();
+            var error = event(client.send(req, HttpResponse.BodyHandlers.ofString()).body(), "error");
+            assertEquals("IO", error.get("reason"), error.toString());
+            assertEquals("tiny", error.get("id"));
+            assertEquals("no hub", error.get("message"));
+        } finally {
+            broken.stop();
+        }
+    }
+
+    @Test void theStandardPullsLookInTheStudiosModelFolders() throws Exception {
+        Path folder = Files.createDirectories(dir.resolve("models"));
+        ModelSet set = org.liberationdata.fornax.hub.ModelCatalog.all().getFirst();
+        for (Part p : set.parts()) {
+            Path f = folder.resolve(p.primary().file());
+            Files.createDirectories(f.getParent());
+            Files.write(f, new byte[] {1});
+        }
+        @SuppressWarnings("unchecked") var entry = Pulls.standard(new Catalog(dir.resolve("hub"), List.of(folder))).catalogue().stream()
+                .map(m -> (Map<String, Object>) m).filter(m -> m.get("id").equals(set.id())).findFirst().orElseThrow();
+        assertEquals("PRESENT", entry.get("state"), entry.toString());
+    }
 }
