@@ -152,6 +152,15 @@ class DemucsModelIT {
         assertEquals("boom", e.getMessage());
     }
 
+    /** At the last segment there is no cancel check left, so the engine finishes; the exception still reaches us. */
+    @Test
+    void anExceptionAtTheLastSegmentStillStopsTheCall() {
+        var e = assertThrows(IllegalStateException.class, () -> demucs.separate(mix, DemucsModel.Options.DEFAULT,
+                (done, total) -> { if (done == total) throw new IllegalStateException("last"); }));
+        assertEquals("last", e.getMessage());
+        assertEquals(4, demucs.separate(slice(mix, 0, 1)).names().size());
+    }
+
     @Test
     void separatesAsyncAndCancelsThroughTheFuture() {
         Stems s = demucs.separateAsync(slice(mix, 0, 3)).join();
@@ -172,6 +181,8 @@ class DemucsModelIT {
         assertEquals(tiny.left().length, s.vocals().left().length);
         assertEquals(22050, s.sampleRate());
         assertThrows(IllegalArgumentException.class, () -> demucs.separate(new Audio(new float[0], new float[0], 44100)));
+        var e = assertThrows(IllegalArgumentException.class, () -> demucs.separate(new Audio(new float[10], new float[10], 0)));
+        assertTrue(e.getMessage().contains("sample rate"), e.getMessage());
     }
 
     @Test

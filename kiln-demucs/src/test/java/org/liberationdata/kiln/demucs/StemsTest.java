@@ -59,4 +59,13 @@ class StemsTest {
         assertThrows(IllegalArgumentException.class, () -> Stems.of(List.of("vocals"), List.of()));
         assertThrows(IllegalArgumentException.class, () -> Stems.of(List.of(), List.of()));
     }
+
+    /** backing() and mix() add the stems sample by sample, so they must line up. */
+    @Test
+    void stemsMustShareOneRateAndLength() {
+        Audio shorter = new Audio(new float[] {1}, new float[] {1}, 44100), slower = new Audio(new float[2], new float[2], 22050);
+        var e = assertThrows(IllegalArgumentException.class, () -> Stems.of(List.of("vocals", "drums"), List.of(a(1, 1), shorter)));
+        assertTrue(e.getMessage().contains("drums"), e.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> Stems.of(List.of("vocals", "drums"), List.of(a(1, 1), slower)));
+    }
 }

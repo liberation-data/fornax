@@ -25,9 +25,15 @@ public final class Stems {
     public static Stems of(List<String> names, List<Audio> audio) {
         if (names.isEmpty() || names.size() != audio.size())
             throw new IllegalArgumentException(names.size() + " names for " + audio.size() + " stems");
+        Audio first = audio.getFirst();
         Map<String, Audio> m = new LinkedHashMap<>();
-        for (int i = 0; i < names.size(); i++) m.put(names.get(i), audio.get(i));
-        return new Stems(Collections.unmodifiableMap(m), audio.getFirst().sampleRate());
+        for (int i = 0; i < names.size(); i++) {
+            Audio a = audio.get(i);
+            if (a.sampleRate() != first.sampleRate() || a.left().length != first.left().length || a.right().length != first.left().length)
+                throw new IllegalArgumentException("stem \"" + names.get(i) + "\" has a different rate or length from \"" + names.getFirst() + "\"");
+            m.put(names.get(i), a);
+        }
+        return new Stems(Collections.unmodifiableMap(m), first.sampleRate());
     }
 
     /** The stem names, in the model's order. */

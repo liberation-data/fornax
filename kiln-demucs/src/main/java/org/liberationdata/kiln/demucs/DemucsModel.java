@@ -123,7 +123,7 @@ public final class DemucsModel implements AutoCloseable {
 
     /**
      * How to separate. {@code shifts} averages that many randomly time-shifted passes (demucs' {@code --shifts}; a
-     * little cleaner, one more pass each), 0 for one deterministic pass. {@code overlap} between segments, in [0, 1);
+     * little cleaner, at {@code shifts} times the time), 0 for one deterministic pass. {@code overlap} between segments, in [0, 1);
      * negative is the model's own (0.25 for HTDemucs). {@code seed} picks the shifts.
      */
     public record Options(int shifts, float overlap, int seed) {
@@ -235,6 +235,9 @@ public final class DemucsModel implements AutoCloseable {
             MemorySegment out = a.allocate(ADDRESS);
             int rc = (int) SEPARATE.invokeExact(handle, pcm, (long) n, 2, audio.sampleRate(), o.shifts(), o.overlap(),
                     o.seed(), cb, MemorySegment.NULL, out);
+            // A callback that fails at the last segment comes after the engine's last cancel check, so the engine
+            // returns its stems anyway: free them before rethrowing.
+            if (rc == 0 && call.failure() != null) FREE.invokeExact(out.get(ADDRESS, 0));
             call.rethrow();
             if (rc == CANCELLED) throw new CancellationException("separation cancelled");
             if (rc == INVALID_ARGUMENT) throw new IllegalArgumentException(error());
