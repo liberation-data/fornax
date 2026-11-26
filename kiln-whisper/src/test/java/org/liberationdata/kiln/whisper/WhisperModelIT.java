@@ -121,6 +121,25 @@ class WhisperModelIT {
         assertFalse(stt.transcribe(audio, WhisperModel.Options.DEFAULT.withBeamSize(1)).text().isBlank());
     }
 
+    /** whisper.cpp keeps the last spectrogram and skips input under 100 ms, which would hear the last call again. */
+    @Test
+    void emptyAndVeryShortAudioDoNotRepeatTheLastCall() {
+        var greedy = WhisperModel.Options.DEFAULT.withBeamSize(1);
+        assertTrue(norm(stt.transcribe(audio, greedy).text()).contains("generative"));
+        for (float[] pcm : new float[][] {new float[0], new float[800]}) {
+            Transcript t = stt.transcribe(pcm, greedy, null);
+            assertFalse(norm(t.text()).contains("generative"), t.text());
+            assertEquals("en", t.language());
+        }
+    }
+
+    @Test
+    void anUnknownLanguageIsRefused() {
+        var e = assertThrows(IllegalArgumentException.class,
+                () -> stt.transcribe(new float[0], WhisperModel.Options.DEFAULT.withLanguage("klingon"), null));
+        assertTrue(e.getMessage().contains("klingon"), e.getMessage());
+    }
+
     @Test
     void anExceptionInTheListenerStopsTheCall() {
         var e = assertThrows(RuntimeException.class, () -> stt.transcribe(audio, WhisperModel.Options.DEFAULT,

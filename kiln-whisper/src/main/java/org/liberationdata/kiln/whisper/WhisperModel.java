@@ -14,6 +14,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static java.lang.foreign.ValueLayout.ADDRESS;
@@ -187,8 +188,15 @@ public final class WhisperModel implements AutoCloseable {
         return transcribe(Audio.resample(audio.mono(), audio.sampleRate(), SAMPLE_RATE), options, listener);
     }
 
-    /** Transcribes 16 kHz mono float PCM in [-1, 1]. listener may be null. */
+    /**
+     * Transcribes 16 kHz mono float PCM in [-1, 1]. listener may be null. Audio shorter than a second is padded with
+     * silence to one: whisper.cpp skips input under 100 ms without clearing its spectrogram, so it would otherwise
+     * transcribe the previous call's audio again.
+     *
+     * @throws IllegalArgumentException for a language whisper doesn't know
+     */
     public Transcript transcribe(float[] pcm16k, Options o, Listener listener) {
+        if (pcm16k.length < SAMPLE_RATE) pcm16k = Arrays.copyOf(pcm16k, SAMPLE_RATE);
         this.listener = listener;
         this.pcm = pcm16k;
         this.callbackError = null;
@@ -203,6 +211,7 @@ public final class WhisperModel implements AutoCloseable {
                     cstr(a, o.initialPrompt()), o.threads(), o.beamSize(), o.temperature(), progress, segment, MemorySegment.NULL);
             if (callbackError != null) throw new RuntimeException("listener failed", callbackError);
             if (rc == -100) throw new java.util.concurrent.CancellationException("transcription cancelled");
+            if (rc == -101) throw new IllegalArgumentException(error());
             if (rc != 0) throw new IllegalStateException("transcription failed (rc=" + rc + "): " + error());
             List<RawSegment> raw = read(a, 0, (int) N_SEGMENTS.invokeExact(handle));
             List<Segment> segments = Words.fitToWords(Words.snapToVoice(Words.assemble(raw), pcm16k, SAMPLE_RATE));

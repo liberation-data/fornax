@@ -36,35 +36,44 @@ public record Transcript(String text, String language, List<Segment> segments) {
         return segments.stream().flatMap(s -> s.words().stream()).toList();
     }
 
-    /** One line per word: start, end (seconds, two decimals) and the word, separated by tabs. */
+    /**
+     * One line per word: start, end (seconds, two decimals) and the word, separated by tabs. Whitespace inside a word
+     * (a tab or line break from a token) becomes a space, so every line keeps three columns.
+     */
     public String wordsTsv() {
         StringBuilder b = new StringBuilder();
-        for (Word w : words()) b.append(String.format(Locale.ROOT, "%.2f\t%.2f\t%s%n", w.start(), w.end(), w.text()));
+        for (Word w : words()) b.append(String.format(Locale.ROOT, "%.2f\t%.2f\t%s%n", w.start(), w.end(), w.text().replaceAll("\\s+", " ")));
         return b.toString();
     }
 
-    /** SubRip subtitles, one cue per segment. */
+    /** SubRip subtitles, one cue per segment. A blank line ends a cue, so blank lines inside a segment's text are dropped. */
     public String srt() {
         StringBuilder b = new StringBuilder();
         int i = 1;
         for (Segment s : segments) {
             if (s.text().isBlank()) continue;
             b.append(i++).append('\n').append(time(s.start(), ',')).append(" --> ").append(time(s.end(), ','))
-             .append('\n').append(s.text().strip()).append("\n\n");
+             .append('\n').append(cue(s.text())).append("\n\n");
         }
         return b.toString();
     }
 
-    /** WebVTT subtitles, one cue per segment. */
+    /**
+     * WebVTT subtitles, one cue per segment. Cue text is markup in WebVTT, so '&amp;', '&lt;' and '&gt;' are escaped
+     * (which also keeps "--&gt;" out of it), and blank lines inside a segment's text are dropped as in {@link #srt()}.
+     */
     public String vtt() {
         StringBuilder b = new StringBuilder("WEBVTT\n\n");
         for (Segment s : segments) {
             if (s.text().isBlank()) continue;
             b.append(time(s.start(), '.')).append(" --> ").append(time(s.end(), '.')).append('\n')
-             .append(s.text().strip()).append("\n\n");
+             .append(cue(s.text()).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")).append("\n\n");
         }
         return b.toString();
     }
+
+    /** A segment's text as one cue: stripped, with no blank line inside it. */
+    private static String cue(String text) { return text.strip().replaceAll("\\s*\\R\\s*", "\n"); }
 
     /** hh:mm:ss,mmm (SRT) or hh:mm:ss.mmm (VTT). */
     static String time(double seconds, char sep) {

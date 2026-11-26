@@ -91,6 +91,11 @@ int32_t kiln_whisper_transcribe(kiln_whisper * h, const float * pcm, int32_t n_s
     p.token_timestamps = true;
     const bool multilingual = whisper_is_multilingual(h->ctx);
     const bool detect = language == nullptr || *language == '\0' || strcmp(language, "auto") == 0;
+    // whisper.cpp takes an unknown language as id -1 and decodes from a garbage prompt, so refuse it here.
+    if (!detect && whisper_lang_id(language) < 0) {
+        g_err = std::string("unknown language: ") + language;
+        return -101;
+    }
     if (!multilingual) {
         p.language = "en";
         p.translate = false;

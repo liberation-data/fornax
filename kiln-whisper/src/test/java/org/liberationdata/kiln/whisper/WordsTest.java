@@ -141,6 +141,15 @@ class WordsTest {
     }
 
     @Test
+    void escapesWhatWouldBreakTheFormats() {
+        var t = new Transcript("", "en", List.of(new Segment(0.0, 1.0, " Tom & <Jerry> -->\n\n go\n", List.of(
+                new Word(0.0, 0.5, "Tom\t&", 0.9f), new Word(0.5, 1.0, "line\nbreak", 0.9f)))));
+        assertEquals("0.00\t0.50\tTom &\n0.50\t1.00\tline break\n", t.wordsTsv().replace("\r\n", "\n"));
+        assertEquals("1\n00:00:00,000 --> 00:00:01,000\nTom & <Jerry> -->\ngo\n\n", t.srt());
+        assertEquals("WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nTom &amp; &lt;Jerry&gt; --&gt;\ngo\n\n", t.vtt());
+    }
+
+    @Test
     void weightsByName() {
         assertEquals(WhisperModel.Weights.BASE_EN, WhisperModel.Weights.named("base.en"));
         assertEquals(WhisperModel.Weights.LARGE_V3_TURBO, WhisperModel.Weights.named("large-v3-turbo"));

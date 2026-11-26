@@ -28,7 +28,7 @@ const char * kiln_whisper_model_type(kiln_whisper * h);
 // Transcribes 16 kHz mono float PCM. language: a code ("en", "de", ...) or NULL/""/"auto" to detect it (an English-only
 // model always transcribes English). translate: 1 translates to English. initial_prompt: NULL or text that conditions
 // the first window (spelling, names, style). n_threads <= 0: whisper.cpp's default. beam_size <= 1: greedy decoding.
-// temperature < 0: whisper.cpp's default (0, raised on fallback). Returns 0 on success.
+// temperature < 0: whisper.cpp's default (0, raised on fallback). Returns 0 on success, -101 for an unknown language.
 int32_t kiln_whisper_transcribe(kiln_whisper * h, const float * pcm, int32_t n_samples, const char * language,
                                 int32_t translate, const char * initial_prompt, int32_t n_threads, int32_t beam_size,
                                 float temperature, kiln_whisper_progress_cb progress, kiln_whisper_segment_cb segment,
