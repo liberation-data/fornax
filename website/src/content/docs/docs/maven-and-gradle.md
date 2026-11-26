@@ -19,7 +19,7 @@ The Java modules, each with sources and javadoc jars:
 
 | Artifact | |
 |---|---|
-| `kiln-llama` | language and vision language models (llama.cpp, with `mtmd` for images) |
+| `kiln-llama` | language and vision language models, embeddings and reranking (llama.cpp, with `mtmd` for images) |
 | `kiln-tts` | text to speech (llama.cpp's audio generation) |
 | `kiln-sd` | images and video (stable-diffusion.cpp) |
 | `kiln-acestep` | ACE-Step songs (acestep.cpp) |

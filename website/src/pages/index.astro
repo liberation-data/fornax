@@ -123,7 +123,9 @@ dependencies {
     runtimeOnly("org.kiln4j:kiln-natives-$natives:0.1.0")
 }`;
 
-const download = `hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf`;
+const download = `kiln pull qwen3-4b
+# or, with the Hugging Face CLI:
+hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf`;
 
 const hello = `var weights = HfCache.find("unsloth/Qwen3-4B-Instruct-2507-GGUF",
         "Qwen3-4B-Instruct-2507-Q4_K_M.gguf").orElseThrow();
@@ -608,7 +610,7 @@ const theme = 'vitesse-dark';
                             <p class="eyebrow">Text</p>
                             <h3>kiln-llama</h3>
                             <p class="via">on <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a></p>
-                            <p>Any GGUF language model, and vision models that read images.</p>
+                            <p>Any GGUF language model, vision models that read images, and embeddings and reranking for search.</p>
                             <ul class="models"><li>Qwen</li><li>Llama</li><li>Gemma</li><li>Mistral</li><li>Qwen3-VL</li><li>PaddleOCR-VL</li><li>MedGemma</li><li>…</li></ul>
                         </article>
                         <article class="card engine">
@@ -747,7 +749,7 @@ const theme = 'vitesse-dark';
                         <div class="get-studio" id="get-studio">
                             <p class="get-studio-head">
                                 <strong>Download Kiln Studio.</strong>
-                                <span class="get-studio-sub">Alpha {studio.version}. Models are not included: fetch them with the Hugging Face CLI, as in Getting started.{(studio.mac.appleSilicon || studio.mac.intel) && ' The macOS builds are signed and notarized, so they open without a Gatekeeper prompt.'}</span>
+                                <span class="get-studio-sub">Alpha {studio.version}. Models are not included: fetch them with <code>kiln pull</code> or the Hugging Face CLI, as in Getting started.{(studio.mac.appleSilicon || studio.mac.intel) && ' The macOS builds are signed and notarized, so they open without a Gatekeeper prompt.'}</span>
                             </p>
                             <div class="downloads">
                                 {(studio.mac.appleSilicon || studio.mac.intel) && (
@@ -833,7 +835,7 @@ const theme = 'vitesse-dark';
                     <h2>A great companion for Embabel Agent.</h2>
                     <p>
                         <a href="https://github.com/embabel/embabel-agent">Embabel Agent</a> plans with goals and actions on the JVM. Kiln
-                        runs local models in the same process: chat and tool calls, vision, speech, images, songs and video. A
+                        runs local models in the same process: chat and tool calls, vision, embeddings, speech, images, songs and video. A
                         <code>kiln-embabel</code> module, to give Embabel's agents those models, is
                         <a href="https://github.com/liberation-data/kiln/issues/9">in progress</a>.
                     </p>
@@ -857,7 +859,7 @@ const theme = 'vitesse-dark';
                             <div class="shell"><Code code={depend} lang="kotlin" theme={theme} /></div>
                         </div>
                         <div>
-                            <div><h3>2. Fetch a model</h3><p>With the Hugging Face CLI. Kiln downloads nothing itself: <code>HfCache</code> finds the weights in <code>HF_HUB_CACHE</code>, <code>HF_HOME/hub</code> or <code>~/.cache/huggingface/hub</code>.</p></div>
+                            <div><h3>2. Fetch a model</h3><p>With <a href="/docs/guides/cli/"><code>kiln pull</code></a> and an alias from Kiln’s catalogue. To get <code>kiln</code>, install <a href="#studio">Kiln Studio</a> and choose <strong>Install kiln command</strong> from its menu (coming in the next Studio release), or build it from source with <code>./gradlew :kiln-cli:installDist</code>. Or use the Hugging Face CLI: both fill the one Hugging Face cache (<code>HF_HUB_CACHE</code>, <code>HF_HOME/hub</code> or <code>~/.cache/huggingface/hub</code>), where <code>HfCache</code> finds the weights.</p></div>
                             <div class="shell"><Code code={download} lang="sh" theme={theme} /></div>
                         </div>
                         <div>

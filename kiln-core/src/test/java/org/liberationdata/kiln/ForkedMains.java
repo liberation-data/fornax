@@ -109,5 +109,16 @@ final class ForkedMains {
         }
     }
 
+    /** Starts a worker, prints its pid, and dies without closing it: the worker must go too. */
+    static final class WorkerParent {
+        public static void main(String[] args) {
+            var w = new Worker("orphan", Worker.Options.DEFAULT);
+            w.open(TestService.class.getName(), null);
+            System.out.println("worker=" + w.pid());
+            System.out.flush();
+            Runtime.getRuntime().halt(0);
+        }
+    }
+
     private ForkedMains() {}
 }

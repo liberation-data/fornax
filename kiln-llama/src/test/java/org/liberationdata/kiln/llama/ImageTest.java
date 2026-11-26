@@ -92,6 +92,9 @@ class ImageTest {
     void weightsByName() {
         assertEquals(LlamaModel.Weights.QWEN3_VL_4B, LlamaModel.Weights.named("qwen3-vl-4b"));
         assertEquals(LlamaModel.Weights.PADDLEOCR_VL, LlamaModel.Weights.named("paddleocr-vl"));
+        assertEquals(LlamaModel.Weights.QWEN3_EMBEDDING_0_6B, LlamaModel.Weights.named("qwen3-embedding-0.6b"));
+        assertEquals(LlamaModel.Weights.QWEN3_RERANKER_0_6B, LlamaModel.Weights.named("Qwen3-Reranker-0.6B"));
+        assertFalse(LlamaModel.Weights.QWEN3_EMBEDDING_0_6B.vision());
         assertTrue(LlamaModel.Weights.MEDGEMMA_4B.vision());
         assertFalse(LlamaModel.Weights.QWEN3_4B.vision());
         assertNull(LlamaModel.Weights.QWEN3_4B.mmproj());  // text only: no mmproj, and none in its download command
