@@ -136,6 +136,30 @@ class EmbeddingsIT {
     }
 
     @Test
+    void anEmptyTextEmbeds() {
+        // Qwen3-Embedding's tokenizer appends an end-of-text, so even "" has a token to pool
+        float[][] v = model.embed(List.of("", "kiln", ""));
+        assertEquals(3, v.length);
+        assertEquals(1.0, Math.sqrt(Vectors.dot(v[0], v[0])), 1e-4);
+        assertTrue(Vectors.cosine(v[0], v[2]) > 0.999);
+    }
+
+    @Test
+    void textsThatOverflowTheBatchTogetherGoInSeveral() {
+        // a 64-token context is also a 64-token batch: these ~20-token texts take one batch each two or three
+        List<String> texts = IntStream.range(0, 10)
+                .mapToObj(i -> "passage " + i + ": a wood-fired kiln reaches stoneware temperatures over many hours").toList();
+        try (var small = new LlamaModel(W, -1, 64, Mode.EMBED)) {
+            float[][] v = small.embed(texts);
+            assertEquals(texts.size(), v.length);
+            for (int i = 0; i < texts.size(); i++) {
+                double cos = Vectors.cosine(v[i], model.embed(texts.get(i)));
+                assertTrue(cos > 0.999, "text " + i + ": cosine " + cos);
+            }
+        }
+    }
+
+    @Test
     void aTextLongerThanTheContextFails() {
         try (var small = new LlamaModel(W, -1, 64, Mode.EMBED)) {
             var e = assertThrows(IllegalStateException.class, () -> small.embed("kiln ".repeat(200)));

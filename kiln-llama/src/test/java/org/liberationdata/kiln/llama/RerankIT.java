@@ -9,6 +9,7 @@ import org.liberationdata.kiln.llama.LlamaModel.Mode;
 import org.liberationdata.kiln.llama.LlamaModel.Options;
 import org.liberationdata.kiln.llama.LlamaModel.Weights;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.stream.IntStream;
@@ -68,6 +69,31 @@ class RerankIT {
     void oneDocumentAtATimeScoresNearlyTheSame() {
         List<Scored> all = model.rerank(QUERY, DOCS);
         for (Scored s : all) assertEquals(s.score(), model.rerank(QUERY, List.of(DOCS.get(s.index()))).get(0).score(), 0.05);
+    }
+
+    @Test
+    void moreDocumentsThanOneBatchTakes() {
+        // llama.cpp runs at most 256 sequences at once; the answer is last, in the second batch
+        List<String> docs = new ArrayList<>(IntStream.range(0, 299).mapToObj(i -> DOCS.get(1) + " (" + i + ")").toList());
+        docs.add(DOCS.get(0));
+        List<Scored> ranked = model.rerank(QUERY, docs);
+        assertEquals(300, ranked.size());
+        assertEquals(299, ranked.get(0).index());
+        assertEquals(LLAMA_EMBEDDING[0], ranked.get(0).score(), 0.01);
+    }
+
+    @Test
+    void emptyQueryOrDocumentStillScores() {
+        assertEquals(1, model.rerank(QUERY, List.of("")).size());
+        assertEquals(1, model.rerank("", List.of(DOCS.get(0))).size());
+    }
+
+    @Test
+    void aPairLongerThanTheContextFails() {
+        try (var small = new LlamaModel(W, -1, 128, Mode.RERANK)) {
+            var e = assertThrows(IllegalStateException.class, () -> small.rerank(QUERY, List.of("kiln ".repeat(200))));
+            assertTrue(e.getMessage().contains("tokens"), e.getMessage());
+        }
     }
 
     @Test
