@@ -1,0 +1,651 @@
+diff --git a/docs/models/ltx2.md b/docs/models/ltx2.md
+index 1cddeb5..33a7fc4 100644
+--- a/docs/models/ltx2.md
++++ b/docs/models/ltx2.md
+@@ -515,6 +515,38 @@ pass its name without path or extension to `--hires-upscaler`.
+   -o hires_t2v.webm
+ ```
+ 
++#### Audio to video
++
++Pass a soundtrack with `--ref-audio` (the `ref_audios` video option) to
++generate the picture to it, e.g. a singer whose lips follow a song. The track
++is encoded with the audio VAE's encoder and held fixed (denoise mask 0, audio
++timestep 0) in the joint latent, so the output's soundtrack is the reference
++as the audio VAE reconstructs it. It combines with `--init-img` and
++`--end-img`, and with a latent upscale refine. The track must be at least as
++long as the video; the part after the video's length is ignored. It needs an
++audio VAE with encoder weights (`audio_vae.encoder.*`), as in
++`ltx-2.5-audio-vae-bf16.safetensors`.
++
++```sh
++./bin/sd-cli \
++  -M vid_gen \
++  --diffusion-model ../models/diffusion_models/ltx-2.5-22b-dev-transformer-Q8_0.gguf \
++  --vae ../models/vae/ltx-2.5-video-vae-conv-bf16.safetensors \
++  --audio-vae ../models/vae/ltx-2.5-audio-vae-bf16.safetensors \
++  --llm ../models/text_encoders/gemma4-12b-with-proj-ltx-2.5-Q8_0.gguf \
++  -p "close-up of a singer at a vintage microphone, singing. Audio: a man singing" \
++  -i ../inputs/singer.png \
++  --ref-audio ../inputs/song-section.wav \
++  --cfg-scale 3.0 \
++  --sampling-method euler \
++  -W 768 \
++  -H 512 \
++  --video-frames 97 \
++  --offload-to-cpu \
++  -v \
++  -o a2v.webm
++```
++
+ ## Notes and limitations
+ 
+ For DGL, pass the separate LTX-2.3 connector file to `load_text_encoder` with
+diff --git a/src/api/generation_video.cpp b/src/api/generation_video.cpp
+index 8e4a963..8e60706 100644
+--- a/src/api/generation_video.cpp
++++ b/src/api/generation_video.cpp
+@@ -37,6 +37,30 @@ namespace sd::api {
+         predictor_option(request, ", audio_embedding = audio_embedding");
+     }
+ 
++    // LTX audio-to-video: the reference track is encoded with the audio VAE and held fixed (denoise mask 0) in the
++    // joint latent, so the picture is generated to it and the output soundtrack is the reference.
++    static void held_audio(GenerationTemplate& request) {
++        const auto tracks = bound_audios(request.options, "ref_audios");
++        if (tracks.empty())
++            return;
++        if (tracks.size() > 1)
++            throw dgl::Error(SD_STATUS_INVALID_ARGUMENT, "LTX accepts one reference audio track");
++        if (!request.flags.at("decode_audio").get<bool>())
++            throw dgl::Error(SD_STATUS_INVALID_ARGUMENT, "LTX reference audio requires audio VAE weights (audio_vae_path)");
++        const auto& track   = tracks[0];
++        const auto samples  = sd_tensor_dim(track.data, 1);
++        const double needed = double(request.values.at("frames").get<int>()) / request.values.at("fps").get<int>();
++        if (track.sample_rate == 0 || double(samples) / track.sample_rate + 1e-6 < needed)
++            throw dgl::Error(SD_STATUS_INVALID_ARGUMENT, "LTX reference audio (" + std::to_string(track.sample_rate ? double(samples) / track.sample_rate : 0.0) +
++                                                             " s) is shorter than the video (" + std::to_string(needed) + " s)");
++        bind_tensor(request.program, "ref_audio_samples", track.data);
++        request.values["ref_audio_rate"] = track.sample_rate;
++        request.flags["held_audio"]      = true;
++        request.flags["conditioned"]     = true;
++        request.fields["audio_base"]     = "held_audio";
++        request.fields["audio_mask"]     = "0";
++    }
++
+     static void audiovisual(GenerationTemplate& request) {
+         const bool h3        = sd_version_is_minimax_h3(request.definition.version);
+         const auto& settings = request.context.model.config.context;
+@@ -52,6 +76,8 @@ namespace sd::api {
+         if (h3 && video_shift <= 0)
+             throw dgl::Error(SD_STATUS_INVALID_ARGUMENT, "MiniMax-H3 flow shift must be positive");
+         request.values["audio_scale"]       = h3 ? video_shift / 3.f : 1.f;
++        request.fields["audio_base"]        = "tensor::zeros(audio_shape)";
++        request.fields["audio_mask"]        = "1";
+         request.fields["audio_vae_options"] = arguments(loader_options(settings, SDBackendModule::VAE, request.definition));
+         predictor_option(request, h3 ? ", audio_length = audio_shape[0], fps = fps" : ", audio_length = audio_shape[1], fps = fps");
+         if (h3)
+@@ -105,12 +131,12 @@ namespace sd::api {
+         const bool h3        = version == VERSION_MINIMAX_H3;
+         if (!h3 && !bound_videos(request.options, "ref_videos").empty())
+             throw dgl::Error(SD_STATUS_UNSUPPORTED, "reference videos require MiniMax-H3");
+-        if (!h3 && !s2v && !bound_audios(request.options, "ref_audios").empty())
+-            throw dgl::Error(SD_STATUS_UNSUPPORTED, "reference audio requires MiniMax-H3 or Wan2.2 S2V");
++        if (!h3 && !s2v && !ltx && !bound_audios(request.options, "ref_audios").empty())
++            throw dgl::Error(SD_STATUS_UNSUPPORTED, "reference audio requires LTX-2, MiniMax-H3 or Wan2.2 S2V");
+         if (s2v && last)
+             throw dgl::Error(SD_STATUS_UNSUPPORTED, "Wan2.2 S2V does not support an end image");
+         const bool image_condition = !vace && !s2v && request.context.model.wan_image_condition;
+-        request.flags              = {{"first", first}, {"last", last}, {"conditioned", first || last}, {"vace", vace}, {"vace_reference", vace && first}, {"s2v_reference", s2v && first}, {"driving_audio", false}, {"image_condition", image_condition}, {"vision", image_condition && request.context.model.wan_vision_condition}, {"end_vision", request.context.model.wan_end_vision}, {"frozen", frozen}, {"hunyuan", sd_version_is_hunyuan_video(version) && (first || last)}, {"controls", false}, {"dual", false}, {"custom_sigmas", request.image.sample_params.custom_sigmas_count > 0}};
++        request.flags              = {{"first", first}, {"last", last}, {"conditioned", first || last}, {"vace", vace}, {"vace_reference", vace && first}, {"s2v_reference", s2v && first}, {"driving_audio", false}, {"image_condition", image_condition}, {"vision", image_condition && request.context.model.wan_vision_condition}, {"end_vision", request.context.model.wan_end_vision}, {"frozen", frozen}, {"hunyuan", sd_version_is_hunyuan_video(version) && (first || last)}, {"controls", false}, {"dual", false}, {"held_audio", false}, {"custom_sigmas", request.image.sample_params.custom_sigmas_count > 0}};
+         request.fields["entry"]    = ltx ? "video_ltx" : h3 ? "video_h3"
+                                                             : "video_wan";
+         if (image_condition || request.flags.at("hunyuan").get<bool>())
+@@ -141,8 +167,11 @@ namespace sd::api {
+         }
+         if (ltx || h3) {
+             audiovisual(request);
+-            if (ltx && (first || last)) {
+-                request.values["strength"] = request.image.strength;
++            if (ltx)
++                held_audio(request);
++            if (ltx && request.flags.at("conditioned").get<bool>()) {
++                if (first || last)
++                    request.values["strength"] = request.image.strength;
+                 request.fields["sample_options"] += ", base = base, denoise_mask = packed_mask, mask_input = true";
+                 if (last)
+                     predictor_option(request, ", video_positions = positions");
+diff --git a/src/api/templates/video_hires.dgl b/src/api/templates/video_hires.dgl
+index 4ca476e..bd4588e 100644
+--- a/src/api/templates/video_hires.dgl
++++ b/src/api/templates/video_hires.dgl
+@@ -49,7 +49,7 @@
+ {% endif %}
+     hires_base = pack_av(hires_conditioned, hires_audio, audio_scale = audio_scale)
+     hires_packed_shape = tensor::shape(hires_base)
+-    hires_packed_mask = tensor::concat([tensor::broadcast_to(hires_condition_mask, tensor::shape(hires_conditioned)), tensor::full([hires_packed_shape[0], hires_packed_shape[1], hires_packed_shape[2], hires_packed_shape[3] - hires_video_shape[3], 1], 1)], axis = 3)
++    hires_packed_mask = tensor::concat([tensor::broadcast_to(hires_condition_mask, tensor::shape(hires_conditioned)), tensor::full([hires_packed_shape[0], hires_packed_shape[1], hires_packed_shape[2], hires_packed_shape[3] - hires_video_shape[3], 1], {{audio_mask}})], axis = 3)
+ {% else %}
+     hires_base = pack_av(hires_video, hires_audio, audio_scale = audio_scale)
+ {% endif %}
+diff --git a/src/api/templates/video_ltx.dgl b/src/api/templates/video_ltx.dgl
+index a22ccec..6a41955 100644
+--- a/src/api/templates/video_ltx.dgl
++++ b/src/api/templates/video_ltx.dgl
+@@ -49,11 +49,15 @@ fn main({{inputs}}) {
+ {% else %}
+     audio_shape = empty_audio_shape
+ {% endif %}
++{% if flags.held_audio %}
++    held_audio_latent = audio_vae_encode(audio_vae, ref_audio_samples[:, :math::ceil(ref_audio_rate * frames / fps)], sample_rate = ref_audio_rate)
++    held_audio = held_audio_latent[:, :audio_shape[1]]
++{% endif %}
+ {% if flags.conditioned %}
+-    base = pack_av(video_conditioned, tensor::zeros(audio_shape), audio_scale = audio_scale)
++    base = pack_av(video_conditioned, {{audio_base}}, audio_scale = audio_scale)
+     packed_shape = tensor::shape(base)
+     full_video_mask = tensor::broadcast_to(mask_conditioned, tensor::shape(video_conditioned))
+-    packed_mask = tensor::concat([full_video_mask, tensor::full([packed_shape[0], packed_shape[1], packed_shape[2], packed_shape[3] - video_shape[3], 1], 1)], axis = 3)
++    packed_mask = tensor::concat([full_video_mask, tensor::full([packed_shape[0], packed_shape[1], packed_shape[2], packed_shape[3] - video_shape[3], 1], {{audio_mask}})], axis = 3)
+ {% else %}
+     base = pack_av(video_base, tensor::zeros(audio_shape), audio_scale = audio_scale)
+ {% endif %}
+diff --git a/src/dgl/bindings/latents.cpp b/src/dgl/bindings/latents.cpp
+index 12b3572..7bc38ab 100644
+--- a/src/dgl/bindings/latents.cpp
++++ b/src/dgl/bindings/latents.cpp
+@@ -79,7 +79,9 @@ namespace sd::dgl {
+         auto& engine     = *object<AudioVAE>(args, "vae");
+         Model::ExecutionScope scope(engine);
+         scope.require_ready();
+-        auto waveform = sd::dgl::ops::prepare_minimax_h3_reference_waveform(audio, engine.audio_vae_model->input_sample_rate());
++        const int rate = engine.audio_vae_model->input_sample_rate();
++        auto waveform  = sd_version_is_ltxav(engine.version()) ? sd::dgl::ops::prepare_ltx_reference_waveform(audio, rate)
++                                                               : sd::dgl::ops::prepare_minimax_h3_reference_waveform(audio, rate);
+         auto result   = engine.audio_vae_model->encode(engine.n_threads, waveform);
+         if (result.empty()) {
+             throw std::runtime_error("audio VAE encoding failed");
+diff --git a/src/dgl/models/dit.cpp b/src/dgl/models/dit.cpp
+index 9d541e0..b556593 100644
+--- a/src/dgl/models/dit.cpp
++++ b/src/dgl/models/dit.cpp
+@@ -1,5 +1,6 @@
+ #include "dgl/models/dit.h"
+ 
++#include <algorithm>
+ #include <utility>
+ 
+ #include "conditioning/conditioner.hpp"
+@@ -288,6 +289,23 @@ namespace sd::dgl::models {
+         return video_timesteps;
+     }
+ 
++    // The audio stream's share of the noise level: the largest denoise-mask value over the packed audio channels
++    // (those after the video's), so audio held fixed (mask 0, e.g. a soundtrack to animate to) gets timestep 0.
++    static float ltxav_audio_mask_scale(const sd::Tensor<float>& denoise_mask, int64_t video_channels) {
++        if (denoise_mask.dim() < 4 || denoise_mask.shape()[3] <= video_channels)
++            return 1.f;
++        const auto& s       = denoise_mask.shape();
++        const int64_t plane = s[0] * s[1] * s[2];
++        const int64_t outer = denoise_mask.numel() / (plane * s[3]);
++        float scale         = 0.f;
++        for (int64_t o = 0; o < outer; ++o)
++            for (int64_t c = video_channels; c < s[3]; ++c) {
++                const float* values = denoise_mask.data() + (o * s[3] + c) * plane;
++                scale               = std::max(scale, *std::max_element(values, values + plane));
++            }
++        return scale;
++    }
++
+     int DiT::get_diffusion_model_down_factor() {
+         return find_model_definition(version())->geometry.diffusion_down_factor;
+     }
+@@ -344,7 +362,7 @@ namespace sd::dgl::models {
+             return {std::move(cached), scaling[0], scaling[1]};
+         }
+         auto timesteps      = sd::Tensor<float>::from_vector(std::move(times));
+-        auto audio_time     = separate_audio_time ? sd::Tensor<float>::from_vector(base_times) : sd::Tensor<float>{};
++        auto audio_time     = separate_audio_time ? sd::Tensor<float>::from_vector({base_times.front() * ltxav_audio_mask_scale(step.mask, get_latent_channel())}) : sd::Tensor<float>{};
+         auto target_time    = std::isfinite(step.target_sigma) ? sd::Tensor<float>::from_vector({step.target_sigma}) : sd::Tensor<float>{};
+         auto lookahead_time = std::isfinite(step.lookahead_sigma) ? sd::Tensor<float>::from_vector({step.lookahead_sigma}) : sd::Tensor<float>{};
+         auto guidance       = sd::Tensor<float>::from_vector({options.guidance});
+diff --git a/src/dgl/ops/media.cpp b/src/dgl/ops/media.cpp
+index 2226d3a..693a7ac 100644
+--- a/src/dgl/ops/media.cpp
++++ b/src/dgl/ops/media.cpp
+@@ -4,6 +4,7 @@
+ #include <cmath>
+ #include <cstdlib>
+ #include <cstring>
++#include <numeric>
+ 
+ #include "conditioning/wan_audio.h"
+ #include "dgl/models/audio_vae.h"
+@@ -158,6 +159,60 @@ namespace sd::dgl::ops {
+         return waveform;
+     }
+ 
++    // Band-limited resampling as torchaudio's (and ComfyUI's) sinc_interp_hann: lowpass_filter_width 6, rolloff 0.99,
++    // zero padding, ceil(new * length / orig) samples out. Returns planar [samples, channels] (one or two channels),
++    // the layout LTXAudioVAERunner::encode takes.
++    sd::Tensor<float> prepare_ltx_reference_waveform(const sd::Audio& audio,
++                                                     int target_sample_rate) {
++        if (audio.data == nullptr || audio.sample_count == 0 || audio.channels == 0 || audio.sample_rate == 0 || target_sample_rate <= 0) {
++            return {};
++        }
++        const int64_t channels = std::min<int64_t>(audio.channels, 2);
++        const int64_t length   = static_cast<int64_t>(audio.sample_count);
++        if (static_cast<int>(audio.sample_rate) == target_sample_rate) {
++            sd::Tensor<float> waveform({length, channels});
++            for (int64_t c = 0; c < channels; ++c)
++                for (int64_t i = 0; i < length; ++i)
++                    waveform.index(i, c) = audio.data[i * audio.channels + c];
++            return waveform;
++        }
++        constexpr double kPi           = 3.14159265358979323846;
++        constexpr int filter_width     = 6;
++        constexpr double rolloff       = 0.99;
++        const int64_t divisor          = std::gcd(static_cast<int64_t>(audio.sample_rate), static_cast<int64_t>(target_sample_rate));
++        const int64_t orig             = audio.sample_rate / divisor;
++        const int64_t next             = target_sample_rate / divisor;
++        const double base              = std::min(orig, next) * rolloff;
++        const int64_t width            = static_cast<int64_t>(std::ceil(filter_width * orig / base));
++        const int64_t taps             = 2 * width + orig;
++        std::vector<double> kernel(static_cast<size_t>(next * taps));
++        for (int64_t phase = 0; phase < next; ++phase) {
++            for (int64_t k = 0; k < taps; ++k) {
++                double t      = (-static_cast<double>(phase) / next + static_cast<double>(k - width) / orig) * base;
++                t             = std::clamp(t, -static_cast<double>(filter_width), static_cast<double>(filter_width));
++                double window = std::cos(t * kPi / filter_width / 2);
++                window *= window;
++                t *= kPi;
++                kernel[static_cast<size_t>(phase * taps + k)] = (t == 0 ? 1.0 : std::sin(t) / t) * window * (base / orig);
++            }
++        }
++        const int64_t out_length = static_cast<int64_t>(std::ceil(static_cast<float>(next * length) / static_cast<float>(orig)));
++        sd::Tensor<float> waveform({out_length, channels});
++        for (int64_t c = 0; c < channels; ++c) {
++            for (int64_t i = 0; i < out_length; ++i) {
++                const int64_t frame = i / next, phase = i % next;
++                double sum          = 0.0;
++                for (int64_t k = 0; k < taps; ++k) {
++                    const int64_t source = frame * orig + k - width;
++                    if (source >= 0 && source < length)
++                        sum += audio.data[source * audio.channels + c] * kernel[static_cast<size_t>(phase * taps + k)];
++                }
++                waveform.index(i, c) = static_cast<float>(sum);
++            }
++        }
++        return waveform;
++    }
++
+     sd::Tensor<float> build_s2v_audio_window(const sd::Tensor<float>& stacked, int64_t batch_frames) {
+         const int64_t embed_dim  = stacked.shape()[0];
+         const int64_t in_frames  = stacked.shape()[1];
+diff --git a/src/dgl/ops/media.h b/src/dgl/ops/media.h
+index 5206bca..1a188dd 100644
+--- a/src/dgl/ops/media.h
++++ b/src/dgl/ops/media.h
+@@ -24,6 +24,8 @@ namespace sd::dgl::ops {
+                                                  bool causal_temporal_positioning);
+     sd::Tensor<float> prepare_minimax_h3_reference_waveform(const sd::Audio& audio,
+                                                             int target_sample_rate);
++    sd::Tensor<float> prepare_ltx_reference_waveform(const sd::Audio& audio,
++                                                     int target_sample_rate);
+     sd::Tensor<float> build_s2v_audio_window(const sd::Tensor<float>& stacked, int64_t batch_frames);
+ }  // namespace sd::dgl::ops
+ 
+diff --git a/src/model/diffusion/ltxv.hpp b/src/model/diffusion/ltxv.hpp
+index 8fe4491..3e87d37 100644
+--- a/src/model/diffusion/ltxv.hpp
++++ b/src/model/diffusion/ltxv.hpp
+@@ -913,6 +913,7 @@ namespace LTXV {
+                                                       ggml_tensor* ax,
+                                                       ggml_tensor* timestep,
+                                                       ggml_tensor* audio_timestep,
++                                                      ggml_tensor* video_timestep_max,
+                                                       ggml_tensor* context,
+                                                       ggml_tensor* v_pe,
+                                                       ggml_tensor* a_pe,
+@@ -965,24 +966,28 @@ namespace LTXV {
+             if (config.cross_attention_adaln) {
+                 auto prompt_adaln_single       = std::dynamic_pointer_cast<AdaLayerNormSingle>(blocks["prompt_adaln_single"]);
+                 auto audio_prompt_adaln_single = std::dynamic_pointer_cast<AdaLayerNormSingle>(blocks["audio_prompt_adaln_single"]);
+-                v_prompt_timestep_mod          = prompt_adaln_single->forward(ctx, a_timestep_scaled).first;
++                auto v_max_scaled              = ggml_ext_scale(ctx, video_timestep_max != nullptr ? video_timestep_max : effective_audio_timestep, config.timestep_scale_multiplier);
++                v_prompt_timestep_mod          = prompt_adaln_single->forward(ctx, v_max_scaled).first;
+                 a_prompt_timestep_mod          = audio_prompt_adaln_single->forward(ctx, a_timestep_scaled).first;
+             }
+ 
+-            auto av_ca_video_timestep = repeat_scalar_timestep_like(ctx, effective_audio_timestep, timestep);
++            // Cross-modal modulation, as LTX-2 and ComfyUI do it: each stream's scale/shift follows its own timestep, and
++            // each gate follows the other stream's (largest) timestep. They only differ when the streams are at
++            // different noise levels, e.g. a soundtrack held fixed while the picture is generated to it.
++            auto av_ca_video_timestep = video_timestep_max != nullptr ? timestep : repeat_scalar_timestep_like(ctx, effective_audio_timestep, timestep);
+             auto av_ca_audio_timestep = effective_audio_timestep;
+             auto av_ca_factor         = config.av_ca_timestep_scale_multiplier / config.timestep_scale_multiplier;
+             auto av_ca_video_scale_shift_timestep =
+                 std::dynamic_pointer_cast<AdaLayerNormSingle>(blocks["av_ca_video_scale_shift_adaln_single"])->forward(ctx, av_ca_video_timestep).first;
+             auto av_ca_a2v_gate_noise_timestep =
+                 std::dynamic_pointer_cast<AdaLayerNormSingle>(blocks["av_ca_a2v_gate_adaln_single"])
+-                    ->forward(ctx, ggml_ext_scale(ctx, av_ca_video_timestep, av_ca_factor))
++                    ->forward(ctx, ggml_ext_scale(ctx, repeat_scalar_timestep_like(ctx, effective_audio_timestep, timestep), av_ca_factor))
+                     .first;
+             auto av_ca_audio_scale_shift_timestep =
+                 std::dynamic_pointer_cast<AdaLayerNormSingle>(blocks["av_ca_audio_scale_shift_adaln_single"])->forward(ctx, av_ca_audio_timestep).first;
+             auto av_ca_v2a_gate_noise_timestep =
+                 std::dynamic_pointer_cast<AdaLayerNormSingle>(blocks["av_ca_v2a_gate_adaln_single"])
+-                    ->forward(ctx, ggml_ext_scale(ctx, av_ca_audio_timestep, av_ca_factor))
++                    ->forward(ctx, ggml_ext_scale(ctx, video_timestep_max != nullptr ? video_timestep_max : av_ca_audio_timestep, av_ca_factor))
+                     .first;
+ 
+             sd::ggml_graph_cut::mark_graph_cut(vx, "ltxav.prelude", "vx");
+@@ -1038,6 +1043,7 @@ namespace LTXV {
+         LTXAVModelBlock model;
+         sd::Tensor<float> vx_input_cache;
+         sd::Tensor<float> ax_input_cache;
++        sd::Tensor<float> video_max_input_cache;
+ 
+         LTXAVRunner(ggml_backend_t backend,
+                     const String2TensorStorage& tensor_storage_map      = {},
+@@ -1148,6 +1154,16 @@ namespace LTXV {
+             ggml_tensor* ax            = make_optional_input(ax_input_cache);
+             ggml_tensor* timesteps     = make_input(timesteps_tensor);
+             ggml_tensor* a_timestep    = make_optional_input(audio_timesteps_tensor);
++            // The video stream's largest timestep, when it differs from the audio's (a held soundtrack, a keyframe).
++            ggml_tensor* v_timestep_max = nullptr;
++            if (!audio_timesteps_tensor.empty() && !timesteps_tensor.empty()) {
++                const float v_max = *std::max_element(timesteps_tensor.values().begin(), timesteps_tensor.values().end());
++                const float a_max = *std::max_element(audio_timesteps_tensor.values().begin(), audio_timesteps_tensor.values().end());
++                if (v_max != a_max) {
++                    video_max_input_cache = sd::Tensor<float>::from_vector({v_max});
++                    v_timestep_max        = make_input(video_max_input_cache);
++                }
++            }
+             ggml_tensor* context       = make_optional_input(context_tensor);
+             ggml_tensor* audio_context = make_optional_input(audio_context_tensor);
+ 
+@@ -1259,6 +1275,7 @@ namespace LTXV {
+                                             ax,
+                                             timesteps,
+                                             a_timestep,
++                                            v_timestep_max,
+                                             context,
+                                             video_pe,
+                                             audio_pe,
+diff --git a/src/model/vae/ltx_audio_vae.hpp b/src/model/vae/ltx_audio_vae.hpp
+index 631b8c5..b78752a 100644
+--- a/src/model/vae/ltx_audio_vae.hpp
++++ b/src/model/vae/ltx_audio_vae.hpp
+@@ -36,6 +36,7 @@ namespace LTXV {
+         std::vector<int> base_resblock_kernel_sizes                = {3, 7, 11};
+         std::vector<std::vector<int>> base_resblock_dilation_sizes = {{1, 3, 5}, {1, 3, 5}, {1, 3, 5}};
+         bool has_bwe                                               = false;
++        bool has_encoder                                           = false;
+         int bwe_input_sample_rate                                  = 16000;
+         int bwe_output_sample_rate                                 = 48000;
+         int bwe_hop_length                                         = 80;
+@@ -160,7 +161,9 @@ namespace LTXV {
+             }
+             config.base_resblock_kernel_sizes.resize(3);
+ 
+-            config.has_bwe = tensor_storage_map.find("vocoder.bwe_generator.conv_pre.weight") != tensor_storage_map.end();
++            config.has_bwe     = tensor_storage_map.find("vocoder.bwe_generator.conv_pre.weight") != tensor_storage_map.end();
++            config.has_encoder = require("audio_vae.encoder.conv_in.conv.weight") != nullptr &&
++                                 require("audio_vae.encoder.conv_out.conv.weight") != nullptr;
+             if (config.has_bwe) {
+                 config.bwe_input_sample_rate        = 16000;
+                 config.bwe_output_sample_rate       = 48000;
+@@ -895,12 +898,196 @@ namespace LTXV {
+         }
+     };
+ 
++    // Strided downsampling, causal in time: pad one frequency bin on the right and two time steps on top, then a
++    // stride-2 3x3 convolution (CausalAudioAutoencoder's Downsample with causality_axis = height).
++    struct AudioDownsample2D : public GGMLBlock {
++        AudioDownsample2D(int64_t channels) {
++            blocks["conv"] = std::make_shared<Conv2d>(channels, channels, std::pair<int, int>{3, 3}, std::pair<int, int>{2, 2});
++        }
++
++        ggml_tensor* forward(GGMLRunnerContext* ctx, ggml_tensor* x) {
++            auto conv = std::dynamic_pointer_cast<Conv2d>(blocks["conv"]);
++            x         = ggml_ext_pad_ext(ctx, x, 0, 1, 2, 0, 0, 0, 0, 0);
++            return conv->forward(ctx, x);
++        }
++    };
++
++    // The audio VAE's encoder: log-mel [mel_bins, time, audio channels, batch] to normalized latent means
++    // [latent_frequency_bins, latent time, latent channels, batch], the layout the decoder and the DiT take.
++    struct AudioEncoder : public GGMLBlock {
++        LTXAudioVAEConfig config;
++
++        explicit AudioEncoder(const LTXAudioVAEConfig& config)
++            : config(config) {
++            const auto& mult  = config.decoder_channel_multipliers;
++            int block_in      = config.decoder_channels;
++            blocks["conv_in"] = std::make_shared<HeightCausalConv2D>(config.audio_channels, block_in, std::pair<int, int>{3, 3});
++            for (int level = 0; level < static_cast<int>(mult.size()); ++level) {
++                int block_out = config.decoder_channels * mult[level];
++                for (int block_idx = 0; block_idx < config.decoder_num_res_blocks; ++block_idx) {
++                    blocks["down." + std::to_string(level) + ".block." + std::to_string(block_idx)] =
++                        std::make_shared<AudioResnetBlock2D>(block_in, block_out);
++                    block_in = block_out;
++                }
++                if (level != static_cast<int>(mult.size()) - 1) {
++                    blocks["down." + std::to_string(level) + ".downsample"] = std::make_shared<AudioDownsample2D>(block_in);
++                }
++            }
++            blocks["mid.block_1"] = std::make_shared<AudioResnetBlock2D>(block_in, block_in);
++            blocks["mid.block_2"] = std::make_shared<AudioResnetBlock2D>(block_in, block_in);
++            blocks["norm_out"]    = std::make_shared<PixelNorm2D>();
++            blocks["conv_out"]    = std::make_shared<HeightCausalConv2D>(block_in, 2 * config.latent_channels, std::pair<int, int>{3, 3});
++        }
++
++        ggml_tensor* normalize_latent(GGMLRunnerContext* ctx,
++                                      ggml_tensor* latent,
++                                      ggml_tensor* mean,
++                                      ggml_tensor* stddev) {
++            // The statistics are per (channel, frequency) pair, indexed channel * frequency_bins + frequency.
++            const int64_t time = latent->ne[1], batch = latent->ne[3];
++            latent             = ggml_cont(ctx->ggml_ctx, ggml_permute(ctx->ggml_ctx, latent, 0, 2, 1, 3));
++            latent             = ggml_reshape_4d(ctx->ggml_ctx, latent, config.latent_frequency_bins * config.latent_channels, time, 1, batch);
++            mean               = ggml_reshape_4d(ctx->ggml_ctx, mean, mean->ne[0], 1, 1, 1);
++            stddev             = ggml_reshape_4d(ctx->ggml_ctx, stddev, stddev->ne[0], 1, 1, 1);
++            latent             = ggml_div(ctx->ggml_ctx, ggml_sub(ctx->ggml_ctx, latent, mean), stddev);
++            latent             = ggml_reshape_4d(ctx->ggml_ctx, latent, config.latent_frequency_bins, config.latent_channels, time, batch);
++            return ggml_cont(ctx->ggml_ctx, ggml_permute(ctx->ggml_ctx, latent, 0, 2, 1, 3));
++        }
++
++        ggml_tensor* forward(GGMLRunnerContext* ctx, ggml_tensor* mel, ggml_tensor* mean, ggml_tensor* stddev) {
++            const auto& mult = config.decoder_channel_multipliers;
++            auto x           = std::dynamic_pointer_cast<HeightCausalConv2D>(blocks["conv_in"])->forward(ctx, mel);
++            for (int level = 0; level < static_cast<int>(mult.size()); ++level) {
++                for (int block_idx = 0; block_idx < config.decoder_num_res_blocks; ++block_idx) {
++                    auto block = std::dynamic_pointer_cast<AudioResnetBlock2D>(blocks["down." + std::to_string(level) + ".block." + std::to_string(block_idx)]);
++                    x          = block->forward(ctx, x);
++                }
++                if (level != static_cast<int>(mult.size()) - 1) {
++                    x = std::dynamic_pointer_cast<AudioDownsample2D>(blocks["down." + std::to_string(level) + ".downsample"])->forward(ctx, x);
++                }
++            }
++            x = std::dynamic_pointer_cast<AudioResnetBlock2D>(blocks["mid.block_1"])->forward(ctx, x);
++            x = std::dynamic_pointer_cast<AudioResnetBlock2D>(blocks["mid.block_2"])->forward(ctx, x);
++            x = std::dynamic_pointer_cast<PixelNorm2D>(blocks["norm_out"])->forward(ctx, x);
++            x = ggml_silu_inplace(ctx->ggml_ctx, x);
++            x = std::dynamic_pointer_cast<HeightCausalConv2D>(blocks["conv_out"])->forward(ctx, x);
++            // The posterior's mode is its mean: the first half of the channels.
++            x = ggml_ext_slice(ctx, x, 2, 0, config.latent_channels);
++            return normalize_latent(ctx, x, mean, stddev);
++        }
++    };
++
++    static void ltx_fft(std::vector<double>& re, std::vector<double>& im) {
++        const size_t n = re.size();
++        for (size_t i = 1, j = 0; i < n; ++i) {
++            size_t bit = n >> 1;
++            for (; j & bit; bit >>= 1)
++                j ^= bit;
++            j ^= bit;
++            if (i < j) {
++                std::swap(re[i], re[j]);
++                std::swap(im[i], im[j]);
++            }
++        }
++        constexpr double kPi = 3.14159265358979323846;
++        for (size_t len = 2; len <= n; len <<= 1) {
++            const double angle = -2.0 * kPi / static_cast<double>(len);
++            const double wr = std::cos(angle), wi = std::sin(angle);
++            for (size_t i = 0; i < n; i += len) {
++                double cr = 1.0, ci = 0.0;
++                for (size_t k = 0; k < len / 2; ++k) {
++                    const size_t a = i + k, b = i + k + len / 2;
++                    const double tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr;
++                    re[b] = re[a] - tr;
++                    im[b] = im[a] - ti;
++                    re[a] += tr;
++                    im[a] += ti;
++                    const double next = cr * wr - ci * wi;
++                    ci                = cr * wi + ci * wr;
++                    cr                = next;
++                }
++            }
++        }
++    }
++
++    static double ltx_hz_to_mel(double freq) {
++        return freq >= 1000.0 ? 15.0 + std::log(freq / 1000.0) / (std::log(6.4) / 27.0) : freq / (200.0 / 3.0);
++    }
++
++    static double ltx_mel_to_hz(double mel) {
++        return mel >= 15.0 ? 1000.0 * std::exp((std::log(6.4) / 27.0) * (mel - 15.0)) : (200.0 / 3.0) * mel;
++    }
++
++    // [n_freqs][n_mels] Slaney-scale triangles with Slaney area normalization, from 0 Hz to sample_rate / 2.
++    static std::vector<double> ltx_mel_filters(int sample_rate, int n_fft, int n_mels) {
++        const int n_freqs = n_fft / 2 + 1;
++        const double top  = ltx_hz_to_mel(sample_rate / 2.0);
++        std::vector<double> points(static_cast<size_t>(n_mels + 2));
++        for (int i = 0; i < n_mels + 2; ++i)
++            points[static_cast<size_t>(i)] = ltx_mel_to_hz(top * i / (n_mels + 1));
++        std::vector<double> filters(static_cast<size_t>(n_freqs * n_mels), 0.0);
++        for (int f = 0; f < n_freqs; ++f) {
++            const double hz = static_cast<double>(sample_rate / 2) * f / (n_freqs - 1);
++            for (int m = 0; m < n_mels; ++m) {
++                const double lo = points[m], mid = points[m + 1], hi = points[m + 2];
++                const double up = (hz - lo) / (mid - lo), down = (hi - hz) / (hi - mid);
++                filters[static_cast<size_t>(f * n_mels + m)] = std::max(0.0, std::min(up, down)) * 2.0 / (hi - lo);
++            }
++        }
++        return filters;
++    }
++
++    // The log-mel spectrogram the LTX-2 audio VAE encoder was trained on: a centred (reflect-padded) STFT with a
++    // periodic Hann window, magnitudes (power 1), Slaney mel filters, then log(max(mel, 1e-5)).
++    // waveform: [samples, channels] at config.sample_rate. Returns [mel_bins, 1 + samples / hop, channels, 1].
++    static sd::Tensor<float> ltx_log_mel(const sd::Tensor<float>& waveform, const LTXAudioVAEConfig& config) {
++        const int64_t samples = waveform.shape()[0], channels = waveform.shape()[1];
++        const int n_fft = config.n_fft, hop = config.mel_hop_length, half = n_fft / 2, n_freqs = n_fft / 2 + 1;
++        GGML_ASSERT((n_fft & (n_fft - 1)) == 0);
++        if (samples <= half)
++            throw std::runtime_error("reference audio is too short for the LTX audio VAE");
++        const int64_t frames = 1 + samples / hop;
++        const auto filters   = ltx_mel_filters(config.sample_rate, n_fft, config.mel_bins);
++        std::vector<double> window(static_cast<size_t>(n_fft));
++        for (int i = 0; i < n_fft; ++i)
++            window[static_cast<size_t>(i)] = 0.5 - 0.5 * std::cos(2.0 * 3.14159265358979323846 * i / n_fft);
++        sd::Tensor<float> mel({config.mel_bins, frames, channels, 1});
++        std::vector<double> re(static_cast<size_t>(n_fft)), im(static_cast<size_t>(n_fft)), magnitude(static_cast<size_t>(n_freqs));
++        for (int64_t c = 0; c < channels; ++c) {
++            const float* x = waveform.data() + c * samples;
++            for (int64_t t = 0; t < frames; ++t) {
++                for (int i = 0; i < n_fft; ++i) {
++                    int64_t pos = t * hop + i - half;
++                    if (pos < 0)
++                        pos = -pos;
++                    if (pos >= samples)
++                        pos = 2 * (samples - 1) - pos;
++                    re[static_cast<size_t>(i)] = x[pos] * window[static_cast<size_t>(i)];
++                    im[static_cast<size_t>(i)] = 0.0;
++                }
++                ltx_fft(re, im);
++                for (int f = 0; f < n_freqs; ++f)
++                    magnitude[static_cast<size_t>(f)] = std::sqrt(re[f] * re[f] + im[f] * im[f]);
++                for (int m = 0; m < config.mel_bins; ++m) {
++                    double sum = 0.0;
++                    for (int f = 0; f < n_freqs; ++f)
++                        sum += magnitude[static_cast<size_t>(f)] * filters[static_cast<size_t>(f * config.mel_bins + m)];
++                    mel.index(m, t, c, 0) = static_cast<float>(std::log(std::max(sum, 1e-5)));
++                }
++            }
++        }
++        return mel;
++    }
++
+     struct LTXAudioVAE : public GGMLBlock {
+         LTXAudioVAEConfig config;
+ 
+         explicit LTXAudioVAE(const LTXAudioVAEConfig& config)
+             : config(config) {
+             blocks["audio_vae.decoder"] = std::make_shared<AudioDecoder>(config);
++            if (config.has_encoder) {
++                blocks["audio_vae.encoder"] = std::make_shared<AudioEncoder>(config);
++            }
+             blocks["vocoder.vocoder"]   = std::make_shared<Vocoder>(config);
+             if (config.has_bwe) {
+                 blocks["vocoder.bwe_generator"] = std::make_shared<Vocoder>(config, true, false);
+@@ -925,6 +1112,15 @@ namespace LTXV {
+             }
+         }
+ 
++        ggml_tensor* encode(GGMLRunnerContext* ctx, ggml_tensor* mel) {
++            auto encoder = std::dynamic_pointer_cast<AudioEncoder>(blocks["audio_vae.encoder"]);
++            GGML_ASSERT(encoder != nullptr);
++            return encoder->forward(ctx,
++                                    mel,
++                                    params["audio_vae.per_channel_statistics.mean-of-means"],
++                                    params["audio_vae.per_channel_statistics.std-of-means"]);
++        }
++
+         ggml_tensor* decode(GGMLRunnerContext* ctx,
+                             ggml_tensor* latent,
+                             ggml_tensor* bwe_skip_filter) {
+@@ -1032,6 +1228,39 @@ namespace LTXV {
+             return result;
+         }
+ 
++        // waveform: [samples, channels] (1 or 2 channels) at input_sample_rate(). Returns the normalized latent
++        // [latent_frequency_bins, time, latent_channels, 1], with time = ceil((1 + samples / hop) / 4).
++        sd::Tensor<float> encode(int n_threads,
++                                 const sd::Tensor<float>& waveform) override {
++            if (!config.has_encoder)
++                throw std::runtime_error("this LTX audio VAE has no encoder weights (audio_vae.encoder.*)");
++            if (waveform.dim() < 2 || waveform.shape()[1] < 1 || waveform.shape()[1] > config.audio_channels)
++                throw std::runtime_error("LTX audio VAE encode expects [samples, channels] with 1 or 2 channels");
++            int64_t t0      = ggml_time_ms();
++            auto stereo     = waveform;
++            const auto rows = waveform.shape()[0];
++            if (waveform.shape()[1] != config.audio_channels) {  // mono: the same samples on both sides
++                stereo = sd::Tensor<float>({rows, config.audio_channels});
++                for (int64_t c = 0; c < config.audio_channels; ++c)
++                    std::copy_n(waveform.data(), static_cast<size_t>(rows), stereo.data() + c * rows);
++            }
++            auto mel       = ltx_log_mel(stereo, config);
++            auto get_graph = [&]() -> ggml_cgraph* {
++                auto input      = make_input(mel);
++                ggml_cgraph* gf = new_graph_custom(65536);
++                auto runner_ctx = GGMLRunner::get_context();
++                ggml_build_forward_expand(gf, model.encode(&runner_ctx, input));
++                return gf;
++            };
++            auto result = restore_trailing_singleton_dims(GGMLRunner::compute(get_graph, n_threads, false), 4);
++            LOG_INFO("ltx audio vae encode completed, taking %.2fs", (ggml_time_ms() - t0) * 1.0f / 1000);
++            return result;
++        }
++
++        int input_sample_rate() const override {
++            return config.sample_rate;
++        }
++
+         int output_sample_rate() const override {
+             return config.output_sample_rate();
+         }

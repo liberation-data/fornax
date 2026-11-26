@@ -13,6 +13,7 @@ import java.util.Map;
  * A video clip with sound from LTX-2.5 through stable-diffusion.cpp.
  * Usage: VideoClip <out.mp4> "<prompt>" [first-frame.png] [last-frame.png]
  *   [-Dwidth=768 -Dheight=448 -Dframes=49 -Dfps=24 -Dsteps=8 -Dcfg=1 -Dseed=7 -Dmodel=distilled|dev -Drecipe=two-stage]
+ *   [-Dsong=song.wav -Dsong.start=48]
  * -Drecipe=two-stage is the ComfyUI "Image to Video (LTX-2.5)" recipe Endless Country used: a draft at width x height
  * with 8 manual sigmas and the first frame at strength 0.7, the x2 latent upscaler, then a refine at twice the size.
  * Files: from -Dltx.dir=<folder with diffusion_models/ text_encoders/ vae/> when there, else the Hugging Face cache.
@@ -80,6 +81,10 @@ public class VideoClip {
         int crf = Integer.getInteger("preprocess", "two-stage".equals(System.getProperty("recipe")) ? 18 : 0);
         if (args.length > 2) req = req.withInitImage(keyframe(Path.of(args[2]), crf));
         if (args.length > 3) req = req.withEndImage(keyframe(Path.of(args[3]), crf));
+        // -Dsong=song.wav -Dsong.start=48: audio to video. The clip-length section from song.start is held as the
+        // soundtrack and the picture is generated to it (a singer's lips, a strum).
+        String song = System.getProperty("song");
+        if (song != null) req = req.withAudio(Path.of(song), Double.parseDouble(System.getProperty("song.start", "0")));
 
         DiffusionModel.onProgress((s, n, t) -> System.out.printf("  step %d/%d (%.2fs/it)%n", s, n, t));
         long t0 = System.nanoTime();

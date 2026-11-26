@@ -70,6 +70,14 @@ surprises you.
   doesn't check for a cancel; sampling does, at every step.
 - **LTX audio is part of the model.** LTX-2.5 generates sound and picture together. Leaving out
   `audio_vae_path` removes the audio stream; that didn't cause the ghosting, but it isn't how the model was trained.
+- **LTX audio to video is a Kiln patch.** At the pinned commit sd.cpp's `ref_audios` only drove Wan2.2 S2V and
+  MiniMax-H3, and its LTX audio VAE had no encoder. `native/patches/stable-diffusion.cpp/0002` adds the encoder
+  (host log-mel as ComfyUI's `MelSpectrogram`, torchaudio's sinc resampler to 16 kHz), puts the encoded track into the
+  joint latent with denoise mask 0, and gives the audio stream its own timestep (0 when held). It also had to follow
+  LTX-2/ComfyUI's cross-modal timesteps: the video's cross-attention scale/shift follows the video's timestep, and its
+  prompt modulation and the video-to-audio gate the video's largest one. sd.cpp fed all of them the audio's timestep, which is the same
+  thing until the two streams are at different noise levels. Checked against ComfyUI: the soundtrack of a Kiln render
+  correlates 0.97 sample for sample with ComfyUI's own encode → decode of the same section.
 
 ## acestep.cpp
 
@@ -122,6 +130,7 @@ surprises you.
 | `LTXVLatentUpsampler` with the x2 model | `hires.upscaler=model` plus `hires.model_path` |
 | Stage 2: sigmas 0.85, 0.725, 0.4219, 0, first frame at 1.0 | `hires.sigmas`; sd.cpp holds the first frame fully in the refine |
 | Tiled VAE decode | `vae_tiling.enabled` |
+| `LTXVAudioVAEEncode` + `SetLatentNoiseMask` 0 in place of `LTXVEmptyLatentAudio` (`ltx_a2v.py`) | `VideoRequest.withAudio(song, start)` (`-Psong=… -Psong.start=…`) |
 
 ## llama.cpp text to speech (kiln-tts)
 
