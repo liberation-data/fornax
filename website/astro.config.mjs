@@ -52,6 +52,7 @@ export default defineConfig({
                     items: [
                         { label: 'Introduction', link: '/docs/' },
                         { slug: 'docs/getting-started' },
+                        'docs/gpu-drivers',
                         'docs/maven-and-gradle'
                     ]
                 },

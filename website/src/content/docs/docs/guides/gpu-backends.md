@@ -49,24 +49,9 @@ native/build.sh vulkan
 
 Everything on the [Introduction](/docs/#status)'s results table ran on Vulkan, on an AMD Radeon 8060S.
 
-### The Vulkan driver on Linux
-
-Running Kiln on Vulkan needs two things from the system: the Vulkan loader (`libvulkan.so.1`) and a driver for your
-GPU. Desktop Fedora and Ubuntu install both by default; minimal installs, servers and containers often don't.
-
-| | |
-|---|---|
-| Fedora | `sudo dnf install vulkan-loader mesa-vulkan-drivers` |
-| Ubuntu, Debian | `sudo apt install libvulkan1 mesa-vulkan-drivers` |
-| Arch | `sudo pacman -S vulkan-icd-loader vulkan-radeon` (or `vulkan-intel`) |
-
-Mesa's drivers cover AMD and Intel GPUs. NVIDIA's own driver brings its Vulkan driver with it. To check, run
-`vulkaninfo --summary` (from `vulkan-tools`): your GPU should be listed.
-
-Kiln checks too. Without the loader, the engine fails to load with an error that says what to install. Without a
-driver, it loads but finds no GPU and runs on the CPU, much slower, so Kiln logs a warning when it finds no driver.
-From its next release, [Kiln Studio](/docs/getting-started/#kiln-studio)'s `.rpm` and `.deb` install the loader and
-Mesa's driver for you.
+**Running it** needs your GPU's Vulkan driver and the Vulkan loader. Desktop Linux usually has both; see
+[Installing GPU drivers](/docs/gpu-drivers/) if not. Kiln won't quietly fall back to the CPU: with no GPU it stops and
+says what to install.
 
 **The driver's compute timeout.** A GPU driver resets a GPU that runs one piece of work for too long. ggml's Vulkan
 backend puts up to 100 graph nodes in each submission to the GPU, and a big decode can then run past the timeout and

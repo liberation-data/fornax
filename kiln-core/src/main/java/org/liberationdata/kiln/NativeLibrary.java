@@ -27,9 +27,9 @@ import java.util.Optional;
  *   <li>the platform loader (LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, system dirs)</li>
  * </ol>
  *
- * <p>On Linux, a library built for Vulkan that can't load because the Vulkan loader is missing fails with an error
- * that says what to install; one that loads on a machine with no Vulkan driver logs a warning, since its engine
- * would otherwise run on the CPU without a word.
+ * <p>On Linux, a library built for a GPU (Vulkan, HIP, CUDA) refuses to start on a machine where that GPU runtime
+ * finds no GPU, since its engine would otherwise run on the CPU without a word, and says what to install. Set
+ * {@code -Dkiln.allowCpu=true} (or {@code KILN_ALLOW_CPU=true}) to run on the CPU anyway. See {@link GpuCheck}.
  *
  * <p>Before the first library loads, Kiln sets the engines' tunables that it gives a default to, as environment
  * variables the engines read (an existing environment variable always wins):
@@ -75,16 +75,16 @@ public final class NativeLibrary {
         }
     }
 
-    /** Opens the library file at {@code path}; on Linux, a Vulkan build gets a missing loader or driver named. */
+    /** Opens the library file at {@code path}, and on Linux makes sure a GPU build has a GPU ({@link GpuCheck}). */
     private static NativeLibrary open(String name, Path path) {
         SymbolLookup lookup;
         try {
             lookup = SymbolLookup.libraryLookup(path, Arena.global());
         } catch (IllegalArgumentException e) {
-            VulkanDriver.explain(path, e);
+            GpuCheck.explainLoadFailure(path, e);
             throw e;
         }
-        VulkanDriver.warnIfNoDriver(path);
+        GpuCheck.requireGpu(path);
         return new NativeLibrary(name, lookup);
     }
 

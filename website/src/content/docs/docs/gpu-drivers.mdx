@@ -1,0 +1,198 @@
+---
+title: Installing GPU drivers
+description: What to install so Kiln runs on your GPU, step by step for Fedora, Ubuntu, Debian, Arch and openSUSE, and in containers. Macs need nothing.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+Kiln runs its models on your GPU. On Linux, that needs your GPU's **Vulkan driver** and the **Vulkan loader**. Most
+desktop installs already have both. Minimal installs, servers and containers often don't.
+
+<Aside type="tip" title="On a Mac?">
+There's nothing to install. Kiln uses Metal, which is built into macOS, on Apple silicon and on Intel Macs.
+</Aside>
+
+Kiln checks for a GPU when an engine loads. If it finds none, it stops with an error that points here, rather than
+quietly running on the CPU, which is many times slower. See [Kiln says it found no GPU](#kiln-says-it-found-no-gpu).
+
+## 1. Find your GPU
+
+```sh
+lspci | grep -iE 'vga|3d|display'
+```
+
+- **AMD** or **Intel**: you need Mesa's Vulkan driver (open source, from your distribution). Go to [step 2](#2-amd-or-intel-install-mesas-vulkan-driver).
+- **NVIDIA**: you need NVIDIA's driver, which includes its Vulkan driver. Go to [step 3](#3-nvidia-install-nvidias-driver).
+
+## 2. AMD or Intel: install Mesa's Vulkan driver
+
+<Tabs syncKey="distro">
+<TabItem label="Fedora">
+```sh
+sudo dnf install vulkan-loader mesa-vulkan-drivers vulkan-tools
+```
+</TabItem>
+<TabItem label="Ubuntu, Debian">
+```sh
+sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools
+```
+</TabItem>
+<TabItem label="Arch">
+```sh
+sudo pacman -S vulkan-icd-loader vulkan-tools vulkan-radeon     # AMD
+sudo pacman -S vulkan-icd-loader vulkan-tools vulkan-intel      # Intel
+```
+</TabItem>
+<TabItem label="openSUSE">
+```sh
+sudo zypper install libvulkan1 vulkan-tools libvulkan_radeon    # AMD
+sudo zypper install libvulkan1 vulkan-tools libvulkan_intel     # Intel
+```
+</TabItem>
+</Tabs>
+
+Then [check it](#4-check-that-vulkan-sees-your-gpu).
+
+## 3. NVIDIA: install NVIDIA's driver
+
+NVIDIA's driver isn't in most distributions' default repositories. Install it the way your distribution recommends,
+then reboot.
+
+<Tabs syncKey="distro">
+<TabItem label="Fedora">
+Enable [RPM Fusion](https://rpmfusion.org/Configuration), then install the driver:
+
+```sh
+sudo dnf install \
+  https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+  https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+sudo dnf install akmod-nvidia vulkan-tools
+```
+
+Wait a few minutes for the kernel module to build, then reboot.
+</TabItem>
+<TabItem label="Ubuntu, Debian">
+On Ubuntu, let it pick the right driver:
+
+```sh
+sudo ubuntu-drivers install
+sudo apt install vulkan-tools
+```
+
+On Debian, enable the `contrib`, `non-free` and `non-free-firmware` components in your apt sources, then:
+
+```sh
+sudo apt install nvidia-driver firmware-misc-nonfree vulkan-tools
+```
+
+Reboot afterwards. See Debian's [NVIDIA guide](https://wiki.debian.org/NvidiaGraphicsDrivers) for older cards.
+</TabItem>
+<TabItem label="Arch">
+```sh
+sudo pacman -S nvidia-open nvidia-utils vulkan-tools
+```
+
+`nvidia-utils` holds the Vulkan driver. Older cards need a different driver package; see the
+[Arch wiki](https://wiki.archlinux.org/title/NVIDIA). Reboot afterwards.
+</TabItem>
+<TabItem label="openSUSE">
+Follow openSUSE's [NVIDIA guide](https://en.opensuse.org/SDB:NVIDIA_drivers), then:
+
+```sh
+sudo zypper install vulkan-tools
+```
+
+Reboot afterwards.
+</TabItem>
+</Tabs>
+
+## 4. Check that Vulkan sees your GPU
+
+```sh
+vulkaninfo --summary
+```
+
+Under **Devices**, look for your GPU, with a `deviceType` of `PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU` or
+`PHYSICAL_DEVICE_TYPE_DISCRETE_GPU`. For example:
+
+```
+deviceType = PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
+deviceName = AMD Radeon 8060S Graphics (RADV GFX1151)
+```
+
+If the only device is `llvmpipe`, that's Mesa's software renderer running on the CPU: the GPU driver is missing,
+or your user can't reach the GPU (below). If `vulkaninfo` itself fails with `ERROR_INCOMPATIBLE_DRIVER`, no driver is
+installed at all.
+
+That's it: Kiln will use the GPU that `vulkaninfo` lists.
+
+## If the GPU still isn't found
+
+**Your user can't reach the GPU.** On a desktop, the login session grants access to the GPU. On a server, or over
+SSH, your user may need to be in the `render` and `video` groups:
+
+```sh
+sudo usermod -aG render,video $USER
+```
+
+Log out and back in (or reboot), then run `vulkaninfo --summary` again.
+
+**After a kernel or driver update**, reboot before trying again. The NVIDIA module in particular is built for the
+running kernel.
+
+## In a container
+
+The container needs the GPU device, and its own copy of the driver's user-space part.
+
+<Tabs>
+<TabItem label="AMD or Intel">
+Pass the GPU's device nodes in, and install Mesa's Vulkan driver in the image (for example `mesa-vulkan-drivers` and
+`libvulkan1` in a Debian or Ubuntu image):
+
+```sh
+docker run --device /dev/dri --group-add "$(getent group render | cut -d: -f3)" my-kiln-app
+```
+</TabItem>
+<TabItem label="NVIDIA">
+Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+on the host, then ask for the GPU, including the graphics capability that Vulkan needs:
+
+```sh
+docker run --gpus all -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics my-kiln-app
+```
+</TabItem>
+</Tabs>
+
+## Kiln says it found no GPU
+
+When an engine built for a GPU loads and the GPU runtime reports no usable GPU, Kiln stops with an error like this:
+
+```
+Kiln found no GPU for libkiln_llama.so, which is built for Vulkan. Without one, it would run on the CPU,
+many times slower, so it won't start.
+```
+
+The error lists the install commands above. Follow the steps on this page, check with `vulkaninfo --summary`, and run
+again.
+
+To run on the CPU anyway (on a CI machine, for example), allow it:
+
+```sh
+java -Dkiln.allowCpu=true ...      # or: export KILN_ALLOW_CPU=true
+```
+
+Kiln then runs, and logs a large warning that it is running on the CPU.
+
+If the error says Kiln **has no Vulkan loader** (`libvulkan.so.1`), install the loader package from
+[step 2](#2-amd-or-intel-install-mesas-vulkan-driver) (`vulkan-loader`, `libvulkan1` or `vulkan-icd-loader`).
+
+## HIP (ROCm) and CUDA
+
+Kiln's published natives use Vulkan, which needs only the drivers above. The HIP and CUDA backends are for building
+Kiln's engines yourself, and need ROCm or the CUDA toolkit; see [Choosing a GPU backend](/docs/guides/gpu-backends/).
+Kiln checks those for a GPU the same way, and its error tells you how to check: `rocminfo` for ROCm, `nvidia-smi`
+for NVIDIA. For ROCm, your user also needs to be in the `render` and `video` groups.
+
+## Windows
+
+Kiln doesn't run on Windows yet.
