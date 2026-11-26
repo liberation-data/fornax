@@ -101,8 +101,158 @@ try (var editor = new DiffusionModel(config)) {
 }
 ```
 
-The full `Request` constructor takes the reference images and a map of extra options; the short one leaves both
-empty.
+`withRefImages` adds the reference images to a request (the eight-argument constructor takes them too, with a map
+of extra options). FLUX.2 [klein] takes reference images the same way.
+
+Qwen-Image-Edit 2511 needs its "zero conditioning timestep" mode. stable-diffusion.cpp turns it on when the
+weights carry the `__index_timestep_zero__` marker, which Comfy-Org's files do. For other files, such as some GGUF
+conversions, set it yourself with `.set("model_args", "qwen_image_zero_cond_t=true")` on the `Config`, or edits
+come out much worse.
+
+## Editing an image: img2img, inpainting and ControlNet
+
+Any of these models can start from an image instead of from noise. All three inputs are fields on `Request`.
+
+### img2img
+
+`withInitImage(image, strength)` starts from your image. `strength` says how much of it to redraw: 0 keeps it as
+it is, 1 ignores it, and 0.5 to 0.75 keeps the layout and changes the look. Leave out the strength to get the
+engine's default of 0.75. The image is fitted to the request's width and height.
+
+```java
+BufferedImage shop = ImageIO.read(new File("shop.png"));
+var request = new DiffusionModel.Request("the same shop at night in heavy snow", 512, 512, 20, 4.0, 7)
+        .withInitImage(shop, 0.6);
+BufferedImage snowy = images.generate(request).get(0);
+```
+
+### Inpainting
+
+Add a mask, the same size as the init image, and only its white parts are repainted. The rest of the image stays
+as it was. With strength 1, the masked area is drawn from scratch.
+
+```java
+BufferedImage mask = ImageIO.read(new File("mask.png"));     // white where the bicycle was, black elsewhere
+var request = new DiffusionModel.Request("a large terracotta pot", 512, 512, 20, 4.0, 7)
+        .withInitImage(shop, 1.0)
+        .withMaskImage(mask);
+```
+
+This works with any model, including FLUX.2 [klein] and Qwen-Image-Edit: the mask limits which part of the image
+is denoised. Dedicated inpainting models (SD 1.5 inpaint, FLUX.1 Fill) also see the masked image, and blend the
+edges better.
+
+### ControlNet
+
+A ControlNet steers the layout with a hint image, such as edges, a depth map or a pose. Name the ControlNet model
+in the `Config`, and give each request a control image:
+
+```java
+var config = DiffusionModel.Config.builder()
+        .diffusionModel(sdxl).vae(vae)
+        .controlNet("controlnet-canny-sdxl.safetensors")
+        .build();
+
+var request = new DiffusionModel.Request("a glass teapot", 1024, 1024, 25, 6.0, 7)
+        .withControlImage(cannyEdges, 0.8);     // strength defaults to 0.9
+```
+
+The control image is fitted to the request's width and height. The ControlNet has to match the base model family.
+FLUX.1 Controls and Flex.2 take the control image directly and need no ControlNet file; they also ignore the control
+strength.
+
+Kiln has run SD 1.5 with the canny ControlNet (`comfyanonymous/ControlNet-v1-1_fp16_safetensors`); the example
+below does the same:
+
+```sh
+./gradlew edit --args='shop.png out.png "a pottery shop, watercolour painting"' -Pmodel=sd15 -Pstrength=1.0 \
+    -Pcontrol=canny.png -Pcontrolnet=control_v11p_sd15_canny_fp16.safetensors
+```
+
+### Settings that would be ignored are refused
+
+stable-diffusion.cpp silently ignores some settings that don't fit together. Kiln refuses them instead, with an
+`IllegalArgumentException` when you call `generate`:
+
+- a strength without an init image (there is nothing to keep),
+- a mask without an init image, or a mask that isn't the init image's size,
+- a control strength without a control image,
+- `strength`, `control_strength`, the images or `loras` in the `extra` map, when `Request` has a field for them.
+
+## LoRA
+
+A LoRA is a small adapter that teaches a model a style, a subject or a faster schedule. Give a request a list of
+`Lora(file, weight)`; weight 1 is full strength.
+
+```sh
+hf download adirik/pixel-art-lora-flux.2-klein-4B pixelart_lora.safetensors     # Apache 2.0
+```
+
+```java
+var pixelArt = new DiffusionModel.Lora(
+        HfCache.require("adirik/pixel-art-lora-flux.2-klein-4B", "pixelart_lora.safetensors"), 1.0f);
+
+var request = new DiffusionModel.Request("PXART4. A pixel art of a small pottery shop", 512, 512, 20, 4.0, 7)
+        .withLoras(pixelArt);
+```
+
+LoRAs are per request, so one loaded model can render with and without them. A LoRA only works with the model
+family it was trained for: SD 1.x/2.x/XL/3, FLUX.1, FLUX.2 (klein too), Qwen-Image and Qwen-Image-Edit, Z-Image,
+Wan and others. stable-diffusion.cpp reads the common LoRA formats (kohya, diffusers and PEFT, ai-toolkit) and
+applies a LoRA to the diffusion model, the text encoder or both, whichever it has weights for. Many LoRAs also
+have a trigger word, like `PXART4` above, which goes in the prompt.
+
+By default the engine merges a LoRA into the weights before sampling when it can, and applies it at run time
+for quantized or fp8 weights. `.set("lora_apply_mode", "at_runtime")` (or `"immediately"`) on the `Config`
+chooses for you.
+
+### Qwen-Image-Edit with the Lightning LoRA
+
+The Lightning LoRAs cut Qwen-Image and Qwen-Image-Edit from 20 or more steps to 4, at CFG 1. Kiln compiles the same
+program as sd-cli for this recipe, but hasn't rendered it on the Radeon 8060S: the bf16 Qwen-Image-Edit 2511 and
+its text encoder take about 51 GB of the 64 GB the Vulkan driver lets the GPU use, which leaves too little to
+compute with (see [engine notes](https://github.com/liberation-data/kiln/blob/main/docs/engine-notes.md)). A
+smaller (fp8 or GGUF) file should fit. These are the
+settings ComfyUI's Qwen-Image-Edit 2511 workflow uses:
+
+```sh
+hf download lightx2v/Qwen-Image-Edit-2511-Lightning Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors
+```
+
+```java
+var lightning = new DiffusionModel.Lora(HfCache.require("lightx2v/Qwen-Image-Edit-2511-Lightning",
+        "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"), 1.0f);
+
+var request = new DiffusionModel.Request("make the sign say KILN", w, h, 4, 1.0, 1)
+        .withRefImages(List.of(photo))
+        .withLoras(lightning)
+        .withExtra(Map.of("sample.flow_shift", 3.1, "sample.method", "euler", "sample.scheduler", "simple"));
+```
+
+## Upscaling
+
+`Upscaler` runs an ESRGAN-family model, such as RealESRGAN_x4plus (BSD-3-Clause), over an image. It loads the
+model once and keeps it loaded:
+
+```sh
+hf download Comfy-Org/Real-ESRGAN RealESRGAN_x4plus.safetensors
+```
+
+```java
+import org.liberationdata.kiln.sd.Upscaler;
+
+try (var up = new Upscaler(HfCache.require("Comfy-Org/Real-ESRGAN", "RealESRGAN_x4plus.safetensors"))) {
+    BufferedImage big = up.upscale(img, 4);      // 512×512 -> 2048×2048
+}
+```
+
+The model's own scale (4 for x4plus, read from the weights) is what one pass gives; `upscale(img, 16)` runs it
+twice. Factors that aren't a power of the scale are refused: resize the result for those. The model works over
+tiles of 128 input pixels by default. `new Upscaler(path, tileSize)` changes that: smaller tiles use less memory
+and keep each GPU dispatch short.
+
+`upscaleAsync` runs on the upscaler's own thread, as `generateAsync` does (see [Threading](/docs/guides/threading/)).
+stable-diffusion.cpp can't stop an upscale part way, so `close()` waits for a pass that has started.
 
 ## Z-Image
 
@@ -187,4 +337,15 @@ The engine is quiet by default, apart from errors. `KILN_VERBOSE=1` shows its in
 ./gradlew image --args='qwen-image out.png "a hand-painted shop sign"'
 ./gradlew image --args='qwen-edit out.png "make the glaze cobalt blue" vase.png'
 ./gradlew image --args='klein out.png "a kiln at night"' -Prepeat=2 -Pseed=3     # the second image reuses the loaded weights
+
+# img2img, inpainting and LoRAs (klein by default; the size follows in.png)
+./gradlew edit --args='in.png out.png "the same street in heavy snow"' -Pstrength=0.6
+./gradlew edit --args='in.png out.png "a terracotta pot"' -Pstrength=1.0 -Pmask=mask.png
+./gradlew edit --args='in.png out.png "PXART4. A pixel art shop"' -Pstrength=1.0 -Plora=pixelart_lora.safetensors:1.0
+# an instruction edit with Qwen-Image-Edit 2511 and the Lightning LoRA
+./gradlew edit --args='in.png out.png "make the sign say KILN"' -Pmodel=qwen-edit \
+    -Plora=Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors:1 -Psteps=4 -Pcfg=1 -Pshift=3.1 \
+    -Psampler=euler -Pscheduler=simple
+
+./gradlew upscale --args='in.png out.png'          # RealESRGAN_x4plus; -Pfactor=16 -Ptile=64 -Pmodel=other.safetensors
 ```

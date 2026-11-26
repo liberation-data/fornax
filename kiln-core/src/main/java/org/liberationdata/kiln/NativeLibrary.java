@@ -56,15 +56,9 @@ public final class NativeLibrary {
     public static NativeLibrary load(String name) {
         Tunables.apply();
         String file = System.mapLibraryName(name);
-        String exact = System.getProperty("kiln." + name + ".lib");
-        if (exact != null) return open(name, Path.of(exact));
-        List<String> dirs = new ArrayList<>();
-        addPath(dirs, System.getProperty("kiln.library.path"));
-        addPath(dirs, System.getenv("KILN_LIBRARY_PATH"));
-        for (String d : dirs) {
-            Path p = Path.of(d, file);
-            if (Files.isRegularFile(p)) return open(name, p);
-        }
+        Optional<Path> found = locate(name);
+        if (found.isPresent()) return open(name, found.get());
+        List<String> dirs = searchDirs();
         Optional<Path> bundled = BundledNatives.find(name);
         if (bundled.isPresent()) return open(name, bundled.get());
         try {
@@ -133,6 +127,29 @@ public final class NativeLibrary {
                 throw new IllegalStateException(t);
             }
         }
+    }
+
+    /**
+     * Where {@link #load} would find {@code libNAME} through Kiln's own settings (steps 1 to 3), without loading it.
+     * Empty means {@code load} goes on to a natives jar and then the platform loader.
+     */
+    public static Optional<Path> locate(String name) {
+        String exact = System.getProperty("kiln." + name + ".lib");
+        if (exact != null) return Optional.of(Path.of(exact));
+        String file = System.mapLibraryName(name);
+        for (String d : searchDirs()) {
+            Path p = Path.of(d, file);
+            if (Files.isRegularFile(p)) return Optional.of(p);
+        }
+        return Optional.empty();
+    }
+
+    /** The directories from {@code kiln.library.path} and {@code KILN_LIBRARY_PATH}, in search order. */
+    public static List<String> searchDirs() {
+        List<String> dirs = new ArrayList<>();
+        addPath(dirs, System.getProperty("kiln.library.path"));
+        addPath(dirs, System.getenv("KILN_LIBRARY_PATH"));
+        return dirs;
     }
 
     private static void addPath(List<String> dirs, String path) {

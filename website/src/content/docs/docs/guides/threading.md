@@ -160,9 +160,10 @@ firing, stops that call only: if it is still queued, it never starts. Cancelling
 
 | Engine | Stops | What the call returns |
 |---|---|---|
-| `LlamaModel` | after the current token, in every call (with or without a callback), and during reasoning and tool calls in `chatJson` | the text so far (`extract` throws `CancellationException`: cut-off JSON is no use) |
+| `LlamaModel` | after the current token, in every call (with or without a callback), and during reasoning and tool calls in `chatJson`; `embed` and `rerank` between batches | the text so far (`extract`, `embed` and `rerank` throw `CancellationException`: cut-off JSON or a partial list is no use) |
 | `TtsModel` | between chunks, in a streaming call (with `onChunk` or a subscriber) | the audio so far |
 | `DiffusionModel` (images and video) | at the next step, through `sd_cancel_generation` | throws `CancellationException` |
+| `Upscaler` | doesn't: stable-diffusion.cpp has no cancel for an upscaler, so a pass runs to the end | the upscaled image |
 | `AceStepModel` | between LM tokens, DiT steps and VAE tiles | throws `CancellationException` |
 | `Yue2Model` | between LM tokens, diffusion steps and VAE tiles | throws `CancellationException` |
 
@@ -172,6 +173,8 @@ Limits:
   `llama-tts` does, and Kiln leaves that path as it is.
 - **Kokoro speaks in one chunk.** It isn't autoregressive: it decodes the whole text in one step and streams it as a
   single chunk, so there's nothing left to stop by the time a subscriber sees it.
+- **An upscale can't stop early.** `Upscaler` has `upscaleAsync` but no `cancel()`, and `close()` waits for a pass
+  in progress. Cancelling a queued future still keeps it from starting.
 - **A model doesn't stop while it loads its weights.** stable-diffusion.cpp loads lazily on the first run, and only
   checks for a cancel when sampling starts.
 

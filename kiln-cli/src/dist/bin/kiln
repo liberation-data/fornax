@@ -1,0 +1,62 @@
+#!/bin/sh
+# The kiln command's launcher, for Linux and macOS.
+#
+# It runs org.liberationdata.kiln.cli.Main from three inputs, each of which an environment variable overrides, else a
+# value written into this file where the @...@ placeholders are, else a default:
+#
+#   KILN_JAVA          the java executable, Java 22 or newer
+#                      (default: $JAVA_HOME/bin/java, else java on PATH)
+#   KILN_CLI_LIB       the folder of jars: kiln-cli, its kiln-* dependencies and, for the natives, a
+#                      kiln-natives-<os>-<arch>-<backend> jar (default: ../lib next to this script, symlinks followed)
+#   KILN_LIBRARY_PATH  a folder with the native engine libraries (libkiln_llama.so and the rest); when set, Kiln
+#                      loads them from there before any natives jar (default: none)
+#
+# KILN_OPTS and JAVA_OPTS add JVM options. The models are in the Hugging Face cache (HF_HUB_CACHE, HF_HOME/hub or
+# ~/.cache/huggingface/hub), the one `hf download` uses.
+#
+# An app that installs kiln onto PATH (Kiln Studio, with its own runtime and natives) renders this file by replacing
+# the three placeholders below with absolute paths, or leaves any of them as they are for the default, and writes the
+# result as an executable `kiln` into a folder on PATH.
+
+KILN_DEFAULT_JAVA='@KILN_JAVA@'
+KILN_DEFAULT_CLI_LIB='@KILN_CLI_LIB@'
+KILN_DEFAULT_LIBRARY_PATH='@KILN_LIBRARY_PATH@'
+
+# A placeholder nobody replaced counts as unset.
+unrendered() { case "$1" in @*@) return 0 ;; *) return 1 ;; esac; }
+unrendered "$KILN_DEFAULT_JAVA" && KILN_DEFAULT_JAVA=
+unrendered "$KILN_DEFAULT_CLI_LIB" && KILN_DEFAULT_CLI_LIB=
+unrendered "$KILN_DEFAULT_LIBRARY_PATH" && KILN_DEFAULT_LIBRARY_PATH=
+
+# Java
+java=${KILN_JAVA:-$KILN_DEFAULT_JAVA}
+if [ -z "$java" ]; then
+    if [ -n "$JAVA_HOME" ]; then java=$JAVA_HOME/bin/java; else java=java; fi
+fi
+if ! command -v "$java" > /dev/null 2>&1; then
+    echo "kiln: no Java found ($java). Kiln needs Java 22 or newer: set JAVA_HOME or KILN_JAVA, or put java on PATH." >&2
+    exit 1
+fi
+
+# The jars: by default ../lib from where this script really is (it may be reached through a symlink on PATH)
+lib=${KILN_CLI_LIB:-$KILN_DEFAULT_CLI_LIB}
+if [ -z "$lib" ]; then
+    self=$0
+    while [ -h "$self" ]; do
+        target=$(ls -ld "$self" | sed 's/.* -> //')
+        case "$target" in /*) self=$target ;; *) self=$(dirname "$self")/$target ;; esac
+    done
+    lib=$(cd "$(dirname "$self")/../lib" 2> /dev/null && pwd -P)
+fi
+if [ -z "$lib" ] || [ ! -d "$lib" ]; then
+    echo "kiln: no folder of jars (${lib:-../lib}); set KILN_CLI_LIB" >&2
+    exit 1
+fi
+
+# The natives: KILN_LIBRARY_PATH if set (NativeLibrary reads it), else a natives jar among the jars
+natives=${KILN_LIBRARY_PATH:-$KILN_DEFAULT_LIBRARY_PATH}
+if [ -n "$natives" ]; then KILN_LIBRARY_PATH=$natives; export KILN_LIBRARY_PATH; fi
+
+# KILN_OPTS and JAVA_OPTS are split on spaces, as in Gradle's own launchers.
+# shellcheck disable=SC2086
+exec "$java" --enable-native-access=ALL-UNNAMED $JAVA_OPTS $KILN_OPTS -cp "$lib/*" org.liberationdata.kiln.cli.Main "$@"

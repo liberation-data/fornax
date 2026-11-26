@@ -47,6 +47,8 @@ try (var worker = new Worker("chat-models", Worker.Options.DEFAULT)) {
 
 Isolation covers `LlamaModel` today. The worker itself is generic: other engines need a `WorkerService` each, as
 `kiln-llama`'s `LlamaService` is.
+Within `LlamaModel` it covers chat and vision (`Mode.CHAT`). Embedding and reranking models don't run in a worker
+yet: under `kiln.isolation=process`, loading one fails with an `UnsupportedOperationException`, so load those in-process.
 
 ## When to choose it
 

@@ -4,7 +4,8 @@ description: Chat with a GGUF model through llama.cpp from Java, stream the repl
 ---
 
 `kiln-llama` runs any GGUF language model through [llama.cpp](https://github.com/ggml-org/llama.cpp): Qwen, Llama,
-Gemma, Mistral and the rest. The class is `LlamaModel`.
+Gemma, Mistral and the rest. The class is `LlamaModel`. The same class embeds text and reranks documents: see
+[Embeddings and reranking](/docs/guides/embeddings/).
 
 ## Load a model
 

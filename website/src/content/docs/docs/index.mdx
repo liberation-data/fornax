@@ -30,13 +30,13 @@ behind the popular command-line tools and servers, so you get their speed and th
 
 | Module | Engine | What it runs |
 |---|---|---|
-| `kiln-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...), with chat, streaming, tool calls and JSON schemas |
+| `kiln-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...), with chat, streaming, tool calls and JSON schemas; embeddings and reranking (Qwen3-Embedding, Qwen3-Reranker) |
 | `kiln-tts` | llama.cpp (`mtmd`) | text to speech: Kokoro, ZONOS3, LFM3-Audio, Chatterbox, VoxCPM2, Qwen3-TTS, ... |
 | `kiln-sd` | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) | images and video: FLUX.1 and FLUX.2, Qwen-Image and Qwen-Image-Edit, SD 1.x/2.x/XL/3, Wan, LTX |
 | `kiln-acestep` | [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) | ACE-Step 1.5 songs, with vocals and lyrics, up to several minutes |
 | `kiln-yue2` | [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp) | YuE2 songs |
 | `kiln-whisper` | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) | speech to text with word timings: Whisper large-v3-turbo, base.en, any ggml Whisper model |
-| `kiln-core` | | what the others share: native loading, `ModelPool`, `HfCache`, `Audio` |
+| `kiln-core` | | what the others share: native loading, `ModelPool`, `HfCache`, `Audio`, `Vectors` |
 
 Every model class is `AutoCloseable`, and its weights are freed on `close()`. A model can be called from any thread;
 its calls run one at a time. From virtual threads, use the `...Async` methods, which run the native call on the
@@ -76,6 +76,7 @@ Kiln is early. Everything below runs from Java on Linux with an AMD Radeon 8060S
 | Model | Result |
 |---|---|
 | Qwen3 4B Instruct (Q4_K_M) | ~60 tokens/s, streamed through a Java callback |
+| Qwen3-Embedding 0.6B (Q8_0) | ~420 embeddings/s (20-token passages, 256 to a batch), matching `llama-embedding`'s vectors (cosine 1.000000) |
 | ACE-Step 1.5 XL turbo | a 3 min 20 s song in 57 s |
 | ACE-Step 1.5 turbo | a 60 s song in ~15 s |
 | YuE2 3B (Q8_0) | a 60 s song in ~60 s |

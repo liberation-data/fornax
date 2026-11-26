@@ -38,6 +38,60 @@ final class Words {
 
     static final long MIN_CAP_CS = 100;
 
+    /**
+     * With VAD, whisper.cpp transcribes only the speech: each segment it found, plus {@code overlap} seconds of the
+     * audio after it (not after the last), with 0.1 s of silence between. It maps segment and token times back to the
+     * original audio, but not DTW times, so this does, the same way: a time inside a segment's speech is scaled into
+     * it, and one in the overlap or silence after it snaps to the nearer of the two segment edges. The layout follows
+     * {@code whisper_vad} and {@code whisper_map_token_time_segment_aware} in whisper.cpp.
+     */
+    record VadTimeline(long[] origStart, long[] origEnd, long[] vadStart, long[] vadEnd) {
+        static final VadTimeline NONE = new VadTimeline(new long[0], new long[0], new long[0], new long[0]);
+        static final int SAMPLE_RATE = WhisperModel.SAMPLE_RATE, GAP_SAMPLES = SAMPLE_RATE / 10;
+
+        /**
+         * @param t0 the segments' starts, t1 their ends (original audio, centiseconds)
+         * @param samples the length of the audio whisper was given
+         * @param overlap seconds of audio carried past each segment's end
+         */
+        static VadTimeline of(long[] t0, long[] t1, int samples, float overlap) {
+            int n = t0.length;
+            if (n == 0) return NONE;
+            long[] vs = new long[n], ve = new long[n];
+            int overlapSamples = (int) (overlap * SAMPLE_RATE), offset = 0;
+            for (int i = 0; i < n; i++) {
+                int start = Math.min(toSamples(t0[i]), samples - 1), end = Math.min(toSamples(t1[i]), samples - 1);
+                int speech = end - start;
+                if (i < n - 1) end = Math.min(end + overlapSamples, samples - 1);
+                vs[i] = toCs(offset);
+                ve[i] = toCs(offset + speech);
+                offset += end - start;
+                if (i < n - 1) offset += GAP_SAMPLES;
+            }
+            return new VadTimeline(t0.clone(), t1.clone(), vs, ve);
+        }
+
+        /** A time on the audio whisper heard, in centiseconds, on the original audio; -1 stays -1. */
+        long map(long t) {
+            int n = origStart.length;
+            if (n == 0 || t < 0) return t;
+            if (t <= vadStart[0]) return origStart[0];
+            if (t >= vadEnd[n - 1]) return origEnd[n - 1];
+            for (int i = 0; i < n; i++) {
+                if (t >= vadStart[i] && t <= vadEnd[i]) {
+                    long vd = vadEnd[i] - vadStart[i], od = origEnd[i] - origStart[i];
+                    return vd <= 0 ? origStart[i] : origStart[i] + (t - vadStart[i]) * od / vd;
+                }
+                if (i + 1 < n && t > vadEnd[i] && t < vadStart[i + 1])
+                    return t <= (vadEnd[i] + vadStart[i + 1]) / 2 ? origEnd[i] : origStart[i + 1];
+            }
+            return t;
+        }
+
+        private static int toSamples(long cs) { return (int) (cs / 100.0 * SAMPLE_RATE + 0.5); }
+        private static long toCs(int samples) { return (long) (samples / (double) SAMPLE_RATE * 100.0 + 0.5); }
+    }
+
     /** Segments with their words, timed across segment boundaries. */
     static List<Segment> assemble(List<RawSegment> raw) {
         List<List<Draft>> drafts = raw.stream().map(s -> draft(s.tokens())).toList();
