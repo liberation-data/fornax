@@ -8,7 +8,7 @@ goes to its own folder, `build/native/<os>-<arch>-<backend>/`, and your app load
 
 ```sh
 native/build.sh vulkan     # or hip | cuda | metal | cpu
-native/build.sh hip sd     # one backend, some engines: llama tts sd acestep yue2 whisper
+native/build.sh hip sd     # one backend, some engines: llama tts sd acestep yue2 whisper demucs
 ```
 
 Every backend needs JDK 25, CMake, Ninja and a C++17 compiler. The build script reads a few environment variables:

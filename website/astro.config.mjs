@@ -64,6 +64,7 @@ export default defineConfig({
                         'docs/guides/embeddings',
                         { slug: 'docs/guides/speech' },
                         { slug: 'docs/guides/speech-to-text' },
+                        { slug: 'docs/guides/stem-separation' },
                         { slug: 'docs/guides/images' },
                         { slug: 'docs/guides/video' },
                         { slug: 'docs/guides/songs' },

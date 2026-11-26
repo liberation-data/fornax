@@ -21,7 +21,7 @@ this folder out of the repository and build it anywhere.
 mvn -q compile exec:java                       # or: mvn -q compile exec:java -Dexec.args='"Name a country song about a robot"'
 ```
 
-The first run downloads the natives jar (about 100 MB on Linux) and extracts the engine to Kiln's cache.
+The first run downloads the natives jar (about 130 MB on Linux) and extracts the engine to Kiln's cache.
 
 ## Building against another Kiln
 

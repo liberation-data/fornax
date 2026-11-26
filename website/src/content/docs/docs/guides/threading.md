@@ -166,6 +166,7 @@ firing, stops that call only: if it is still queued, it never starts. Cancelling
 | `Upscaler` | doesn't: stable-diffusion.cpp has no cancel for an upscaler, so a pass runs to the end | the upscaled image |
 | `AceStepModel` | between LM tokens, DiT steps and VAE tiles | throws `CancellationException` |
 | `Yue2Model` | between LM tokens, diffusion steps and VAE tiles | throws `CancellationException` |
+| `DemucsModel` | between segments (about 7.8 s of audio each) | throws `CancellationException` |
 
 Limits:
 

@@ -25,9 +25,10 @@ The Java modules, each with sources and javadoc jars:
 | `kiln-acestep` | ACE-Step songs (acestep.cpp) |
 | `kiln-yue2` | YuE2 songs (yue2.cpp) |
 | `kiln-whisper` | speech to text with word timings (whisper.cpp) |
+| `kiln-demucs` | stem separation: vocals and backing, drums, bass, ... (stems.cpp) |
 | `kiln-core` | what they share; each engine module brings it in |
 
-The natives, one jar per platform and GPU backend, each with all six engines' libraries:
+The natives, one jar per platform and GPU backend, each with all seven engines' libraries:
 
 | Natives artifact | Platform | GPU backend |
 |---|---|---|
@@ -35,7 +36,7 @@ The natives, one jar per platform and GPU backend, each with all six engines' li
 | `kiln-natives-macos-aarch64-metal` | macOS 13.3 or newer on Apple silicon | Metal |
 | `kiln-natives-macos-x86_64-metal` | macOS 13.3 or newer on Intel | Metal |
 
-On Linux, the GPU's Vulkan driver must be installed; it usually is. The Linux natives jar is about 100 MB.
+On Linux, the GPU's Vulkan driver must be installed; it usually is. The Linux natives jar is about 130 MB.
 
 The Java packages keep their names: `org.liberationdata.kiln`, `org.liberationdata.kiln.llama` and so on.
 

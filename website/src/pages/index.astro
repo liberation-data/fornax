@@ -552,7 +552,7 @@ const theme = 'vitesse-dark';
                     <article class="card">
                         <p class="eyebrow">Same engines</p>
                         <h3>The native runners themselves</h3>
-                        <p>Kiln calls llama.cpp, stable-diffusion.cpp, acestep.cpp, yue2.cpp and whisper.cpp directly: the same C/C++ engines the CLIs and servers use, so you get their speed and their model support.</p>
+                        <p>Kiln calls llama.cpp, stable-diffusion.cpp, acestep.cpp, yue2.cpp, whisper.cpp and stems.cpp directly: the same C/C++ engines the CLIs and servers use, so you get their speed and their model support.</p>
                     </article>
                     <article class="card">
                         <p class="eyebrow">Vulkan today</p>
@@ -648,6 +648,13 @@ const theme = 'vitesse-dark';
                             <p>Speech to text, with a start and end for every word.</p>
                             <ul class="models"><li>Whisper large-v3-turbo</li><li>base.en</li><li>…</li></ul>
                         </article>
+                        <article class="card engine">
+                            <p class="eyebrow">Stems</p>
+                            <h3>kiln-demucs</h3>
+                            <p class="via">on <a href="https://github.com/betweentwomidnights/stems.cpp">stems.cpp</a></p>
+                            <p>A song split into vocals and backing, or drums, bass, other and vocals.</p>
+                            <ul class="models"><li>HTDemucs v4</li><li>6-stem</li><li>fine-tuned</li></ul>
+                        </article>
                     </div>
                     <p class="callout">Check each model’s license before you use what it makes. Some are non-commercial: YuE2’s weights are CC BY-NC 4.0, for example.</p>
                 </div>
@@ -686,6 +693,7 @@ const theme = 'vitesse-dark';
                                     <tr><td>FLUX.2 [klein] base 4B (fp8)</td><td class="num">768×768, 12 steps in ~130 s</td></tr>
                                     <tr><td>Qwen-Image 2512 (fp8)</td><td class="num">1024×1024, 20 steps in ~13 min</td></tr>
                                     <tr><td>Whisper large-v3-turbo (q5_0)</td><td class="num">55 s of speech in 1.8 s, timed word by word</td></tr>
+                                    <tr><td>HTDemucs v4</td><td class="num">3 min 9 s song into four stems in 26 s</td></tr>
                                 </tbody>
                                 <caption>Qwen3’s tokens are streamed through a Java callback. One Strix Halo laptop, Vulkan.</caption>
                             </table>
@@ -916,7 +924,7 @@ const theme = 'vitesse-dark';
                 </div>
                 <nav aria-label="Footer">
                     <div><span>Kiln</span><a href={REPO}>GitHub</a><a href={`${REPO}/blob/main/LICENSE`}>Apache 2.0</a></div>
-                    <div><span>Engines</span><a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a><a href="https://github.com/leejet/stable-diffusion.cpp">stable-diffusion.cpp</a><a href="https://github.com/ServeurpersoCom/acestep.cpp">acestep.cpp</a><a href="https://github.com/ServeurpersoCom/yue2.cpp">yue2.cpp</a><a href="https://github.com/ggml-org/whisper.cpp">whisper.cpp</a></div>
+                    <div><span>Engines</span><a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a><a href="https://github.com/leejet/stable-diffusion.cpp">stable-diffusion.cpp</a><a href="https://github.com/ServeurpersoCom/acestep.cpp">acestep.cpp</a><a href="https://github.com/ServeurpersoCom/yue2.cpp">yue2.cpp</a><a href="https://github.com/ggml-org/whisper.cpp">whisper.cpp</a><a href="https://github.com/betweentwomidnights/stems.cpp">stems.cpp</a></div>
                     <div><span>Liberation Data</span><a href="https://github.com/liberation-data">GitHub</a><a href="https://drivine.org">Drivine</a></div>
                 </nav>
             </div>
