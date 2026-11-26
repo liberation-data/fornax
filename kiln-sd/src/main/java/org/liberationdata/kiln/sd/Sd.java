@@ -33,6 +33,14 @@ public final class Sd {
     static final MethodHandle opt_set_tensor = fn("sd_opt_set_tensor", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
     static final MethodHandle opt_set_audios = fn("sd_opt_set_audios", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG));
     static final MethodHandle opt_set_tensors = fn("sd_opt_set_tensors", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG));
+    static final MethodHandle opt_set_loras = fn("sd_opt_set_loras", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG));
+    // image upscaling (ESRGAN and compatible)
+    static final MethodHandle upscaler_opt_create = fn("sd_upscaler_opt_create", FunctionDescriptor.of(ADDRESS));
+    static final MethodHandle upscale_opt_create = fn("sd_upscale_opt_create", FunctionDescriptor.of(ADDRESS));
+    static final MethodHandle upscaler_create = fn("sd_upscaler_create", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
+    static final MethodHandle upscaler_free = fn("sd_upscaler_free", FunctionDescriptor.ofVoid(ADDRESS));
+    static final MethodHandle upscale = fn("sd_upscale", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+    static final MethodHandle upscaler_get_scale = fn("sd_upscaler_get_scale", FunctionDescriptor.of(JAVA_INT, ADDRESS));
     // context + generation
     static final MethodHandle ctx_create = fn("sd_ctx_create", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
     static final MethodHandle ctx_free = fn("sd_ctx_free", FunctionDescriptor.ofVoid(ADDRESS));
