@@ -142,6 +142,30 @@ class GpuCheckTest {
     }
 
     @Test
+    void refusesAGpuBuildOnlyWhenTheRuntimeFindsNoGpu() throws IOException {
+        assumeTrue(System.getProperty("os.name").toLowerCase().startsWith("linux"));
+        assumeTrue(System.getenv("KILN_ALLOW_CPU") == null);
+        Path vulkan = lib("libkiln_gpu.so", ascii("\0libvulkan.so.1\0"));
+        String before = System.getProperty(GpuCheck.ALLOW_CPU);
+        try {
+            System.clearProperty(GpuCheck.ALLOW_CPU);
+            if (GpuCheck.gpus(GpuCheck.Gpu.VULKAN).equals(OptionalInt.of(0))) {
+                UnsatisfiedLinkError e = assertThrows(UnsatisfiedLinkError.class, () -> GpuCheck.requireGpu(vulkan));
+                assertTrue(e.getMessage().contains("Kiln found no GPU for libkiln_gpu.so"), e.getMessage());
+            } else {
+                assertDoesNotThrow(() -> GpuCheck.requireGpu(vulkan));
+            }
+            System.setProperty(GpuCheck.ALLOW_CPU, "true");
+            assertDoesNotThrow(() -> GpuCheck.requireGpu(vulkan));
+            System.clearProperty(GpuCheck.ALLOW_CPU);
+            assertDoesNotThrow(() -> GpuCheck.requireGpu(vulkan), "a runtime that passed once is not checked again");
+        } finally {
+            if (before == null) System.clearProperty(GpuCheck.ALLOW_CPU);
+            else System.setProperty(GpuCheck.ALLOW_CPU, before);
+        }
+    }
+
+    @Test
     void nativeLibraryExplainsOrRethrowsALoadFailure() throws IOException {
         assumeTrue(System.getProperty("os.name").toLowerCase().startsWith("linux"));
         Path broken = lib("libkiln_broken.so", ascii("not an ELF file, but it names libvulkan.so.1"));
