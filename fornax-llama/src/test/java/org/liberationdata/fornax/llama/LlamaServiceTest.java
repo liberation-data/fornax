@@ -1,12 +1,15 @@
 package org.liberationdata.fornax.llama;
 
 import org.junit.jupiter.api.Test;
+import org.liberationdata.fornax.Scored;
 import org.liberationdata.fornax.Wire;
+import org.liberationdata.fornax.llama.LlamaModel.EmbedOptions;
 import org.liberationdata.fornax.llama.LlamaModel.Image;
 import org.liberationdata.fornax.llama.LlamaModel.Message;
 import org.liberationdata.fornax.llama.LlamaModel.Options;
 import org.liberationdata.fornax.llama.LlamaModel.Result;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -52,6 +55,36 @@ class LlamaServiceTest {
         var r = new Result("forty-two ✓", 17, 3);
         assertEquals(r, LlamaService.decodeResult(LlamaService.result(r)));
         assertEquals("", LlamaService.decodeResult(LlamaService.result(new Result("", 0, 0))).text());
+    }
+
+    @Test
+    void embedAndRerankArgumentsRoundTrip() {
+        var texts = Arrays.asList("glaze ✓", "", null);
+        var in = new Wire.In(LlamaService.embedArgs(texts, EmbedOptions.query("find kilns").withNormalize(false)));
+        assertEquals(texts, LlamaService.strings(in));
+        assertEquals("Instruct: find kilns\nQuery:", in.string());
+        assertFalse(in.bool());
+        in = new Wire.In(LlamaService.embedArgs(List.of("x"), EmbedOptions.DEFAULT));
+        assertEquals(List.of("x"), LlamaService.strings(in));
+        assertNull(in.string());
+        assertTrue(in.bool());
+
+        in = new Wire.In(LlamaService.rerankArgs("how hot?", List.of("1200 C", "")));
+        assertEquals("how hot?", in.string());
+        assertEquals(List.of("1200 C", ""), LlamaService.strings(in));
+    }
+
+    @Test
+    void embeddingsAndScoresRoundTrip() {
+        float[][] v = {{1f, -0.5f, Float.MIN_VALUE}, {0f, Float.NaN, 3.25f}};
+        float[][] back = LlamaService.decodeEmbeddings(LlamaService.embeddings(v));
+        assertEquals(2, back.length);
+        for (int i = 0; i < v.length; i++) assertArrayEquals(v[i], back[i]);
+        assertEquals(0, LlamaService.decodeEmbeddings(LlamaService.embeddings(new float[0][])).length);
+
+        var scores = List.of(new Scored(2, 0.99f), new Scored(0, 0.5f), new Scored(1, 0f));
+        assertEquals(scores, LlamaService.decodeScores(LlamaService.scores(scores)));
+        assertEquals(List.of(), LlamaService.decodeScores(LlamaService.scores(List.of())));
     }
 
     static void assertImages(List<Image> expected, List<Image> actual) {
