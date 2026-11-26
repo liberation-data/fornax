@@ -10,6 +10,7 @@
 > - **Settings:** `kiln.*` properties are now `fornax.*`, and `KILN_*` environment variables are now `FORNAX_*`.
 > - **Studio:** Fornax Studio keeps using an existing `~/.kiln-studio`.
 
+<!-- snippet: Readme#chat -->
 ```java
 try (var llm = new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M")) {   // downloaded on first use, then loaded onto the GPU
     llm.chat(List.of(Message.user("Name a country song about a robot.")), Options.DEFAULT, System.out::print);
@@ -40,6 +41,7 @@ Fornax binds native inference engines with Java's Foreign Function & Memory API 
 
 Images and songs work the same way, and a vision language model takes images in:
 
+<!-- snippet: Readme#models -->
 ```java
 try (var songs = new AceStepModel(lm, textEncoder, dit, vae, true)) {
     songs.generate(requestJson).audio().writeWav(new File("song.wav"));
@@ -234,6 +236,7 @@ Loaded in `Mode.EMBED` or `Mode.RERANK`, a `LlamaModel` is an embedding model or
 pooled embeddings output (as `llama-embedding` and `llama-server --embedding` / `--reranking` run them), for search
 over your own documents (RAG) with no vector database: `fornax-core`'s `Vectors.topK` scans the vectors in memory.
 
+<!-- snippet: Readme#search -->
 ```java
 try (var emb = new LlamaModel(LlamaModel.Weights.QWEN3_EMBEDDING_0_6B, LlamaModel.Mode.EMBED)) {
     float[][] docs = emb.embed(passages);                                       // L2-normalised, batched

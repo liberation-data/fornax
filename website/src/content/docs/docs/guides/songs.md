@@ -19,6 +19,7 @@ hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Emb
     acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
 ```
 
+<!-- snippet: Songs#acestep -->
 ```java
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.acestep.AceStepModel;
@@ -76,6 +77,7 @@ YuE2's weights are CC BY-NC 4.0: no commercial use of what it makes.
 hf download Serveurperso/YuE2-GGUF YuE2-3B-Q8_0.gguf YuE2-Vae-F32.gguf
 ```
 
+<!-- snippet: Songs#yue2 -->
 ```java
 import org.liberationdata.fornax.yue2.Yue2Model;
 

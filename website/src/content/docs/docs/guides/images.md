@@ -21,6 +21,7 @@ hf download Comfy-Org/flux2-dev split_files/vae/flux2-vae.safetensors
 hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetensors
 ```
 
+<!-- snippet: Images#flux -->
 ```java
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.sd.DiffusionModel;
@@ -57,6 +58,7 @@ hf download Comfy-Org/Qwen-Image_ComfyUI split_files/diffusion_models/qwen_image
     split_files/vae/qwen_image_vae.safetensors split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors
 ```
 
+<!-- snippet: Images#qwen-image -->
 ```java
 String repo = "Comfy-Org/Qwen-Image_ComfyUI";
 var config = DiffusionModel.Config.builder()
@@ -81,6 +83,7 @@ Qwen-Image-Edit 2511 takes a reference image and an instruction. It uses Qwen-Im
 hf download Comfy-Org/Qwen-Image-Edit_ComfyUI split_files/diffusion_models/qwen_image_edit_2511_bf16.safetensors
 ```
 
+<!-- snippet: Images#edit -->
 ```java
 import java.util.List;
 import java.util.Map;
@@ -119,6 +122,7 @@ Any of these models can start from an image instead of from noise. All three inp
 it is, 1 ignores it, and 0.5 to 0.75 keeps the layout and changes the look. Leave out the strength to get the
 engine's default of 0.75. The image is fitted to the request's width and height.
 
+<!-- snippet: Images#img2img -->
 ```java
 BufferedImage shop = ImageIO.read(new File("shop.png"));
 var request = new DiffusionModel.Request("the same shop at night in heavy snow", 512, 512, 20, 4.0, 7)
@@ -131,6 +135,7 @@ BufferedImage snowy = images.generate(request).get(0);
 Add a mask, the same size as the init image, and only its white parts are repainted. The rest of the image stays
 as it was. With strength 1, the masked area is drawn from scratch.
 
+<!-- snippet: Images#inpaint -->
 ```java
 BufferedImage mask = ImageIO.read(new File("mask.png"));     // white where the bicycle was, black elsewhere
 var request = new DiffusionModel.Request("a large terracotta pot", 512, 512, 20, 4.0, 7)
@@ -147,6 +152,7 @@ edges better.
 A ControlNet steers the layout with a hint image, such as edges, a depth map or a pose. Name the ControlNet model
 in the `Config`, and give each request a control image:
 
+<!-- snippet: Images#controlnet -->
 ```java
 var config = DiffusionModel.Config.builder()
         .diffusionModel(sdxl).vae(vae)
@@ -188,6 +194,7 @@ A LoRA is a small adapter that teaches a model a style, a subject or a faster sc
 hf download adirik/pixel-art-lora-flux.2-klein-4B pixelart_lora.safetensors     # Apache 2.0
 ```
 
+<!-- snippet: Images#lora -->
 ```java
 var pixelArt = new DiffusionModel.Lora(
         HfCache.require("adirik/pixel-art-lora-flux.2-klein-4B", "pixelart_lora.safetensors"), 1.0f);
@@ -219,6 +226,7 @@ settings ComfyUI's Qwen-Image-Edit 2511 workflow uses:
 hf download lightx2v/Qwen-Image-Edit-2511-Lightning Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors
 ```
 
+<!-- snippet: Images#edit-lightning -->
 ```java
 var lightning = new DiffusionModel.Lora(HfCache.require("lightx2v/Qwen-Image-Edit-2511-Lightning",
         "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"), 1.0f);
@@ -238,6 +246,7 @@ model once and keeps it loaded:
 hf download Comfy-Org/Real-ESRGAN RealESRGAN_x4plus.safetensors
 ```
 
+<!-- snippet: Images#upscale -->
 ```java
 import org.liberationdata.fornax.sd.Upscaler;
 
@@ -264,6 +273,7 @@ hf download Comfy-Org/z_image_turbo split_files/diffusion_models/z_image_turbo_b
     split_files/vae/ae.safetensors split_files/text_encoders/qwen_3_4b.safetensors
 ```
 
+<!-- snippet: Images#z-image -->
 ```java
 String z = "Comfy-Org/z_image_turbo";
 var config = DiffusionModel.Config.builder()
@@ -292,6 +302,7 @@ else that stable-diffusion.cpp accepts goes in the request's `extra` map, under 
 The engine doesn't convert between them, so a float option needs a floating-point value: `"strength", 1.0`, not
 `"strength", 1`.
 
+<!-- snippet: Images#extra -->
 ```java
 var request = new DiffusionModel.Request("a neon sign", 1024, 1024, 20, 4.0, 7, List.of(), Map.of(
         "negative_prompt", "blurry, low quality",
@@ -304,6 +315,7 @@ List<BufferedImage> two = images.generate(request);
 Options for the model as a whole, such as the paths of extra files or how weights are stored, go in the `Config`,
 with `set(key, value)`:
 
+<!-- snippet: Images#config-set -->
 ```java
 var config = DiffusionModel.Config.builder()
         .diffusionModel(flux).vae(vae).llm(textEncoder)
@@ -319,6 +331,7 @@ A key or value the engine rejects fails with an `Sd.SdException` that names the 
 
 The engine reports each sampling step. `onProgress` and `onLog` are process-wide.
 
+<!-- snippet: Images#progress -->
 ```java
 DiffusionModel.onProgress((step, steps, seconds) -> System.out.printf("step %d/%d (%.2f s/it)%n", step, steps, seconds));
 DiffusionModel.onLog((level, text) -> System.err.print(text));    // levels: 0 debug, 1 info, 2 warn, 3 error

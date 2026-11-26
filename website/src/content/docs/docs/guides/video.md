@@ -28,6 +28,7 @@ The upscaler is only for the [two-stage recipe](#the-two-stage-recipe). For the 
 
 ## A clip with sound
 
+<!-- snippet: Video#ltx -->
 ```java
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.sd.DiffusionModel;
@@ -74,6 +75,7 @@ has no bf16 support. The int8 weights themselves are untouched.
 
 Pin the first frame, the last frame, or both, with an image:
 
+<!-- snippet: Video#keyframes -->
 ```java
 import javax.imageio.ImageIO;
 import java.io.File;
@@ -92,6 +94,7 @@ reference clip to models that are driven by speech (such as Wan2.2 S2V).
 Give LTX a soundtrack and it generates the picture to it: a singer's mouth follows the words, a hand strums on the
 beat. `withAudio` cuts the clip-length section from a start time (in seconds) and holds it as the soundtrack:
 
+<!-- snippet: Video#audio -->
 ```java
 import java.nio.file.Path;
 
@@ -129,6 +132,7 @@ at full size. This is ComfyUI's "Image to Video (LTX-2.5)" workflow, step for st
 
 In Java, that is a request with more options, at the draft size:
 
+<!-- snippet: Video#hires -->
 ```java
 import java.util.HashMap;
 
