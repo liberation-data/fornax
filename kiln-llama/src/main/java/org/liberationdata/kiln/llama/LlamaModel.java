@@ -4,7 +4,9 @@ import org.liberationdata.kiln.Call;
 import org.liberationdata.kiln.HfCache;
 import org.liberationdata.kiln.ModelThread;
 import org.liberationdata.kiln.NativeLibrary;
+import org.liberationdata.kiln.Scored;
 import org.liberationdata.kiln.StreamOverflowException;
+import org.liberationdata.kiln.Vectors;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -21,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -37,6 +40,10 @@ import static java.lang.foreign.ValueLayout.JAVA_INT;
  * Loaded with an mmproj GGUF as well, it is a vision language model: user messages can carry {@link Image}s (through
  * llama.cpp's mtmd, as llama-mtmd-cli and llama-server run them). See {@link Weights} for the models Kiln knows by name.
  * Weights stay loaded until {@link #close()}.
+ *
+ * <p>Loaded in {@link Mode#EMBED} or {@link Mode#RERANK} instead, it is an embedding model ({@link #embed}) or a
+ * reranker ({@link #rerank}), through llama.cpp's pooled embeddings output, as llama-embedding and llama-server run
+ * them; {@link Vectors} searches the embeddings.
  *
  * <p>Threads: calls run one at a time, in arrival order, from any thread. The blocking methods ({@link #chat} and the
  * rest) run on the calling thread, callback included. The {@code ...Async} methods run on this model's own platform
@@ -69,6 +76,15 @@ public final class LlamaModel implements AutoCloseable {
             ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
     private static final MethodHandle CHAT_JSON_IMAGES = LIB.function("kiln_llama_chat_json_images", FunctionDescriptor.of(JAVA_INT,
             ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+    private static final MethodHandle CREATE_POOLED = LIB.function("kiln_llama_create_pooled",
+            FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_INT));
+    private static final MethodHandle N_EMBD = LIB.function("kiln_llama_n_embd", FunctionDescriptor.of(JAVA_INT, ADDRESS));
+    private static final MethodHandle EMBED = LIB.function("kiln_llama_embed", FunctionDescriptor.of(JAVA_INT,
+            ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+    private static final MethodHandle RERANK = LIB.function("kiln_llama_rerank", FunctionDescriptor.of(JAVA_INT,
+            ADDRESS, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+    /** The shim's return code for a pooled call that cancel() stopped between batches. */
+    private static final int CANCELLED = 13;
     private static final MethodHandle FREE = LIB.function("kiln_llama_free", FunctionDescriptor.ofVoid(ADDRESS));
     private static final MethodHandle DESTROY = LIB.function("kiln_llama_destroy", FunctionDescriptor.ofVoid(ADDRESS));
 
@@ -87,7 +103,8 @@ public final class LlamaModel implements AutoCloseable {
     /**
      * The token upcall. Nothing may escape it: an exception thrown into llama.cpp's frames kills the JVM. So a
      * consumer's exception is recorded in the call, generation stops, and the Java method rethrows it on return.
-     * An empty piece is the shim polling for a stop while no content is streaming (reasoning, tool calls).
+     * An empty piece is the shim polling for a stop while no content is streaming (reasoning, tool calls, and
+     * between embed and rerank batches).
      */
     private static int onToken(MemorySegment piece, MemorySegment user) {
         Sink sink = SINK.get();
@@ -105,7 +122,8 @@ public final class LlamaModel implements AutoCloseable {
 
     /**
      * Stops the generation in progress (from any thread, including its own callback) after the current token; the
-     * call returns what was generated so far ({@link #extract} throws a {@link CancellationException} instead). Works
+     * call returns what was generated so far ({@link #extract} throws a {@link CancellationException} instead, and so
+     * do {@link #embed} and {@link #rerank}, which stop between batches). Works
      * for every call, streaming or not, blocking or async. A call that hasn't started yet
      * isn't affected: cancel its future instead.
      */
@@ -201,7 +219,14 @@ public final class LlamaModel implements AutoCloseable {
          * Google MedGemma 1.5 4B (instruction tuned): medical images and text. Using it to diagnose or treat patients may need a health regulator's authorization (see the Health AI Developer Foundations terms).
          * Health AI Developer Foundations terms.
          */
-        MEDGEMMA_4B("unsloth/medgemma-1.5-4b-it-GGUF", "medgemma-1.5-4b-it-Q4_K_M.gguf", "mmproj-F16.gguf");
+        MEDGEMMA_4B("unsloth/medgemma-1.5-4b-it-GGUF", "medgemma-1.5-4b-it-Q4_K_M.gguf", "mmproj-F16.gguf"),
+        /**
+         * Qwen3-Embedding 0.6B (Q8_0): 1024-dimension text embeddings, 100+ languages; load it in {@link Mode#EMBED}.
+         * Queries take an instruction ({@link EmbedOptions#query}); documents don't. Apache-2.0.
+         */
+        QWEN3_EMBEDDING_0_6B("Qwen/Qwen3-Embedding-0.6B-GGUF", "Qwen3-Embedding-0.6B-Q8_0.gguf", null),
+        /** Qwen3-Reranker 0.6B (Q8_0): scores how well a document answers a query; load it in {@link Mode#RERANK}. Apache-2.0. */
+        QWEN3_RERANKER_0_6B("ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF", "qwen3-reranker-0.6b-q8_0.gguf", null);
 
         public final String repo, modelFile, mmprojFile;
 
@@ -226,9 +251,9 @@ public final class LlamaModel implements AutoCloseable {
             return "hf download " + repo + " " + modelFile + (mmprojFile == null ? "" : " " + mmprojFile);
         }
 
-        /** By name, ignoring case and '-' vs '_': "qwen3-vl-4b", "paddleocr-vl", "medgemma-4b", "qwen3-4b". */
+        /** By name, ignoring case and '-' or '.' vs '_': "qwen3-vl-4b", "paddleocr-vl", "qwen3-embedding-0.6b". */
         public static Weights named(String name) {
-            return valueOf(name.toUpperCase().replace('-', '_'));
+            return valueOf(name.toUpperCase().replace('-', '_').replace('.', '_'));
         }
     }
 
@@ -242,8 +267,38 @@ public final class LlamaModel implements AutoCloseable {
 
     public record Result(String text, int promptTokens, int generatedTokens) {}
 
+    /** What a model is loaded for. A model loaded for one can't do the others. */
+    public enum Mode {
+        /** Text generation: chat, chatJson, extract, complete (and images, with an mmproj). */
+        CHAT,
+        /** Embeddings: {@link #embed}, with the pooling type the GGUF sets (Qwen3-Embedding: the last token). */
+        EMBED,
+        /** Reranking: {@link #rerank}, for a reranker GGUF (rank pooling, with a classifier head). */
+        RERANK
+    }
+
+    /**
+     * How {@link #embed(List, EmbedOptions)} embeds. prefix (null for none) goes before each text, verbatim; normalize
+     * scales each embedding to length 1, so that a dot product is the cosine similarity.
+     */
+    public record EmbedOptions(String prefix, boolean normalize) {
+        public static final EmbedOptions DEFAULT = new EmbedOptions(null, true);
+
+        /**
+         * For a search query, Qwen3-Embedding's instruction format: {@code "Instruct: " + task + "\nQuery:"} before
+         * the query, for example {@code query("Given a web search query, retrieve relevant passages that answer the
+         * query")}. Embed the documents with {@link #DEFAULT}: in Qwen3-Embedding they take no instruction.
+         */
+        public static EmbedOptions query(String task) { return new EmbedOptions("Instruct: " + task + "\nQuery:", true); }
+
+        public EmbedOptions withPrefix(String p) { return new EmbedOptions(p, normalize); }
+        public EmbedOptions withNormalize(boolean n) { return new EmbedOptions(prefix, n); }
+    }
+
     private final MemorySegment handle;
     private final boolean vision;
+    private final Mode mode;
+    private final int embeddingSize;  // 0 unless EMBED
     private final ModelThread thread;
 
     /** @param gpuLayers -1 offloads every layer. @param contextSize 0 uses the model's trained context. */
@@ -257,13 +312,40 @@ public final class LlamaModel implements AutoCloseable {
      * @param gpuLayers -1 offloads every layer. @param contextSize 0 uses the model's trained context.
      */
     public LlamaModel(String ggufPath, String mmprojPath, int gpuLayers, int contextSize) {
+        this(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize);
+    }
+
+    /**
+     * A model loaded for chat, embeddings or reranking (see {@link Mode}).
+     * @param gpuLayers -1 offloads every layer. @param contextSize 0 uses the model's trained context. In EMBED and
+     *        RERANK it is also the batch: the most tokens one text (or query and document) can have, and how many
+     *        go through the model at once.
+     */
+    public LlamaModel(String ggufPath, int gpuLayers, int contextSize, Mode mode) {
+        this(ggufPath, null, mode, gpuLayers, contextSize);
+    }
+
+    /** A model loaded for chat, embeddings or reranking, with 8192 tokens of context. */
+    public LlamaModel(String ggufPath, Mode mode) { this(ggufPath, -1, 8192, mode); }
+
+    private LlamaModel(String ggufPath, String mmprojPath, Mode mode, int gpuLayers, int contextSize) {
+        this.mode = Objects.requireNonNull(mode, "mode");
+        if (mode != Mode.CHAT && mmprojPath != null)
+            throw new IllegalArgumentException("an mmproj is for chat with images; " + mode + " takes none");
         try (Arena a = Arena.ofConfined()) {
-            handle = mmprojPath == null
-                    ? (MemorySegment) CREATE.invokeExact(a.allocateFrom(ggufPath), gpuLayers, contextSize)
-                    : (MemorySegment) CREATE_MM.invokeExact(a.allocateFrom(ggufPath), a.allocateFrom(mmprojPath), gpuLayers, contextSize);
-            if (handle.equals(MemorySegment.NULL))
-                throw new IllegalStateException((mmprojPath == null ? "kiln_llama_create: " : "kiln_llama_create_mm: ") + error());
+            if (mode != Mode.CHAT) {
+                handle = (MemorySegment) CREATE_POOLED.invokeExact(a.allocateFrom(ggufPath), gpuLayers, contextSize,
+                        mode == Mode.RERANK ? 1 : 0);
+                if (handle.equals(MemorySegment.NULL)) throw new IllegalStateException("kiln_llama_create_pooled: " + error());
+            } else {
+                handle = mmprojPath == null
+                        ? (MemorySegment) CREATE.invokeExact(a.allocateFrom(ggufPath), gpuLayers, contextSize)
+                        : (MemorySegment) CREATE_MM.invokeExact(a.allocateFrom(ggufPath), a.allocateFrom(mmprojPath), gpuLayers, contextSize);
+                if (handle.equals(MemorySegment.NULL))
+                    throw new IllegalStateException((mmprojPath == null ? "kiln_llama_create: " : "kiln_llama_create_mm: ") + error());
+            }
             vision = mmprojPath != null && (int) SUPPORTS_VISION.invokeExact(handle) != 0;
+            embeddingSize = mode == Mode.EMBED ? (int) N_EMBD.invokeExact(handle) : 0;
         } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         MemorySegment h = handle;
         thread = new ModelThread(Path.of(ggufPath).getFileName().toString(), () -> {
@@ -279,8 +361,32 @@ public final class LlamaModel implements AutoCloseable {
 
     public LlamaModel(Weights w, int gpuLayers, int contextSize) { this(w.model(), w.mmproj(), gpuLayers, contextSize); }
 
+    /**
+     * Weights Kiln knows by name, loaded for chat, embeddings or reranking, with 8192 tokens of context; for example
+     * {@code new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)}.
+     */
+    public LlamaModel(Weights w, Mode mode) { this(w, -1, 8192, mode); }
+
+    /**
+     * Weights Kiln knows by name, loaded for chat, embeddings or reranking. The mmproj (if the weights have one) is
+     * loaded only for {@link Mode#CHAT}: EMBED and RERANK take no images. gpuLayers and contextSize are as in
+     * {@link #LlamaModel(String, int, int, Mode)}.
+     */
+    public LlamaModel(Weights w, int gpuLayers, int contextSize, Mode mode) {
+        this(w.model(), mode == Mode.CHAT ? w.mmproj() : null, mode, gpuLayers, contextSize);
+    }
+
     /** Whether this model takes images: it was loaded with an mmproj that has a vision encoder. */
     public boolean supportsVision() { return vision; }
+
+    /** What this model was loaded for. */
+    public Mode mode() { return mode; }
+
+    /** The length of one embedding (1024 for Qwen3-Embedding 0.6B). Only for a model loaded in {@link Mode#EMBED}. */
+    public int embeddingSize() {
+        requireMode(Mode.EMBED, "embed");
+        return embeddingSize;
+    }
 
     /** The marker {@link #complete(String, List, Options, Consumer)} replaces with an image (llama.cpp's default). */
     public static String mediaMarker() {
@@ -340,6 +446,16 @@ public final class LlamaModel implements AutoCloseable {
         return thread.submit(c -> images.isEmpty() ? completeOn(c, prompt, o, null) : completeImages(c, prompt, images, o, null));
     }
 
+    /** {@link #embed(List, EmbedOptions)}, on this model's thread. */
+    public CompletableFuture<float[][]> embedAsync(List<String> texts, EmbedOptions o) {
+        return thread.submit(c -> embedOn(c, texts, o));
+    }
+
+    /** {@link #rerank(String, List)}, on this model's thread. */
+    public CompletableFuture<List<Scored>> rerankAsync(String query, List<String> documents) {
+        return thread.submit(c -> rerankOn(c, query, documents));
+    }
+
     // ---- blocking: on the calling thread ----
 
     public Result chat(List<Message> messages, Options o) { return chat(messages, o, null); }
@@ -354,6 +470,7 @@ public final class LlamaModel implements AutoCloseable {
     }
 
     private Result chatOn(Call call, List<Message> messages, Options o, Consumer<String> onPiece) {
+        requireMode(Mode.CHAT, "chat");
         if (messages.stream().anyMatch(m -> !m.images().isEmpty())) return chatImages(call, messages, o, onPiece);
         try (Arena a = Arena.ofConfined()) {
             int n = messages.size();
@@ -386,6 +503,7 @@ public final class LlamaModel implements AutoCloseable {
     }
 
     private String chatJsonOn(Call call, String requestJson, List<Image> images, Consumer<String> onContent) {
+        requireMode(Mode.CHAT, "chat");
         if (!images.isEmpty()) return chatJsonImages(call, requestJson, images, onContent);
         try (Arena a = Arena.ofConfined()) {
             MemorySegment out = a.allocate(ADDRESS);
@@ -479,6 +597,7 @@ public final class LlamaModel implements AutoCloseable {
     }
 
     private Result completeImages(Call call, String prompt, List<Image> images, Options o, Consumer<String> onPiece) {
+        requireMode(Mode.CHAT, "complete");
         requireVision();
         try (Arena a = Arena.ofConfined()) {
             NativeImages img = new NativeImages(a, images);
@@ -521,6 +640,7 @@ public final class LlamaModel implements AutoCloseable {
     }
 
     private Result completeOn(Call call, String prompt, Options o, Consumer<String> onPiece) {
+        requireMode(Mode.CHAT, "complete");
         try (Arena a = Arena.ofConfined()) {
             Out out = new Out(a);
             MemorySegment cb = callback(a, call, onPiece);
@@ -529,6 +649,88 @@ public final class LlamaModel implements AutoCloseable {
             return out.result(rc, call);
         } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
+    }
+
+    // ---- embeddings and reranking (Mode.EMBED, Mode.RERANK) ----
+
+    /** {@link #embed(List, EmbedOptions)} with the defaults: no prefix, normalised. */
+    public float[][] embed(List<String> texts) { return embed(texts, EmbedOptions.DEFAULT); }
+
+    /** One text's embedding, normalised. */
+    public float[] embed(String text) { return embed(List.of(text))[0]; }
+
+    /**
+     * Embeds texts, one vector of {@link #embeddingSize()} floats each, in order; L2-normalised unless
+     * {@code o.normalize()} is false. Texts go through the model several at a time, each as its own sequence, as
+     * llama-embedding runs them. Text isn't parsed for special tokens. A text longer than the context fails
+     * (split it first). {@link #cancel()} stops it between batches, with a {@link CancellationException}.
+     */
+    public float[][] embed(List<String> texts, EmbedOptions o) {
+        return thread.run(c -> embedOn(c, texts, o));
+    }
+
+    private float[][] embedOn(Call call, List<String> texts, EmbedOptions o) {
+        requireMode(Mode.EMBED, "embed");
+        int n = texts.size(), dim = embeddingSize;
+        if (n == 0) return new float[0][];
+        try (Arena a = Arena.ofConfined()) {
+            MemorySegment in = strings(a, texts, o.prefix());
+            MemorySegment out = a.allocate(JAVA_FLOAT, (long) n * dim);
+            MemorySegment cb = callback(a, call, null);
+            int rc = (int) EMBED.invokeExact(handle, in, n, o.normalize() ? 1 : 0, out, cb, MemorySegment.NULL);
+            pooledResult(rc, call, "embed");
+            float[][] v = new float[n][];
+            for (int i = 0; i < n; i++) v[i] = out.asSlice((long) i * dim * Float.BYTES, (long) dim * Float.BYTES).toArray(JAVA_FLOAT);
+            return v;
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+        finally { SINK.remove(); }
+    }
+
+    /**
+     * Scores how well each document answers the query, as llama-server's /rerank does (the GGUF's own rerank prompt),
+     * best first; {@link Scored#index()} is the document's position in documents. For Qwen3-Reranker a score is the
+     * probability, 0 to 1, that the document answers the query. {@link #cancel()} stops it between batches, with a
+     * {@link CancellationException}.
+     */
+    public List<Scored> rerank(String query, List<String> documents) {
+        return thread.run(c -> rerankOn(c, query, documents));
+    }
+
+    private List<Scored> rerankOn(Call call, String query, List<String> documents) {
+        requireMode(Mode.RERANK, "rerank");
+        int n = documents.size();
+        if (n == 0) return List.of();
+        try (Arena a = Arena.ofConfined()) {
+            MemorySegment docs = strings(a, documents, null);
+            MemorySegment out = a.allocate(JAVA_FLOAT, n);
+            MemorySegment cb = callback(a, call, null);
+            int rc = (int) RERANK.invokeExact(handle, a.allocateFrom(query), docs, n, out, cb, MemorySegment.NULL);
+            pooledResult(rc, call, "rerank");
+            return Vectors.rank(out.toArray(JAVA_FLOAT));
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+        finally { SINK.remove(); }
+    }
+
+    /** Strings as a C array, each with prefix (if any) before it. */
+    private static MemorySegment strings(Arena a, List<String> texts, String prefix) {
+        MemorySegment arr = a.allocate(ADDRESS, texts.size());
+        for (int i = 0; i < texts.size(); i++) {
+            String t = Objects.requireNonNull(texts.get(i), "text " + i);
+            arr.setAtIndex(ADDRESS, i, a.allocateFrom(prefix == null ? t : prefix + t));
+        }
+        return arr;
+    }
+
+    private static void pooledResult(int rc, Call call, String what) {
+        call.rethrow();
+        if (rc == CANCELLED && call.stopRequested()) throw new CancellationException(what + " was cancelled");
+        if (rc != 0) throw new IllegalStateException("llama " + what + " failed (rc=" + rc + "): " + error());
+    }
+
+    private void requireMode(Mode needed, String what) {
+        if (mode != needed)
+            throw new IllegalStateException("this model was loaded for " + mode + ", so it can't " + what
+                    + ": load it with Mode." + needed);
     }
 
     /** Always an upcall, even with no consumer, so that cancel() reaches every call. */
