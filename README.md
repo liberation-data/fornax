@@ -390,6 +390,11 @@ YuE2), video clips with sound (LTX-2.5, whose .mp4 needs ffmpeg) and questions a
 ./gradlew :fornax-studio-server:studioJar   # one runnable jar, which the app ships
 ```
 
+It answers only its own callers: a request whose `Host` isn't `127.0.0.1`, `localhost` or `[::1]` at its port (DNS
+rebinding), or that carries an `Origin` (a web page in the browser), is refused with a 403. When `FORNAX_STUDIO_SECRET`
+is set in its environment (the app makes one each launch), every route but `/api/health` also needs it in the
+`X-Fornax-Studio-Secret` header.
+
 On Linux, as with every Fornax engine, a GPU build refuses to load a model on a machine with no usable GPU (the request's
 error says what to install) unless `FORNAX_ALLOW_CPU=true` is set in the server's environment.
 

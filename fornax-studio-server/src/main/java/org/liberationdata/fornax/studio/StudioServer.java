@@ -58,9 +58,17 @@ import java.util.regex.Pattern;
  * {@code fornax.studio.budget} / {@code FORNAX_STUDIO_BUDGET_GB} (the pool's budget in GB, 24),
  * {@code fornax.studio.stub} / {@code FORNAX_STUDIO_STUB} (kinds answered by stubs, as {@code image,song,video}),
  * {@code fornax.studio.ffmpeg} / {@code FORNAX_STUDIO_FFMPEG} (the ffmpeg that makes a video's .mp4; else the PATH's),
- * {@code FORNAX_STUDIO_HOME} (~/.fornax-studio, where outputs are kept), {@code FORNAX_STUDIO_IDLE_MINUTES} (15), and
+ * {@code FORNAX_STUDIO_HOME} (~/.fornax-studio, where outputs are kept), {@code FORNAX_STUDIO_IDLE_MINUTES} (15),
  * {@code FORNAX_STUDIO_PARENT_PID}: the app that started it, whose exit ends the server too, so a model never stays on
- * the GPU after the app has gone.
+ * the GPU after the app has gone, and {@code FORNAX_STUDIO_SECRET} (environment only; see below).
+ *
+ * <p>Who may call it. Listening on loopback alone doesn't keep out the web pages open in the user's browser: a page can
+ * send a "simple" POST to 127.0.0.1 with no CORS preflight, and DNS rebinding gets round the same-origin check. So every
+ * request is refused (403) unless its {@code Host} is this server's own loopback address and port, and it carries no
+ * {@code Origin} (its callers, the studio's proxy and the desktop app's main process, send none; a browser always sends
+ * one with a POST). And when {@code FORNAX_STUDIO_SECRET} is set (the desktop app makes one each launch, and passes it in
+ * the environment, not on the command line, where {@code ps} would show it), every route but {@code /api/health} needs it
+ * in the {@code X-Fornax-Studio-Secret} header.
  */
 public final class StudioServer {
     private static final Pattern OUTPUT_NAME = Pattern.compile("[A-Za-z0-9._-]+\\.(png|wav|json|mp4)");
@@ -69,6 +77,9 @@ public final class StudioServer {
     private final HttpServer http;
     private final String ffmpeg;
     private final Pulls pulls;
+    /** The secret every request but health must carry, or null for none ({@code FORNAX_STUDIO_SECRET}). */
+    private final byte[] secret;
+    static final String SECRET_HEADER = "X-Fornax-Studio-Secret";
 
     StudioServer(Studio studio, int port) throws IOException {
         this(studio, port, Mp4.find(setting("fornax.studio.ffmpeg", "FORNAX_STUDIO_FFMPEG", "")));
@@ -81,9 +92,15 @@ public final class StudioServer {
 
     /** pulls: where models are got from (a test's hub on localhost). */
     StudioServer(Studio studio, int port, String ffmpeg, Pulls pulls) throws IOException {
+        this(studio, port, ffmpeg, pulls, System.getenv("FORNAX_STUDIO_SECRET"));
+    }
+
+    /** secret: what every request but health must carry in {@link #SECRET_HEADER}, or null or blank for none. */
+    StudioServer(Studio studio, int port, String ffmpeg, Pulls pulls, String secret) throws IOException {
         this.studio = studio;
         this.ffmpeg = ffmpeg;
         this.pulls = pulls;
+        this.secret = secret == null || secret.isBlank() ? null : secret.strip().getBytes(StandardCharsets.UTF_8);
         this.http = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), port), 0);
         // Platform threads: a generation is one long native call, which would pin a virtual thread's carrier throughout.
         http.setExecutor(Executors.newCachedThreadPool(r -> {
@@ -738,8 +755,31 @@ public final class StudioServer {
         });
     }
 
-    private static void handle(HttpExchange ex, String method, Handler h) throws IOException {
+    /**
+     * Why the request is refused, or null: a Host that isn't this server's loopback address (DNS rebinding), an Origin
+     * (a web page), or a missing or wrong secret. The reasons are generic, and never repeat what was sent.
+     */
+    String refusal(HttpExchange ex) {
+        int port = http.getAddress().getPort();
+        String host = ex.getRequestHeaders().getFirst("Host");
+        if (host == null || !Set.of("127.0.0.1:" + port, "localhost:" + port, "[::1]:" + port).contains(host.toLowerCase(java.util.Locale.ROOT)))
+            return "only Fornax Studio may call this server (wrong Host)";
+        if (ex.getRequestHeaders().containsKey("Origin")) return "only Fornax Studio may call this server (a web page's Origin)";
+        if (secret != null && !ex.getRequestURI().getPath().equals("/api/health")) {
+            String given = ex.getRequestHeaders().getFirst(SECRET_HEADER);
+            if (given == null || !java.security.MessageDigest.isEqual(secret, given.getBytes(StandardCharsets.UTF_8)))
+                return "only Fornax Studio may call this server (no studio secret)";
+        }
+        return null;
+    }
+
+    private void handle(HttpExchange ex, String method, Handler h) throws IOException {
         try {
+            String refused = refusal(ex);
+            if (refused != null) {
+                json(ex, 403, Json.obj("error", refused));
+                return;
+            }
             String m = ex.getRequestMethod();
             if (!m.equals(method) && !(method.equals("GET") && m.equals("HEAD"))) {
                 json(ex, 405, Json.obj("error", "method not allowed"));
