@@ -458,6 +458,9 @@ public final class StudioServer {
         Object rawSchema = req.get("schema");
         Map<String, Object> schema = rawSchema instanceof Map<?, ?> given ? (Map<String, Object>) given
                 : rawSchema instanceof String text && !text.isBlank() ? Json.object(text) : null;
+        if (schema == null && rawSchema != null && !(rawSchema instanceof String)) {
+            throw new IllegalArgumentException("the schema is a JSON object");
+        }
         if (prompt.isEmpty() && !ocr) throw new IllegalArgumentException("no prompt: say what to look for");
         long maxTokens = Json.num(req, "maxTokens", Json.num(d, "maxTokens", 1024));
         double temperature = Json.dbl(req, "temperature", Json.dbl(d, "temperature", 0));
@@ -483,14 +486,15 @@ public final class StudioServer {
                 double readSeconds = 0;
                 long t0 = System.nanoTime();
                 var first = new AtomicLong();
+                java.util.function.Consumer<String> onToken = piece -> {
+                    if (first.get() == 0) first.set(System.nanoTime());
+                    sse.send("token", Json.obj("text", piece));
+                };
                 Map<String, Object> reply;
                 try (var lease = leaseSaying(sse, m, Engines.Seer.class)) {
                     sse.send("status", Json.obj("state", "generating"));
                     t0 = System.nanoTime();
-                    reply = Json.object(lease.model().look(Json.write(ask), images, piece -> {
-                        if (first.get() == 0) first.set(System.nanoTime());
-                        sse.send("token", Json.obj("text", piece));
-                    }));
+                    reply = Json.object(lease.model().look(Json.write(ask), images, onToken));
                 }
                 if (filler != null) {
                     read = content(reply);
@@ -503,10 +507,7 @@ public final class StudioServer {
                     try (var lease = leaseSaying(sse, filler, Engines.Seer.class)) {
                         first.set(0);
                         t0 = System.nanoTime();
-                        reply = Json.object(lease.model().look(Json.write(structure), List.of(), piece -> {
-                            if (first.get() == 0) first.set(System.nanoTime());
-                            sse.send("token", Json.obj("text", piece));
-                        }));
+                        reply = Json.object(lease.model().look(Json.write(structure), List.of(), onToken));
                     }
                 }
                 var usage = reply.get("usage") instanceof Map<?, ?> u ? (Map<String, Object>) u : Map.<String, Object>of();

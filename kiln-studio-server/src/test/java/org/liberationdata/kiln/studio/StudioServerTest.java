@@ -278,6 +278,11 @@ class StudioServerTest {
         var r = call("POST", "/api/inspect", "{\"model\": \"vision:qwen3-vl-4b\", \"prompt\": \"x\", \"schema\": \"[1]\","
                 + "\"image\": \"" + pngDataUrl(8, 8) + "\"}");
         assertEquals(400, r.statusCode());
+        // Nor is a schema that is neither an object nor its text: it isn't taken as none, for free text.
+        var array = call("POST", "/api/inspect", "{\"model\": \"vision:qwen3-vl-4b\", \"prompt\": \"x\", \"schema\": [1],"
+                + "\"image\": \"" + pngDataUrl(8, 8) + "\"}");
+        assertEquals(400, array.statusCode());
+        assertTrue(array.body().contains("JSON object"), array.body());
     }
 
     @Test void anOcrModelReadsThenAnotherFillsTheSchema() throws Exception {
