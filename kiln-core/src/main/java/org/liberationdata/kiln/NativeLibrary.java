@@ -70,8 +70,13 @@ public final class NativeLibrary {
         static synchronized void apply() {
             if (applied) return;
             applied = true;
-            if (!Boolean.parseBoolean(System.getProperty("kiln.gpu.graphs", "false"))) setDefault("GGML_CUDA_DISABLE_GRAPHS", "1");
-            String nodes = System.getProperty("kiln.vulkan.maxNodesPerSubmit");
+            apply(System.getProperties());
+        }
+
+        /** The tunables from these properties (System's, except in tests), each set unless its variable already is. */
+        static void apply(java.util.Properties properties) {
+            if (!Boolean.parseBoolean(properties.getProperty("kiln.gpu.graphs", "false"))) setDefault("GGML_CUDA_DISABLE_GRAPHS", "1");
+            String nodes = properties.getProperty("kiln.vulkan.maxNodesPerSubmit");
             if (nodes != null) setDefault("GGML_VK_MAX_NODES_PER_SUBMIT", nodes);
         }
 

@@ -220,6 +220,7 @@ int kiln_tts_speak(kiln_tts * h, const char * text, const char * voice_c, const 
     llama_token sampled = sample();
     // h_state is only valid until the next decode, the next step_gen() reads it after we sample
     const float * e = llama_get_embeddings_ith(h->lctx, -1);
+    if (!e) return fail("the backbone gave no hidden state for the prompt", 11);
     std::vector<float> h_prompt(e, e + llama_model_n_embd(h->model));
     const float * h_state = h_prompt.data();
     int n_frames = 0;
@@ -240,6 +241,7 @@ int kiln_tts_speak(kiln_tts * h, const char * text, const char * voice_c, const 
     if (out_n_generated) *out_n_generated = n_frames;
     *out_n_frames = (int64_t) (pcm.size() / ch);
     *out_pcm = (float *) malloc(std::max<size_t>(1, pcm.size()) * sizeof(float));
+    if (!*out_pcm) { *out_n_frames = 0; return fail("out of memory for the audio", 12); }
     if (!pcm.empty()) memcpy(*out_pcm, pcm.data(), pcm.size() * sizeof(float));
     return 0;
 }

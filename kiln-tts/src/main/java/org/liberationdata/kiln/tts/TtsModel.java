@@ -158,6 +158,11 @@ public final class TtsModel implements AutoCloseable {
     /**
      * Speaks text with a voice (null for the model's default). onChunk (optional) streams the audio as it's decoded;
      * the returned Audio holds all of it either way.
+     *
+     * <p>A voice is one of {@link #voices()}, a word the model takes in its prompt (LFM3-Audio's "male"), or
+     * {@code "@<path>"}: a WAV or MP3 clip to speak like, for the models that clone (VoxCPM2, Qwen3-TTS). A
+     * {@code <path>.txt} beside the clip, holding what it says, lets the model continue that speaker rather than only
+     * imitate the sound, which holds an accent much steadier.
      */
     public Audio speak(String text, String voice, Options o, Consumer<Audio> onChunk) {
         cancelled = false;
