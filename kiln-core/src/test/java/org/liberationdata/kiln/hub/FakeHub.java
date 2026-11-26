@@ -57,6 +57,11 @@ final class FakeHub implements AutoCloseable {
     volatile boolean ignoreRange;
     /** Sent as X-Repo-Commit instead of the real commit, as a broken or hostile mirror might; null for the real one. */
     volatile String commitHeader;
+    /**
+     * The Hub answers for a git file itself, 200 with {@code ETag} and {@code Content-Length} and no {@code X-Linked-*},
+     * as huggingface.co does for small files, instead of redirecting to the CDN.
+     */
+    volatile boolean gitFilesDirect;
 
     FakeHub() throws IOException {
         InetSocketAddress any = new InetSocketAddress(InetAddress.getLoopbackAddress(), 0);
@@ -120,6 +125,18 @@ final class FakeHub implements AutoCloseable {
             if (f == null) { x.getResponseHeaders().set("X-Error-Code", "EntryNotFound"); send(x, 404, null); return; }
             var h = x.getResponseHeaders();
             h.set("X-Repo-Commit", commitHeader != null ? commitHeader : commit(repo));
+            if (gitFilesDirect && !f.lfs()) {
+                h.set("ETag", "\"" + f.etag() + "\"");
+                if (x.getRequestMethod().equals("HEAD")) {
+                    h.set("Content-Length", String.valueOf(f.content().length));
+                    x.sendResponseHeaders(200, -1);
+                } else {
+                    gets.computeIfAbsent(f.etag(), k -> new AtomicInteger()).incrementAndGet();
+                    x.sendResponseHeaders(200, f.content().length);
+                    x.getResponseBody().write(f.content());
+                }
+                return;
+            }
             h.set("X-Linked-Etag", "\"" + f.etag() + "\"");
             h.set("X-Linked-Size", String.valueOf(f.content().length));
             h.set("Location", "http://127.0.0.1:" + cdn.getAddress().getPort() + "/" + (f.lfs() ? "cdn" : "raw") + "/" + f.etag());

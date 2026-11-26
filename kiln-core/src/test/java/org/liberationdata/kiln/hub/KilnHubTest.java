@@ -78,6 +78,20 @@ class KilnHubTest {
         assertEquals(Where.HF_CACHE, hub().status(set).parts().get(0).where());
     }
 
+    @Test void aGitFileTheHubServesItselfIsSizedByContentLengthAndNamedByItsETag() throws Exception {
+        var f = fake.add(REPO, "config.json", 3_000, false);
+        fake.gitFilesDirect = true;
+        var set = set("one", Part.of("c", REPO, "config.json"));
+
+        assertEquals(3_000, hub().plan(set).items().get(0).size());
+        Path p = hub().pull(set, PullListener.NONE).get("c");
+
+        assertArrayEquals(f.content(), Files.readAllBytes(p));
+        assertEquals(Path.of("../../blobs/" + f.etag()), Files.readSymbolicLink(p));
+        assertEquals(1, fake.gets(f));
+        assertEquals(State.PRESENT, hub().status(set).state());
+    }
+
     @Test void reportsProgressForABar() throws Exception {
         var a = fake.add(REPO, "a.gguf", 2_000_000, true);
         var b = fake.add(REPO, "b.gguf", 1_000_000, true);
