@@ -690,7 +690,7 @@ const theme = 'vitesse-dark';
                         <div data-pane="tools" hidden><Code code={samples.tools} lang="java" theme={theme} /></div>
                         <div data-pane="songs" hidden><Code code={samples.songs} lang="java" theme={theme} /></div>
                         <div data-pane="images" hidden><Code code={samples.images} lang="java" theme={theme} /></div>
-                        <p class="note">Fornax doesn’t download anything: <code>HfCache</code> finds weights in your Hugging Face cache, or pass file paths.</p>
+                        <p class="note">A catalogue name or a Hugging Face reference downloads into your Hugging Face cache on first use; a file path never downloads anything.</p>
                     </div>
                 </div>
             </section>
@@ -1162,7 +1162,9 @@ const theme = 'vitesse-dark';
                     steps.forEach((b, i) => b.addEventListener('click', () => go(i)));
                     qs.querySelector('.qs-steps')!.addEventListener('keydown', (e) => {
                         const key = (e as KeyboardEvent).key;
-                        const k = { ArrowDown: at + 1, ArrowRight: at + 1, ArrowUp: at - 1, ArrowLeft: at - 1, Home: 0, End: steps.length - 1 }[key];
+                        // Arrows wrap round, as the ARIA tabs pattern has it.
+                        const n = steps.length;
+                        const k = { ArrowDown: (at + 1) % n, ArrowRight: (at + 1) % n, ArrowUp: (at - 1 + n) % n, ArrowLeft: (at - 1 + n) % n, Home: 0, End: n - 1 }[key];
                         if (k !== undefined) { e.preventDefault(); go(k, true); }
                     });
                     back.addEventListener('click', () => go(at - 1));
