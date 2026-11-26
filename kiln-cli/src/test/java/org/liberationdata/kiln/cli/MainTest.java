@@ -34,5 +34,12 @@ class MainTest {
         assertEquals(2, run("test", "qwen3-0.6b", "--bogus"));
         assertEquals(2, run("list", "extra"));
         assertEquals(2, run("pull", "not-a-repo"));
+        assertEquals(2, run("rm"));
+    }
+
+    @Test
+    void rmTakesOnlyAnAlias() {
+        assertEquals(1, run("rm", "Qwen/Qwen3-0.6B-GGUF"));   // a repo is left to `hf cache rm`, never deleted here
+        assertTrue(err.toString().contains("hf cache rm"), err.toString());
     }
 }

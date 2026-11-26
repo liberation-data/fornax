@@ -30,6 +30,14 @@ class ThinkFilterTest {
     }
 
     @Test
+    void aReplyThatIsOnlyReasoningShowsNothing() {
+        var f = new ThinkFilter(s -> fail("shown: " + s), false);
+        for (char c : "<think>\nstill thinking when max-tokens ran out".toCharArray()) f.accept(String.valueOf(c));
+        f.finish();
+        assertEquals("", f.reply());
+    }
+
+    @Test
     void showsThemWithThink() {
         String in = "<think>\nhmm\n</think>\n\nHello";
         assertEquals(in, run(true, List.of(in.substring(0, 5), in.substring(5))));
