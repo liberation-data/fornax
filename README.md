@@ -275,7 +275,7 @@ CC BY-NC 4.0, for example.
 ./gradlew invoice   # draws a made-up invoice and reads it into JSON; -Pmodel=paddleocr-vl reads it with OCR first
 ./gradlew defects   # a tray of parts with a dented one: Qwen3-VL boxes the defects (out/defects-found.png)
 ./gradlew edit --args='in.png out.png "the same street in snow"' -Pstrength=0.6   # img2img; -Pmask=m.png inpaints
-./gradlew edit --args='in.png out.png "make the sign say KILN"' -Pmodel=qwen-edit -Plora=lightning.safetensors:1
+./gradlew edit --args='in.png out.png "make the sign say KILN"' -Pmodel=qwen-edit -Plora=lightning.safetensors:1 -Psteps=4 -Pcfg=1
 ./gradlew upscale --args='in.png out.png'                # RealESRGAN_x4plus: 4x
 ```
 
