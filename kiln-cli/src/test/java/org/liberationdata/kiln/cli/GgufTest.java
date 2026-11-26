@@ -30,4 +30,13 @@ class GgufTest {
         assertEquals(2, Gguf.match(models, "Q4_K_M").size());   // ambiguous: Q4_K_M and UD-Q4_K_M
         assertEquals(List.of(), Gguf.match(models, "IQ2"));
     }
+
+    @Test
+    void allPartsNamesEverySplitPartAsTheFilesSpellIt() {
+        assertEquals(List.of("Qwen3-4B-Q8_0.gguf"), Gguf.allParts(List.of("Qwen3-4B-Q8_0.gguf")));
+        assertEquals(List.of("Q6_K/big-Q6_K-00001-of-00002.gguf", "Q6_K/big-Q6_K-00002-of-00002.gguf"),
+                Gguf.allParts(List.of("Q6_K/big-Q6_K-00002-of-00002.gguf")));   // part 1 missing
+        assertEquals(List.of("BIG-00001-OF-00002.GGUF", "BIG-00002-OF-00002.GGUF"),
+                Gguf.allParts(List.of("BIG-00001-OF-00002.GGUF", "BIG-00002-OF-00002.GGUF")));
+    }
 }

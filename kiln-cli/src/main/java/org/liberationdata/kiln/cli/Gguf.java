@@ -45,12 +45,13 @@ final class Gguf {
      * {@code -00001-of-0000N} through {@code -0000N-of-0000N}, whichever of them are present.
      */
     static List<String> allParts(List<String> found) {
-        Matcher m = SPLIT.matcher(found.get(0));
+        String first = found.get(0);
+        Matcher m = SPLIT.matcher(first);
         if (!m.matches()) return found;
-        String ext = found.get(0).substring(found.get(0).length() - ".gguf".length());
         int n = Integer.parseInt(m.group(3));
-        List<String> all = new ArrayList<>();
-        for (int i = 1; i <= n; i++) all.add(String.format(Locale.ROOT, "%s-%05d-of-%s%s", m.group(1), i, m.group(3), ext));
+        List<String> all = new ArrayList<>();   // only the part number changes, so "-OF-" or ".GGUF" stay as spelt
+        for (int i = 1; i <= n; i++)
+            all.add(first.substring(0, m.start(2)) + String.format(Locale.ROOT, "%05d", i) + first.substring(m.end(2)));
         return all;
     }
 
