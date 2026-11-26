@@ -437,6 +437,29 @@ class KilnHubTest {
         assertNotNull(first);
     }
 
+    @Test void evictRemovesAPartialOfAnotherSourceAndItsEmptiedRepo() throws Exception {
+        fake.add("first/repo", "te.safetensors", 1_000, true);
+        var part = Part.anyOf("llm", new ModelSet.Source("first/repo", "te.safetensors"), new ModelSet.Source("second/repo", "te.safetensors"));
+        var set = set("y", part);
+        KilnHub hub = hub();
+        hub.pull(set("z", Part.of("llm", "first/repo", "te.safetensors")), PullListener.NONE);
+        // A Kiln pull of the same file from the second repo that stopped part way.
+        String etag = "a".repeat(64);
+        Path incomplete = cache.resolve("models--second--repo/blobs").resolve(etag + ".incomplete");
+        Files.createDirectories(incomplete.getParent());
+        Files.write(incomplete, new byte[300]);
+        Path pending = cache.resolve(".locks/models--second--repo").resolve(etag + ".pending");
+        Files.createDirectories(pending.getParent());
+        Files.writeString(pending, "te.safetensors\n2000\n");
+
+        Eviction e = hub.evict(set);
+        assertEquals(1_300, e.bytesFreed());
+        assertFalse(Files.exists(pending));
+        assertFalse(Files.exists(cache.resolve("models--first--repo")));
+        assertFalse(Files.exists(cache.resolve("models--second--repo")), "the repo the partial emptied goes too");
+        assertEquals(State.MISSING, hub.status(set).state());
+    }
+
     @Test void evictKeepsABlobAnotherSnapshotStillLinksTo() throws Exception {
         var f = fake.add(REPO, "model.gguf", 4_000, true);
         var set = set("one", Part.of("m", REPO, "model.gguf"));
