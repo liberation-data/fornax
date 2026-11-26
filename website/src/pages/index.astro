@@ -112,23 +112,7 @@ String res = llm.chatJson("""
 }`
 };
 
-const build = `native/build.sh vulkan     # or hip | cuda | metal | cpu; optionally list engines: llama tts sd acestep yue2 whisper
-./gradlew build`;
-
-const download = `hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
-hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Embedding-0.6B-Q8_0.gguf \\
-    acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
-hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors
-hf download Comfy-Org/flux2-dev split_files/vae/flux2-vae.safetensors
-hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetensors`;
-
-const examples = `./gradlew single    # an LLM writes a song, ACE-Step sings it, FLUX.2 klein paints the cover
-./gradlew chat --args='"Write a haiku about a kiln"'
-./gradlew song --args='song.wav'                         # -Pdit=xl-turbo for the larger model
-./gradlew yue2 --args='yue2-song.wav'
-./gradlew image --args='klein out.png "a neon sign that says KILN"' -Psteps=12 -Pwidth=768 -Pheight=768`;
-
-const depend = `// build.gradle.kts: the engine module, and the natives jar for the OS and arch building it
+const depend = `// build.gradle.kts: an engine module, and the natives jar for the OS and arch building it
 val natives = when {
     !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
     System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
@@ -137,10 +121,24 @@ val natives = when {
 dependencies {
     implementation("org.kiln4j:kiln-llama:0.1.0")
     runtimeOnly("org.kiln4j:kiln-natives-$natives:0.1.0")
-}
-// and run with --enable-native-access=ALL-UNNAMED`;
+}`;
 
-const installs = ['native/build.sh vulkan', './gradlew build', './gradlew single'];
+const download = `hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf`;
+
+const hello = `var weights = HfCache.find("unsloth/Qwen3-4B-Instruct-2507-GGUF",
+        "Qwen3-4B-Instruct-2507-Q4_K_M.gguf").orElseThrow();
+try (var llm = new LlamaModel(weights.toString())) {
+    llm.chat(List.of(Message.user("Write a haiku about a kiln.")),
+            Options.DEFAULT, System.out::print);
+}
+// run with --enable-native-access=ALL-UNNAMED`;
+
+const build = `native/build.sh vulkan     # or hip | cuda | metal | cpu
+./gradlew build
+./gradlew single           # an LLM writes a song, ACE-Step sings it, FLUX.2 klein paints the cover
+./gradlew image --args='klein out.png "a neon sign that says KILN"'`;
+
+const installs = ['implementation("org.kiln4j:kiln-llama:0.1.0")', 'hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf'];
 const theme = 'vitesse-dark';
 ---
 
@@ -577,7 +575,7 @@ const theme = 'vitesse-dark';
                             <li><span>Text streams token by token to any callback, such as <code>System.out::print</code>.</span></li>
                             <li><span>Tool calling with <code>chatJson</code>: OpenAI-style messages and tools in, <code>tool_calls</code> out.</span></li>
                             <li><span>Audio comes back as PCM; images as a <code>BufferedImage</code>.</span></li>
-                            <li><span>Java 22+, built and tested on 25. Instances aren’t thread-safe.</span></li>
+                            <li><span>Java 22 or newer (Kiln 0.1.0 needs 25). Instances aren’t thread-safe.</span></li>
                         </ul>
                     </div>
                     <div class="panel">
@@ -837,28 +835,28 @@ const theme = 'vitesse-dark';
                 <div class="wrap">
                     <header>
                         <p class="eyebrow">Getting started</p>
-                        <h2>Build the engines, fetch some weights, run.</h2>
+                        <h2>Add Kiln, fetch a model, run.</h2>
                         <p>
-                            You need JDK 25, CMake, Ninja, a C++17 compiler and the SDK for your GPU backend. For Vulkan on Fedora:
-                            <code>dnf install vulkan-headers vulkan-loader-devel glslc spirv-headers-devel</code>.
+                            Kiln is on Maven Central as <code>org.kiln4j</code>. You need Java 22 or newer (Kiln 0.1.0 itself needs 25),
+                            and on Linux your GPU’s Vulkan driver, which desktop installs already have. Macs need nothing more.
                         </p>
                     </header>
                     <div class="stepper">
                         <div>
-                            <div><h3>1. Build</h3><p><code>native/build.sh</code> clones the engines at their pinned commits and writes the libraries to <code>build/native/&lt;os&gt;-&lt;arch&gt;-&lt;backend&gt;/</code>. Pick another backend for Gradle with <code>-Pkiln.backend=hip</code>.</p></div>
-                            <div class="shell"><Code code={build} lang="sh" theme={theme} /></div>
+                            <div><h3>1. Add Kiln</h3><p>An engine module, and the natives jar for your OS and GPU. Kiln unpacks the engine into its cache and loads it, so there’s no native build. Maven works the same way: see <a href="/docs/maven-and-gradle/">Maven and Gradle</a>.</p></div>
+                            <div class="shell"><Code code={depend} lang="kotlin" theme={theme} /></div>
                         </div>
                         <div>
-                            <div><h3>2. Fetch weights</h3><p>With the Hugging Face CLI. <code>HfCache</code> finds them in <code>HF_HUB_CACHE</code>, <code>HF_HOME/hub</code> or <code>~/.cache/huggingface/hub</code>.</p></div>
+                            <div><h3>2. Fetch a model</h3><p>With the Hugging Face CLI. Kiln downloads nothing itself: <code>HfCache</code> finds the weights in <code>HF_HUB_CACHE</code>, <code>HF_HOME/hub</code> or <code>~/.cache/huggingface/hub</code>.</p></div>
                             <div class="shell"><Code code={download} lang="sh" theme={theme} /></div>
                         </div>
                         <div>
-                            <div><h3>3. Try the examples</h3><p>The song examples take the engines’ own JSON requests; pass your own as a second argument.</p></div>
-                            <div class="shell"><Code code={examples} lang="sh" theme={theme} /></div>
+                            <div><h3>3. Run it</h3><p>A chat reply, streamed token by token from your GPU, inside your JVM. <a href="https://github.com/liberation-data/kiln/tree/main/samples/hello-kiln"><code>samples/hello-kiln</code></a> is this as a project to copy, for Gradle and Maven.</p></div>
+                            <div class="shell"><Code code={hello} lang="java" theme={theme} /></div>
                         </div>
                         <div>
-                            <div><h3>4. In your own app</h3><p>From Maven Central: an engine module and the natives jar for your platform. Kiln unpacks the libraries into its cache and loads them, so your app needs no native build. To use one from step 1 instead, put it on <code>-Dkiln.library.path</code>.</p></div>
-                            <div class="shell"><Code code={depend} lang="kotlin" theme={theme} /></div>
+                            <div><h3>4. Or build the engines</h3><p>For HIP or CUDA, or to run the repository’s examples: JDK 25, CMake, Ninja, a C++17 compiler and your GPU’s SDK. <code>native/build.sh</code> clones the engines at their pinned commits; point your app at the result with <code>-Dkiln.library.path</code>.</p></div>
+                            <div class="shell"><Code code={build} lang="sh" theme={theme} /></div>
                         </div>
                     </div>
                 </div>
