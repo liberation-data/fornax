@@ -103,3 +103,13 @@ export function studioRepoPublic(): Promise<boolean> {
         .catch(() => false);
     return open;
 }
+
+/** A public repo's star count for the nav's GitHub menu, fetched at build time; undefined if GitHub can't say. */
+export async function repoStars(repo: string): Promise<number | undefined> {
+    try {
+        const it = await githubJson(`repos/${repo}`);
+        return typeof it?.stargazers_count === 'number' ? it.stargazers_count : undefined;
+    } catch {
+        return undefined;
+    }
+}

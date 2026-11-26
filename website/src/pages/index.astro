@@ -19,7 +19,7 @@ import logo from '../assets/logo.png';
 import studioDesktop from '../assets/studio-desktop.png';
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { STUDIO, studioRelease, studioRepoPublic, studioUrl } from '../lib/github';
+import { STUDIO, repoStars, studioRelease, studioRepoPublic, studioUrl } from '../lib/github';
 import Share from '../components/Share.astro';
 
 const REPO = 'https://github.com/liberation-data/kiln';
@@ -27,6 +27,9 @@ const REPO = 'https://github.com/liberation-data/kiln';
 // Kiln Studio's latest release and the installers it attached, for the download buttons in the Studio section. None
 // (the repository still private, no release yet, or GitHub out of reach): the section says they are on their way.
 const [studio, studioPublic] = await Promise.all([studioRelease(), studioRepoPublic()]);
+/* The nav's GitHub menu, as on drivine.org: each repo with its stars (left out when GitHub can't say). */
+const [kilnStars, studioStars] = await Promise.all([repoStars('liberation-data/kiln'), studioPublic ? repoStars(STUDIO.repo) : Promise.resolve(undefined)]);
+const stars = (n?: number) => (!n ? '' : `★ ${n.toLocaleString('en')}`);
 // Download Kiln Studio (the hero, the closing call) goes to the buttons, or to the section that says they are coming.
 const studioHref = studio ? '#get-studio' : '#studio';
 const DESCRIPTION = 'Open models as plain Java calls: chat, vision, documents, images, songs, video and speech, running on your GPU, inside your JVM.';
@@ -204,6 +207,18 @@ const theme = 'vitesse-dark';
             .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: 0.03em; font-size: 20px; }
             .brand .j, .splash h1 .j { color: var(--accent); }
             .nav-links { display: flex; flex-wrap: wrap; align-items: center; gap: 28px; font-size: 16px; }
+            .repo-menu { position: relative; }
+            .repo-menu summary { cursor: pointer; list-style: none; color: inherit; }
+            .repo-menu summary::-webkit-details-marker { display: none; }
+            .repo-menu summary::after { content: ' ▾'; font-size: 0.8em; }
+            .repo-menu summary:hover { text-decoration: underline; }
+            .repo-menu .menu { position: absolute; right: 0; top: calc(100% + 10px); z-index: 5; display: flex; flex-direction: column; min-width: 300px; padding: 6px; background: var(--char); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); }
+            .repo-menu .menu a { display: flex; justify-content: space-between; align-items: center; gap: 16px; min-height: 44px; padding: 8px 12px; border-radius: 8px; color: #e6d4c6; text-decoration: none; }
+            .repo-menu .menu a:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+            .repo-menu .menu .studio-repo { border-top: 1px solid rgba(255, 255, 255, 0.12); border-radius: 0 0 8px 8px; margin-top: 4px; }
+            .repo-menu .menu strong { color: #fff; margin-right: 6px; }
+            .repo-menu .count { color: var(--glow); font-size: 14px; font-weight: 700; white-space: nowrap; }
+            .repo-menu .hint { margin: 4px 12px 6px; font-size: 13px; color: #b39c8c; }
             @media (max-width: 760px) { .nav { padding: 20px 16px; } .nav-links { gap: 18px; font-size: 15px; } .nav-links .wide { display: none; } }
 
             .splash { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px 16px 96px; }
@@ -454,7 +469,14 @@ const theme = 'vitesse-dark';
                     <a href="#studio">Studio</a>
                     <a href="/docs/">Docs</a>
                     <a href="#start">Get started</a>
-                    <a href={REPO}>GitHub</a>
+                    <details class="repo-menu">
+                        <summary>GitHub</summary>
+                        <div class="menu">
+                            <a href={REPO}><span><strong>Kiln</strong> Java library</span><span class="count">{stars(kilnStars)}</span></a>
+                            {studioPublic && <a href={studioUrl} class="studio-repo"><span><strong>Kiln Studio</strong> Desktop app</span><span class="count">{stars(studioStars)}</span></a>}
+                            <p class="hint">★ Star them on GitHub: it helps others find Kiln.</p>
+                        </div>
+                    </details>
                 </div>
             </nav>
             <div class="splash">
@@ -874,6 +896,13 @@ const theme = 'vitesse-dark';
             </div>
         </footer>
 
+        <script>
+            // The GitHub menu closes on a click outside it or Escape, as a menu should.
+            for (const menu of document.querySelectorAll<HTMLDetailsElement>('.repo-menu')) {
+                document.addEventListener('click', (e) => { if (menu.open && !menu.contains(e.target as Node)) menu.open = false; });
+                document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menu.open) { menu.open = false; menu.querySelector('summary')?.focus(); } });
+            }
+        </script>
         <script>
             // The dark section's fire: scrolling steps through its frames (a crackle every ~40 px) and drifts it slower
             // than the page. Left on its first frame for reduced motion and on phones.
