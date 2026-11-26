@@ -187,7 +187,8 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 
 The build script also knows the **ROCm (HIP)**, **CUDA** and **Metal** backends of the underlying engines. HIP has
 run LTX-2.5 video on the same machine (about 2.7× faster per step than Vulkan, and the way to render long clips; see
-[engine notes](docs/engine-notes.md)), and Fornax Studio's CI builds Metal for macOS. CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
+[engine notes](docs/engine-notes.md)), and Metal passes the test suite on an Apple M2 Max with 32 GB (chat, vision, speech, transcription and FLUX.2 [klein]
+images; songs and video haven't been run on a Mac yet, nor has an Intel Mac). CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
 build the native libraries. Reports and fixes welcome.
 
 ## How it works
@@ -268,7 +269,12 @@ native/build.sh vulkan            # or hip | cuda | metal | cpu; optionally list
 `native/build.sh` clones the engines at the commits pinned in `native/engines.properties` into `engines-src/`,
 applies Fornax's patches from `native/patches/` (when a pin or a patch changes, it first resets that engine's tracked
 files, so keep no edits of your own there), and writes the libraries to `build/native/<os>-<arch>-<backend>/`.
-The Gradle build points the examples and tests at that folder; pick another backend with `-Pfornax.backend=hip`.
+The Gradle build points the examples and tests at that folder; pick another backend with `-Pfornax.backend=hip`. The integration tests skip any model that isn't
+downloaded; `scripts/test-models.sh` fetches the ones they use (about 16 GB, small enough for a 32 GB machine).
+
+From Linux, `./gradlew testOnMac -Pfornax.macHost=<host>` (or `scripts/test-on-mac.sh <host>`) runs the tests on a Mac
+over SSH against Metal: it copies the working tree there, builds the Metal libraries, runs `./gradlew test` and brings
+the reports back to `build/mac-test/`. The Mac needs Xcode's command-line tools, JDK 25, CMake and Ninja.
 
 To use your own build in an application, put the libraries on `-Dfornax.library.path=<dir>` (or `FORNAX_LIBRARY_PATH`,
 or the platform loader path) and run with `--enable-native-access=ALL-UNNAMED`; an explicit path wins over a
@@ -406,7 +412,7 @@ error says what to install) unless `FORNAX_ALLOW_CPU=true` is set in the server'
 
 ## Roadmap
 
-- Test and document the HIP, CUDA and Metal builds; natives jars for HIP and CUDA.
+- Test and document the HIP and CUDA builds, and songs and video on Metal; natives jars for HIP and CUDA.
 - Video through stable-diffusion.cpp (`sd_generate_video`: Wan, LTX).
 - `fornax-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `fornax-llama`).
 - An optional OpenAI-compatible server.
