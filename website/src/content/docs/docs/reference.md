@@ -20,7 +20,7 @@ Package `org.liberationdata.kiln`. The engine modules depend on it.
 
 | Type | |
 |---|---|
-| `HfCache` | finds files in the Hugging Face cache: `root()`, `home()`, `find(repo, path)`, `require(repo, path)`, `requireAny(repo, path, ...)` |
+| `HfCache` | finds files in the Hugging Face cache: `root()`, `home()`, `find(repo, path)`, `require(repo, path)`, `requireAny(repo, path, ...)`, and the cache's contents: `repos(root)`, `files(root, repo)` |
 | `hub.KilnHub` | pulls, finds, reports and evicts model sets: `standard()`, `builder()`, `pull(set, listener)`, `pullAsync`, `plan`, `status`, `find`, `require`, `evict`. See [Downloading models](/docs/guides/models/) |
 | `hub.ModelSet` | a model as a set of files by role: `id`, `kind`, `title`, `engine`, `parts`, `license`, `gated`, `aliases`; `Part` (role and sources), `Source` (repo, file, revision) |
 | `hub.ModelCatalog` | the models Kiln's examples, CLI and Studio use: `all()`, `of(kind)`, `byName`, `require` |
@@ -162,3 +162,4 @@ used end to end.
 | `HF_HUB_CACHE`, `HF_HOME` | where `HfCache` and `KilnHub` look |
 | `-Dkiln.modelDirs`, `KILN_MODEL_DIRS` | model folders `KilnHub` searches after the cache |
 | `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`), `HF_TOKEN_PATH`, `HF_ENDPOINT`, `HF_HUB_OFFLINE` | `KilnHub`'s token for gated repos, the Hub to download from, and no network |
+| `KILN_JAVA`, `KILN_CLI_LIB` | the `kiln` launcher's Java and jars folder (see [The kiln command](/docs/guides/cli/#the-launcher)) |
