@@ -47,6 +47,17 @@ class ImageTest {
         assertThrows(IllegalArgumentException.class, () -> new Image(2, 2, new byte[5]));
         assertThrows(IllegalArgumentException.class, () -> new Image(0, 2, new byte[0]));
         assertThrows(IllegalArgumentException.class, () -> Image.decode("not an image".getBytes()));
+        assertThrows(java.io.UncheckedIOException.class, () -> Image.read(Path.of("no-such-image.png")));
+    }
+
+    @Test
+    void messagesWithoutImagesOrTextAreNormalised() {
+        assertEquals(List.of(), new Message("user", "hi", null).images());
+        assertEquals(List.of(), Message.user("hi").images());
+        Image a = Image.of(twoPixels());
+        String json = ChatRequests.messages(List.of(new Message("user", null, List.of(a))), new ArrayList<>());
+        assertEquals(Json.parse("""
+            [{"role": "user", "content": [{"type": "image", "index": 0}, {"type": "text", "text": ""}]}]"""), Json.parse(json));
     }
 
     @Test
@@ -83,6 +94,9 @@ class ImageTest {
         assertEquals(LlamaModel.Weights.PADDLEOCR_VL, LlamaModel.Weights.named("paddleocr-vl"));
         assertTrue(LlamaModel.Weights.MEDGEMMA_4B.vision());
         assertFalse(LlamaModel.Weights.QWEN3_4B.vision());
+        assertNull(LlamaModel.Weights.QWEN3_4B.mmproj());  // text only: no mmproj, and none in its download command
+        assertEquals("hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+                LlamaModel.Weights.QWEN3_4B.downloadCommand());
         assertEquals("hf download Qwen/Qwen3-VL-4B-Instruct-GGUF Qwen3VL-4B-Instruct-Q4_K_M.gguf mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf",
                 LlamaModel.Weights.QWEN3_VL_4B.downloadCommand());
     }

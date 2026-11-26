@@ -149,7 +149,8 @@ public final class LlamaModel implements AutoCloseable {
     /**
      * Weights on Hugging Face that Kiln knows by name. A vision language model has an {@link #mmprojFile} (its vision
      * encoder and projector); {@link LlamaModel#LlamaModel(Weights)} loads both. Fetch them with
-     * {@link #downloadCommand()}, which {@link #model()} also prints when they're missing.
+     * {@link #downloadCommand()}; {@link #model()} and {@link #mmproj()} fail with the command for their own file
+     * when it's missing.
      */
     public enum Weights {
         /** Qwen3 4B Instruct 2507, text only. Apache-2.0. */
