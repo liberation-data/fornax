@@ -3,12 +3,6 @@ title: Maven and Gradle
 description: Add Kiln to a Maven or Gradle build from Maven Central - the org.kiln4j engine modules, the natives jar for each platform, and how a GPU backend is chosen.
 ---
 
-:::note[Ships with the next release]
-Publishing to Maven Central is in [pull request #14](https://github.com/liberation-data/kiln/pull/14) and isn't
-released yet. This page describes that branch; until the first release, build from source as in
-[Getting started](/docs/getting-started/).
-:::
-
 From the first release, Kiln is on Maven Central under the group **`org.kiln4j`**. A build needs two things: an
 engine module, and the **natives jar** for your platform, which holds the engines' native libraries. Your app then
 needs no native build of its own.
@@ -30,9 +24,10 @@ The Java modules, each with sources and javadoc jars:
 | `kiln-sd` | images and video (stable-diffusion.cpp) |
 | `kiln-acestep` | ACE-Step songs (acestep.cpp) |
 | `kiln-yue2` | YuE2 songs (yue2.cpp) |
+| `kiln-whisper` | speech to text with word timings (whisper.cpp) |
 | `kiln-core` | what they share; each engine module brings it in |
 
-The natives, one jar per platform and GPU backend, each with all five engines' libraries:
+The natives, one jar per platform and GPU backend, each with all six engines' libraries:
 
 | Natives artifact | Platform | GPU backend |
 |---|---|---|

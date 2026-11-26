@@ -62,13 +62,41 @@ surprises you.
 - **sd-cli loads a mask as one grey channel** (stb_image's luma); `DiffusionModel` sends masks the same way, so a
   mask's threshold at 0.5 falls on the same pixels.
 - **Fedora's ROCm lives in `/usr`**, not `/opt/rocm`; `native/build.sh hip` falls back to `/usr/lib64`.
+- **Cancel only reaches a run that has started.** `sd_cancel_generation` is thread-safe, but an idle context ignores
+  it, so a cancel that lands just before `sd_generate_image` begins is lost. Kiln asks again from the progress callback.
+  A cancelled run returns `SD_STATUS_CANCELLED` (10) and no images.
+- **The progress callback also reports loading.** sd.cpp loads weights on the first run after `sd_ctx_create`, and the
+  process-wide progress callback counts the tensors it loads (hundreds of "steps") before the sampling steps. Loading
+  doesn't check for a cancel; sampling does, at every step.
 - **LTX audio is part of the model.** LTX-2.5 generates sound and picture together. Leaving out
   `audio_vae_path` removes the audio stream; that didn't cause the ghosting, but it isn't how the model was trained.
 
 ## acestep.cpp
 
+- **It can stop mid-run.** At the pinned commit, `ace_lm_generate`, `ace_synth_job_run_dit` and
+  `ace_synth_job_run_vae` take a `bool (*cancel)(void *)` polled between LM tokens, DiT steps and VAE tiles. The shim
+  passes one that reads a flag `kiln_acestep_set_cancel` sets. yue2.cpp's `pipeline_generate` takes the same kind of
+  callback (AR tokens, NAR steps, VAE tiles), and its shim does the same.
 - **Decode in 512-frame VAE tiles.** The default 1024-frame tiles hung the GPU on battery (the same compute
   timeout). The shim defaults to 512 and reads `KILN_ACESTEP_VAE_CHUNK`.
+
+## whisper.cpp (kiln-whisper)
+
+- **DTW needs flash attention off.** whisper.cpp quietly drops DTW token timestamps when flash attention is on (its
+  default), so the shim turns flash attention off whenever an alignment preset is given. On 55 s of narration with
+  large-v3-turbo on Vulkan, DTW made a transcription about 50% slower (1.8 s against 1.2 s, beam 5).
+- **The new-segment callback is unreliable with DTW on.** Its DTW branch passes a segment index as `n_new`, and its
+  loop bound skips segments after the first window. The shim counts the segments it has reported itself and hands
+  over the rest when `whisper_full` returns.
+- **Word times drift at pauses.** In running speech, DTW puts a word within a frame or two (20 ms), but a word after
+  a pause started 0.06-0.27 s late, and the word before a pause ran on to the next word's start. `Words.snapToVoice`
+  moves word edges onto the voice where there is silence to go by: sentence starts went from 0.16 s to 0.03 s off on
+  average, ends from 0.76 s to 0.08 s (synthesized narration with known gaps). Whisper's timestamp tokens (no DTW)
+  were worse: starts up to 0.5 s early or late, and ends that ran into the next sentence.
+- **large-v3-turbo's segment times are coarse**, often whole seconds. Kiln fits each segment to its words.
+- **SPIRV-Headers.** whisper.cpp v1.9.6's ggml finds SPIRV-Headers but doesn't link the target into ggml-vulkan, so the
+  headers must be on the compiler's include path. Fedora's `spirv-headers-devel` puts them in `/usr/include`; for a
+  private install, pass `CMAKE_EXTRA="-DCMAKE_CXX_FLAGS=-I<prefix>/include"`.
 
 ## ComfyUI parity for LTX-2.5 (Endless Country episode 2)
 
@@ -83,9 +111,21 @@ surprises you.
 
 ## llama.cpp text to speech (kiln-tts)
 
+- **Kokoro streams one chunk.** It isn't autoregressive: in stream mode the whole text decodes in one step and arrives
+  as a single chunk, so cancel and backpressure have nothing to act on. The autoregressive models (ZONOS3, LFM3-Audio,
+  ...) stream frame by frame.
+
 - **Call `postprocess_cpu_params` before `common_init_from_params`.** The parser fills in the thread counts after
   the arguments; without it the threadpool is sized from -1 and ggml tries to allocate 2^64 bytes. See
   [tts-notes.md](tts-notes.md) for the rest (models, voices, licences).
+
+## llama.cpp language models (kiln-llama)
+
+- **`chatJson`'s stream callback only fires on content.** Reasoning and tool-call tokens add no content, so a callback
+  that only sees content can't stop them. The shim calls it with an empty piece for those tokens, which LlamaModel
+  doesn't pass on but uses to check for a cancel.
+- **Upcalls must not throw.** An exception that escapes an FFM upcall can't unwind through C++ frames: the JVM prints
+  "Unrecoverable uncaught exception encountered" and exits. Every Kiln upcall catches it and stops the engine instead.
 
 ## llama.cpp vision (kiln-llama with an mmproj)
 

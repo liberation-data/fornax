@@ -46,7 +46,7 @@ Cards: studio-invoice, studio-defects @"spot a defect", studio-review @"an X-ray
 
 (studio is the two-window screenshot; studio-* are screen recordings of Studio's Inspect window, in footage/.)
 
-> In Kiln Studio, read an invoice into JSON, spot a defect on a part, or flag an X-ray for a doctor's review.
+> Try a model in Kiln Studio before you write any code: read an invoice into JSON, spot a defect on a part, or flag an X-ray for a doctor's review.
 > Or chat, paint an image, write a song, or render a clip.
 > On our test laptop, Kiln made a one-minute song up to twice as fast as ComfyUI, on the same GPU.
 

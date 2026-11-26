@@ -6,7 +6,7 @@ this folder out of the repository and build it anywhere.
 
 ## Prerequisites
 
-- JDK 25.
+- JDK 25 for Kiln 0.1.0; later releases run on Java 22 or newer.
 - A GPU driver: Vulkan on Linux x86-64 (glibc 2.39 or newer), or macOS 13.3 or newer (Metal).
 - The model, fetched with the [Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/guides/cli):
 

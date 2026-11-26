@@ -27,6 +27,11 @@ import java.util.Optional;
  *   <li>the platform loader (LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, system dirs)</li>
  * </ol>
  *
+ * <p>On Linux, a library built for a GPU (Vulkan, HIP, CUDA) refuses to start on a machine where that GPU runtime
+ * finds no GPU, since its engine would otherwise run on the CPU without a word, and says what to install. (Not one the
+ * platform loader finds: Kiln doesn't know its file, so can't tell what it was built for.) Set
+ * {@code -Dkiln.allowCpu=true} (or {@code KILN_ALLOW_CPU=true}) to run on the CPU anyway. See {@link GpuCheck}.
+ *
  * <p>Before the first library loads, Kiln sets the engines' tunables that it gives a default to, as environment
  * variables the engines read (an existing environment variable always wins):
  * <ul>
@@ -52,16 +57,16 @@ public final class NativeLibrary {
         Tunables.apply();
         String file = System.mapLibraryName(name);
         String exact = System.getProperty("kiln." + name + ".lib");
-        if (exact != null) return new NativeLibrary(name, SymbolLookup.libraryLookup(Path.of(exact), Arena.global()));
+        if (exact != null) return open(name, Path.of(exact));
         List<String> dirs = new ArrayList<>();
         addPath(dirs, System.getProperty("kiln.library.path"));
         addPath(dirs, System.getenv("KILN_LIBRARY_PATH"));
         for (String d : dirs) {
             Path p = Path.of(d, file);
-            if (Files.isRegularFile(p)) return new NativeLibrary(name, SymbolLookup.libraryLookup(p, Arena.global()));
+            if (Files.isRegularFile(p)) return open(name, p);
         }
         Optional<Path> bundled = BundledNatives.find(name);
-        if (bundled.isPresent()) return new NativeLibrary(name, SymbolLookup.libraryLookup(bundled.get(), Arena.global()));
+        if (bundled.isPresent()) return open(name, bundled.get());
         try {
             return new NativeLibrary(name, SymbolLookup.libraryLookup(file, Arena.global()));
         } catch (IllegalArgumentException e) {
@@ -69,6 +74,19 @@ public final class NativeLibrary {
                     + "kiln-natives jar, and the platform loader). Add the org.kiln4j:kiln-natives-<os>-<arch>-<backend> "
                     + "dependency, or set -Dkiln.library.path=<dir> or -Dkiln." + name + ".lib=<file>.");
         }
+    }
+
+    /** Opens the library file at {@code path}, and on Linux makes sure a GPU build has a GPU ({@link GpuCheck}). */
+    private static NativeLibrary open(String name, Path path) {
+        SymbolLookup lookup;
+        try {
+            lookup = SymbolLookup.libraryLookup(path, Arena.global());
+        } catch (IllegalArgumentException e) {
+            GpuCheck.explainLoadFailure(path, e);
+            throw e;
+        }
+        GpuCheck.requireGpu(path);
+        return new NativeLibrary(name, lookup);
     }
 
     /** Engine settings passed as environment variables, set once, before any engine reads them. */

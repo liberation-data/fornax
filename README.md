@@ -12,15 +12,15 @@ try (var llm = new LlamaModel("Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {   // weig
 
 **Why:** no overhead between your code and the model.
 
-- **The native runners themselves.** Kiln calls llama.cpp, stable-diffusion.cpp, acestep.cpp and yue2.cpp
-  directly. These are the same C/C++ engines the CLIs and servers use, so you get their speed and their model
+- **The native runners themselves.** Kiln calls llama.cpp, stable-diffusion.cpp, acestep.cpp, yue2.cpp and
+  whisper.cpp directly. These are the same C/C++ engines the CLIs and servers use, so you get their speed and their model
   support.
 - **On the GPU.** Vulkan today (AMD, Intel, NVIDIA). ROCm, CUDA and Metal builds come from the same script.
 - **Nothing in between.** A Kiln call is a native function call through Java's Foreign Function & Memory API.
   There is no Python, no model server, no HTTP, no JSON round trip and no second process. Weights stay resident
   between calls, and tokens stream back to a Java callback as they are produced.
 
-Kiln binds native inference engines with Java's Foreign Function & Memory API (Java 22+, built and tested on 25):
+Kiln binds native inference engines with Java's Foreign Function & Memory API (Java 22+; Kiln 0.1.0 itself needs 25):
 
 | Module | Engine | Models |
 |---|---|---|
@@ -29,6 +29,7 @@ Kiln binds native inference engines with Java's Foreign Function & Memory API (J
 | `kiln-sd` | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) | FLUX.1/FLUX.2, Qwen-Image and Qwen-Image-Edit, SD 1.x/2.x/XL/3, Wan, LTX |
 | `kiln-acestep` | [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) | ACE-Step 1.5 songs (vocals, lyrics, up to several minutes) |
 | `kiln-yue2` | [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp) | YuE2 songs |
+| `kiln-whisper` | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) | speech to text with word timings: Whisper large-v3-turbo, base.en, any ggml Whisper |
 
 Images and songs work the same way, and a vision language model takes images in:
 
@@ -54,8 +55,8 @@ strength (img2img), a mask (inpainting), a ControlNet hint and LoRAs. `Upscaler`
 
 ## Getting started
 
-Kiln is on Maven Central as `org.kiln4j`. Add an engine module (`kiln-llama`, `kiln-tts`, `kiln-sd`, `kiln-acestep`
-or `kiln-yue2`) and the **natives jar** for your platform, which holds the engines' native libraries.
+Kiln is on Maven Central as `org.kiln4j`. Add an engine module (`kiln-llama`, `kiln-tts`, `kiln-sd`, `kiln-acestep`,
+`kiln-yue2` or `kiln-whisper`) and the **natives jar** for your platform, which holds the engines' native libraries.
 
 The quickest start is [`samples/hello-kiln`](samples/hello-kiln): a standalone app for Gradle and Maven that streams
 a chat reply from Qwen3 4B. Copy it out and run `./gradlew run` or `mvn -q compile exec:java`.
@@ -68,7 +69,9 @@ The natives jars:
 | `kiln-natives-macos-aarch64-metal` | macOS 13.3+ on Apple silicon | Metal |
 | `kiln-natives-macos-x86_64-metal` | macOS 13.3+ on Intel | Metal |
 
-On Linux, the GPU's Vulkan driver must be installed (it usually is).
+On Linux, the GPU's Vulkan driver must be installed (it usually is; if not, see
+[Installing GPU drivers](https://kiln4j.org/docs/gpu-drivers/)). With no GPU, Kiln stops rather than run on the CPU,
+unless `-Dkiln.allowCpu=true` (or `KILN_ALLOW_CPU=true`).
 
 Gradle (`build.gradle.kts`), choosing the natives jar for the machine that builds:
 
@@ -169,6 +172,7 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 | ACE-Step 1.5 XL turbo | a 3 min 20 s song in 57 s |
 | ACE-Step 1.5 turbo | a 60 s song in ~15 s |
 | YuE2 3B (Q8_0) | a 60 s song in ~60 s |
+| Whisper large-v3-turbo (q5_0) | 55 s of speech in 1.8 s (31× real time, 60 words/s) with DTW word timings, beam 5 |
 | FLUX.2 [klein] base 4B (fp8) | 768×768, 12 steps in ~130 s |
 | Qwen-Image 2512 (fp8) | 1024×1024, 20 steps in ~13 min |
 
@@ -186,10 +190,17 @@ private. The engines pin different ggml versions, so this is what lets several o
 - `llama.cpp` has a C API too, but it passes structs by value and is mid-migration to a new batch API, so
   `kiln-llama` binds a small stable C layer (`kiln-llama/native`) instead.
 - `acestep.cpp` and `yue2.cpp` are C++ only, so each gets a ~100-line C layer: JSON request in, PCM audio out.
+- `whisper.cpp` has a C API, but it passes two large parameter structs by value, so `kiln-whisper` binds a small C
+  layer (`kiln-whisper/native`) that takes plain arguments and reads results back token by token.
 
 Engine quirks and how to debug them: [docs/engine-notes.md](docs/engine-notes.md).
 
-Every model class is `AutoCloseable`; weights are freed on `close()`. Instances aren't thread-safe.
+Every model class is `AutoCloseable`; weights are freed on `close()`, which is idempotent and safe while a call runs.
+A model takes calls from any thread and runs them one at a time. The blocking methods run on your thread; the
+`...Async` ones (`chatAsync`, `speakAsync`, `generateAsync`, ...) run on the model's own platform thread and return a
+`CompletableFuture`, so virtual threads never pin a carrier through a generation, and streaming goes to a
+`Flow.Subscriber` through a bounded buffer. `cancel()` works for every engine, and a callback that throws stops the
+call and rethrows instead of crashing the JVM. See [Threading](https://kiln4j.org/docs/guides/threading/).
 
 `ModelPool` keeps models resident between uses, the way ComfyUI does: it unloads idle models least recently used
 first to stay within a memory budget, optionally unloads after an idle timeout, and gives each model one user at a
@@ -211,7 +222,7 @@ Needs JDK 25, CMake, Ninja, a C++17 compiler, and the SDK for your GPU backend
 (Vulkan: the Vulkan headers, `glslc` and SPIRV-Headers; on Fedora `dnf install vulkan-headers vulkan-loader-devel glslc spirv-headers-devel`).
 
 ```sh
-native/build.sh vulkan            # or hip | cuda | metal | cpu; optionally list engines: llama tts sd acestep yue2
+native/build.sh vulkan            # or hip | cuda | metal | cpu; optionally list engines: llama tts sd acestep yue2 whisper
 ./gradlew build
 ```
 
@@ -240,6 +251,7 @@ hf download PaddlePaddle/PaddleOCR-VL-1.6-GGUF PaddleOCR-VL-1.6-GGUF.gguf Paddle
 hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Embedding-0.6B-Q8_0.gguf \
     acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
 hf download Serveurperso/YuE2-GGUF YuE2-3B-Q8_0.gguf YuE2-Vae-F32.gguf
+hf download ggerganov/whisper.cpp ggml-large-v3-turbo-q5_0.bin ggml-base.en.bin
 hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors
 hf download Comfy-Org/flux2-dev split_files/vae/flux2-vae.safetensors
 hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetensors
@@ -256,6 +268,7 @@ CC BY-NC 4.0, for example.
 ./gradlew song --args='song.wav'                         # -Pdit=xl-turbo for the larger model
 ./gradlew yue2 --args='yue2-song.wav'
 ./gradlew speak --args='out.wav "Hello from the JVM" bm_george'   # -Pmodel=zonos3|lfm3-audio|chatterbox-turbo|...
+./gradlew transcribe --args='audio.wav'                  # prints the text; writes audio.words.tsv and audio.srt
 ./gradlew image --args='klein out.png "a neon sign that says KILN"' -Psteps=12 -Pwidth=768 -Pheight=768
 ./gradlew see --args='photo.jpg "What is in this picture?"'      # -Pmodel=qwen3-vl-4b|paddleocr-vl|medgemma-4b
 ./gradlew see --args='form.png "Fill in the fields."' -Pschema=schema.json   # a reply that follows a JSON schema
@@ -277,7 +290,6 @@ second argument. The request formats are the engines' own (see
 - `kiln-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `kiln-llama`).
 - An optional OpenAI-compatible server.
 - An MLX module for Apple silicon, through `mlx-c`.
-- Speech: whisper.cpp.
 - A Kotlin layer with coroutine `Flow` streaming.
 
 ## License

@@ -22,6 +22,12 @@ engine surprises you.
 - **"Not in the Hugging Face cache".** `HfCache.require` didn't find the file; the message ends with the
   `hf download` command that fetches it.
 
+## "Kiln found no GPU"
+
+Kiln stops rather than run a GPU build on the CPU. Install your GPU's driver: [Installing GPU drivers](/docs/gpu-drivers/)
+has the steps for each distribution, and how to check with `vulkaninfo --summary`. To run on the CPU anyway, set
+`-Dkiln.allowCpu=true` (or `KILN_ALLOW_CPU=true`).
+
 ## When a model's output looks wrong
 
 1. **Compare against the engine's own tool first.** Before guessing at causes, run the same settings through the

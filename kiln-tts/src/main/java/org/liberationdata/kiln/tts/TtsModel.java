@@ -1,8 +1,11 @@
 package org.liberationdata.kiln.tts;
 
 import org.liberationdata.kiln.Audio;
+import org.liberationdata.kiln.Call;
 import org.liberationdata.kiln.HfCache;
+import org.liberationdata.kiln.ModelThread;
 import org.liberationdata.kiln.NativeLibrary;
+import org.liberationdata.kiln.StreamOverflowException;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -13,6 +16,9 @@ import java.lang.invoke.MethodType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Flow;
 import java.util.function.Consumer;
 
 import static java.lang.foreign.ValueLayout.ADDRESS;
@@ -24,7 +30,12 @@ import static java.lang.foreign.ValueLayout.JAVA_LONG;
  * A text-to-speech model running in-process through llama.cpp's audio generation (via libkiln_tts). One engine runs
  * every TTS model llama.cpp supports: a backbone GGUF plus its mmproj GGUF (the audio decoder and the model's
  * predefined voices). See {@link Weights} for the ones Kiln knows by name.
- * Weights stay loaded until {@link #close()}. Not thread-safe: use one instance per thread.
+ * Weights stay loaded until {@link #close()}.
+ *
+ * <p>Threads: calls run one at a time, in arrival order, from any thread. {@link #speak} runs on the calling thread,
+ * callback included; {@link #speakAsync} runs on this model's own platform thread and returns a
+ * {@link CompletableFuture}, so a virtual thread awaiting it doesn't pin its carrier. {@link #cancel()} and
+ * {@link #close()} are safe from any thread.
  */
 public final class TtsModel implements AutoCloseable {
     private static final NativeLibrary LIB = NativeLibrary.load("kiln_tts");
@@ -49,16 +60,24 @@ public final class TtsModel implements AutoCloseable {
                     MethodType.methodType(int.class, MemorySegment.class, long.class, int.class, MemorySegment.class));
         } catch (ReflectiveOperationException e) { throw new ExceptionInInitializerError(e); }
     }
-    private record Sink(TtsModel model, Consumer<Audio> consumer) {}
+    private record Sink(Call call, int sampleRate, Consumer<Audio> consumer) {}
 
     private static final ThreadLocal<Sink> SINK = new ThreadLocal<>();
 
+    /**
+     * The audio upcall. Nothing may escape it: an exception thrown into the engine's frames kills the JVM. So a
+     * consumer's exception is recorded in the call, speech stops, and {@link #speak} rethrows it on return.
+     */
     private static int onAudio(MemorySegment pcm, long frames, int channels, MemorySegment user) {
         Sink sink = SINK.get();
         if (sink == null) return 0;
-        float[] f = pcm.reinterpret(frames * channels * Float.BYTES).toArray(JAVA_FLOAT);
-        sink.consumer().accept(Pcm.toAudio(f, channels, sink.model().sampleRate));
-        return sink.model().cancelled ? 1 : 0;
+        try {
+            float[] f = pcm.reinterpret(frames * channels * Float.BYTES).toArray(JAVA_FLOAT);
+            sink.consumer().accept(Pcm.toAudio(f, channels, sink.sampleRate()));
+        } catch (Throwable t) {
+            sink.call().fail(t);
+        }
+        return sink.call().stopRequested() ? 1 : 0;
     }
 
     /**
@@ -124,7 +143,7 @@ public final class TtsModel implements AutoCloseable {
     private final MemorySegment handle;
     private final int sampleRate, channels;
     private final List<String> voices;
-    private volatile boolean cancelled;
+    private final ModelThread thread;
 
     /** @param gpuLayers -1 offloads every layer. @param contextSize 0 uses llama.cpp's default for the model. */
     public TtsModel(String modelPath, String mmprojPath, int gpuLayers, int contextSize) {
@@ -139,6 +158,10 @@ public final class TtsModel implements AutoCloseable {
             for (int i = 0; i < nv.get(JAVA_INT, 0); i++) v.add(NativeLibrary.string((MemorySegment) VOICE_NAME.invokeExact(handle, i)));
             voices = List.copyOf(v);
         } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+        MemorySegment h = handle;
+        thread = new ModelThread(java.nio.file.Path.of(modelPath).getFileName().toString(), () -> {
+            try { DESTROY.invokeExact(h); } catch (Throwable t) { throw new RuntimeException(t); }
+        });
     }
 
     public TtsModel(String modelPath, String mmprojPath) { this(modelPath, mmprojPath, -1, 0); }
@@ -150,8 +173,40 @@ public final class TtsModel implements AutoCloseable {
     /** The model's predefined voices, the default first. Empty for a model without any (Soprano, VoxCPM2). */
     public List<String> voices() { return voices; }
 
-    /** Stops the speech in progress (from any thread); the call returns the audio so far. Only for streaming calls. */
-    public void cancel() { cancelled = true; }
+    /**
+     * Stops the speech in progress (from any thread); the call returns the audio so far. Only a streaming call (one
+     * with a chunk callback or subscriber) can stop early: without one, the engine decodes in one go and doesn't check.
+     */
+    public void cancel() { thread.cancel(); }
+
+    /**
+     * Where streamed chunks are delivered ({@link #speakAsync(String, String, Options, Flow.Subscriber)}), and how
+     * many a subscriber may fall behind before speech stops with a {@link StreamOverflowException}.
+     * By default: a virtual thread, and {@value ModelThread#DEFAULT_BUFFER} chunks.
+     */
+    public TtsModel streamOn(Executor executor, int bufferSize) {
+        thread.streamOn(executor, bufferSize);
+        return this;
+    }
+
+    /** {@link #speak(String, String, Options, Consumer)} without streaming, on this model's thread. */
+    public CompletableFuture<Audio> speakAsync(String text, String voice, Options o) {
+        return thread.submit(c -> speakOn(c, text, voice, o, null));
+    }
+
+    /**
+     * Speech on this model's thread, each chunk going to chunks through a bounded buffer on the stream executor
+     * ({@link #streamOn}); the future holds all of it. A subscriber that falls a whole buffer behind stops the speech
+     * and gets a {@link StreamOverflowException}; cancelling the subscription (or the future) stops it too.
+     */
+    public CompletableFuture<Audio> speakAsync(String text, String voice, Options o, Flow.Subscriber<? super Audio> chunks) {
+        return thread.<Audio, Audio>submit((c, sink) -> speakOn(c, text, voice, o, sink), chunks);
+    }
+
+    /** A cold publisher of speech chunks: each subscription speaks the text once. */
+    public Flow.Publisher<Audio> speakStream(String text, String voice, Options o) {
+        return thread.<Audio>publisher((c, sink) -> speakOn(c, text, voice, o, sink));
+    }
 
     /** Speaks text with a voice (null for the model's default). */
     public Audio speak(String text, String voice) { return speak(text, voice, Options.DEFAULT, null); }
@@ -169,11 +224,14 @@ public final class TtsModel implements AutoCloseable {
      * imitate the sound, which holds an accent much steadier.
      */
     public Audio speak(String text, String voice, Options o, Consumer<Audio> onChunk) {
-        cancelled = false;
+        return thread.run(c -> speakOn(c, text, voice, o, onChunk));
+    }
+
+    private Audio speakOn(Call call, String text, String voice, Options o, Consumer<Audio> onChunk) {
         try (Arena a = Arena.ofConfined()) {
             MemorySegment cb = MemorySegment.NULL;
-            if (onChunk != null) {
-                SINK.set(new Sink(this, onChunk));
+            if (onChunk != null) {  // with a callback the engine streams (decodes chunk by chunk); without, it doesn't
+                SINK.set(new Sink(call, sampleRate, onChunk));
                 cb = NativeLibrary.linker().upcallStub(ON_AUDIO, AUDIO_CB, a);
             }
             MemorySegment pcm = a.allocate(ADDRESS), nFrames = a.allocate(JAVA_LONG), nGen = a.allocate(JAVA_INT);
@@ -185,9 +243,10 @@ public final class TtsModel implements AutoCloseable {
                 f = p.reinterpret(nFrames.get(JAVA_LONG, 0) * channels * Float.BYTES).toArray(JAVA_FLOAT);
                 FREE.invokeExact(p);
             }
+            call.rethrow();
             if (rc != 0) throw new IllegalStateException("tts failed (rc=" + rc + "): " + error());
             return Pcm.toAudio(f, channels, sampleRate);
-        } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
     }
 
@@ -198,7 +257,10 @@ public final class TtsModel implements AutoCloseable {
         catch (Throwable t) { return t.toString(); }
     }
 
-    @Override public void close() {
-        try { DESTROY.invokeExact(handle); } catch (Throwable t) { throw new RuntimeException(t); }
-    }
+    /**
+     * Frees the weights. Idempotent, and safe while a call is in flight on another thread: it cancels that call (or,
+     * for a call that can't stop early, waits for it), fails queued async calls with a CancellationException, then frees.
+     * @throws IllegalStateException if called from inside this model's own callback
+     */
+    @Override public void close() { thread.close(); }
 }

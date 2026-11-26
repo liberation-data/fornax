@@ -52,19 +52,22 @@ export default defineConfig({
                     items: [
                         { label: 'Introduction', link: '/docs/' },
                         { slug: 'docs/getting-started' },
-                        { slug: 'docs/maven-and-gradle', badge: { text: 'Next', variant: 'default' } }
+                        'docs/gpu-drivers',
+                        'docs/maven-and-gradle'
                     ]
                 },
                 {
                     label: 'Guides',
                     items: [
                         { slug: 'docs/guides/language-models' },
-                        { slug: 'docs/guides/vision', badge: { text: 'Next', variant: 'default' } },
+                        'docs/guides/vision',
                         { slug: 'docs/guides/speech' },
+                        { slug: 'docs/guides/speech-to-text' },
                         { slug: 'docs/guides/images' },
                         { slug: 'docs/guides/video' },
                         { slug: 'docs/guides/songs' },
                         { slug: 'docs/guides/model-pool' },
+                        { slug: 'docs/guides/threading', badge: { text: 'Next', variant: 'default' } },
                         { slug: 'docs/guides/gpu-backends' }
                     ]
                 },

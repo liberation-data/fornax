@@ -4,6 +4,7 @@
 #include "pipeline.h"
 #include "request.h"
 
+#include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -22,7 +23,12 @@ struct kiln_yue2 {
     ModelStore * store = nullptr;
     Yue2Pipeline pipeline;
     std::string  model_path, vae_path;  // owned: the pipeline and store key off these
+    std::atomic<bool> cancel{false};
 };
+
+namespace {
+bool cancelled(void * h) { return static_cast<kiln_yue2 *>(h)->cancel.load(std::memory_order_relaxed); }
+}  // namespace
 
 extern "C" {
 
@@ -60,7 +66,11 @@ int kiln_yue2_generate(kiln_yue2 * h, const char * request_json, float ** out_pl
     r.synth_batch_size = 1;
 
     std::vector<Yue2Song> songs;
-    if (!pipeline_generate(&h->pipeline, r, &songs) || songs.empty()) { g_err = "pipeline_generate failed (see stderr)"; return 2; }
+    if (!pipeline_generate(&h->pipeline, r, &songs, cancelled, h) || songs.empty()) {
+        if (h->cancel.load()) { g_err = "cancelled"; return KILN_YUE2_CANCELLED; }
+        g_err = "pipeline_generate failed (see stderr)";
+        return 2;
+    }
     Yue2Song & s = songs[0];
     size_t n = (size_t) s.T_audio * 2;
     *out_planar = (float *) malloc(n * sizeof(float));
@@ -73,6 +83,8 @@ int kiln_yue2_generate(kiln_yue2 * h, const char * request_json, float ** out_pl
     if (out_score) *out_score = dup(s.score);
     return 0;
 }
+
+void kiln_yue2_set_cancel(kiln_yue2 * h, int cancel) { if (h) h->cancel.store(cancel != 0); }
 
 void kiln_yue2_free(void * p) { free(p); }
 

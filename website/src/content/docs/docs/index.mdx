@@ -35,19 +35,22 @@ behind the popular command-line tools and servers, so you get their speed and th
 | `kiln-sd` | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) | images and video: FLUX.1 and FLUX.2, Qwen-Image and Qwen-Image-Edit, SD 1.x/2.x/XL/3, Wan, LTX |
 | `kiln-acestep` | [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) | ACE-Step 1.5 songs, with vocals and lyrics, up to several minutes |
 | `kiln-yue2` | [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp) | YuE2 songs |
+| `kiln-whisper` | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) | speech to text with word timings: Whisper large-v3-turbo, base.en, any ggml Whisper model |
 | `kiln-core` | | what the others share: native loading, `ModelPool`, `HfCache`, `Audio` |
 
-Every model class is `AutoCloseable`, and its weights are freed on `close()`. Instances aren't thread-safe: use one
-per thread, or borrow them through a [`ModelPool`](/docs/guides/model-pool/), which gives each model one user at a
-time.
+Every model class is `AutoCloseable`, and its weights are freed on `close()`. A model can be called from any thread;
+its calls run one at a time. From virtual threads, use the `...Async` methods, which run the native call on the
+model's own thread (see [Threading](/docs/guides/threading/)). A [`ModelPool`](/docs/guides/model-pool/) keeps
+several models loaded and gives each one user at a time.
 
 ## How it works
 
-Kiln calls the engines through Java's **Foreign Function & Memory API** (Java 22 or newer; Kiln is built and tested
-on JDK 25). A Kiln call is a native function call, made directly from your thread.
+Kiln calls the engines through Java's **Foreign Function & Memory API** (Java 22 or newer; Kiln 0.1.0 itself
+needs 25). A Kiln call is a native function call, made directly from your thread, or from the model's own thread
+for the async methods.
 
 Each engine is built into **one self-contained shared library**, with its own copy of ggml (the tensor library
-under all four engines) linked in statically and kept private. The engines pin different ggml versions, so this is
+under all the engines) linked in statically and kept private. The engines pin different ggml versions, so this is
 what lets several of them share one process: an LLM, a diffusion model and a song model can all be loaded in the same
 JVM at once.
 
@@ -59,6 +62,8 @@ How each module binds its engine depends on what the engine offers:
   binds a small, stable C layer instead. `kiln-tts` is one more such layer, over llama.cpp's audio generation.
 - `acestep.cpp` and `yue2.cpp` are C++ only, so each gets a layer of about 100 lines: a JSON request in, PCM audio
   out.
+- `whisper.cpp` has a C API, but it passes two large parameter structs by value, so `kiln-whisper` binds a small C
+  layer that takes plain arguments and reads the results back token by token.
 
 Kiln doesn't download anything. You fetch weights with the Hugging Face CLI, and `HfCache` finds them in the cache,
 or you pass file paths directly.
@@ -76,6 +81,7 @@ Kiln is early. Everything below runs from Java on Linux with an AMD Radeon 8060S
 | YuE2 3B (Q8_0) | a 60 s song in ~60 s |
 | FLUX.2 [klein] base 4B (fp8) | 768×768, 12 steps in ~130 s |
 | Qwen-Image 2512 (fp8) | 1024×1024, 20 steps in ~13 min |
+| Whisper large-v3-turbo (q5_0) | 55 s of speech in 1.8 s (31× real time), with DTW word timings |
 
 ## Supported backends
 

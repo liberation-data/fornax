@@ -15,9 +15,15 @@ kiln_acestep * kiln_acestep_create(const char * lm_path, const char * text_enc_p
 
 /* request_json: acestep.cpp request schema. On success returns 0 and sets *out_planar to
    malloc'd planar stereo float32 [L0..LN-1, R0..RN-1] at 48 kHz (free with kiln_acestep_free) and
-   *out_request_json (optional) to the LM-enriched request. */
+   *out_request_json (optional) to the LM-enriched request. Returns KILN_ACESTEP_CANCELLED if stopped. */
 int kiln_acestep_generate(kiln_acestep * h, const char * request_json, float ** out_planar, int * out_n_samples,
                    char ** out_request_json);
+
+#define KILN_ACESTEP_CANCELLED 5
+
+/* cancel != 0 asks the generate call in progress to stop (thread-safe): acestep.cpp polls it between LM tokens,
+   DiT steps and VAE tiles. It stays set until cleared with cancel = 0, which the caller does before each call. */
+void kiln_acestep_set_cancel(kiln_acestep * h, int cancel);
 
 void kiln_acestep_free(void * p);
 void kiln_acestep_destroy(kiln_acestep * h);
