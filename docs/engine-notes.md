@@ -73,6 +73,26 @@ surprises you.
   headers must be on the compiler's include path. Fedora's `spirv-headers-devel` puts them in `/usr/include`; for a
   private install, pass `CMAKE_EXTRA="-DCMAKE_CXX_FLAGS=-I<prefix>/include"`.
 
+## stems.cpp (kiln-demucs)
+
+- **Why stems.cpp.** It runs HTDemucs v4 on ggml (so on the GPU, through the same build as the other engines), its
+  published GGUFs match PyTorch demucs sample for sample (71-126 dB SNR per stem on its parity clip), and it has
+  progress and cancel callbacks in a stable C ABI. sevagh/demucs.cpp, the older port, is Eigen on the CPU only and
+  says it trades speed for memory. Both are MIT.
+- **It does demucs' whole separate path,** not just the network: normalise by the mono mix's mean and deviation,
+  7.8 s segments with 25% overlap and demucs' triangular cross-fade, then scale back. So there is nothing for Kiln to
+  add around it. torchaudio's `HDEMUCS_HIGH_MUSDB_PLUS` (Hybrid Demucs v3, which Endless Country episode 2 used, with
+  10 s chunks and a 1 s linear cross-fade) is a different model: on that song, Kiln's HTDemucs vocals measured
+  13.5 dB SDR against torchaudio's (15.8 dB on a 20 s excerpt), its backing 14.8 dB, and the stems add back up to
+  the mix to -35 dB.
+- **Its ggml is a fork** (betweentwomidnights/ggml, shared with sa3.cpp and audiocraft.cpp). The fork carries a fix
+  for ggml-vulkan rounding F32 matmul operands to fp16 (betweentwomidnights/ggml#7), without which HTDemucs failed
+  stems.cpp's parity check on Vulkan. It is linked statically and kept private like every engine's ggml.
+- **It prints its backend** (`[stems] backend: Vulkan0 ...`) on stderr when a model loads, whatever `KILN_VERBOSE`
+  says. ggml's own logs are quiet as usual.
+- **Cancel lands between segments.** stems.cpp polls the cancel callback before each 7.8 s segment, under a second
+  apart on the 8060S. The progress callback comes at the same points.
+
 ## ComfyUI parity for LTX-2.5 (Endless Country episode 2)
 
 | ComfyUI | Kiln (`VideoClip -Drecipe=two-stage`) |

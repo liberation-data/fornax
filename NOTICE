@@ -10,5 +10,7 @@ at build time and not stored in this repository:
 - stable-diffusion.cpp, Copyright (c) 2023 leejet (https://github.com/leejet/stable-diffusion.cpp)
 - acestep.cpp, Copyright (c) 2023-2026 The acestep.cpp authors (https://github.com/ServeurpersoCom/acestep.cpp)
 - yue2.cpp, Copyright (c) 2023-2026 The yue2.cpp authors (https://github.com/ServeurpersoCom/yue2.cpp)
+- stems.cpp, Copyright (c) 2026 ath (tinycrops), portions Copyright (c) 2026 betweentwomidnights
+  (https://github.com/betweentwomidnights/stems.cpp), with its fork of ggml (https://github.com/betweentwomidnights/ggml)
 
 Model weights are not part of Kiln and carry their own licenses.

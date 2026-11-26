@@ -36,6 +36,7 @@ behind the popular command-line tools and servers, so you get their speed and th
 | `kiln-acestep` | [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) | ACE-Step 1.5 songs, with vocals and lyrics, up to several minutes |
 | `kiln-yue2` | [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp) | YuE2 songs |
 | `kiln-whisper` | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) | speech to text with word timings: Whisper large-v3-turbo, base.en, any ggml Whisper model |
+| `kiln-demucs` | [stems.cpp](https://github.com/betweentwomidnights/stems.cpp) | stem separation: vocals and backing, or drums, bass, other and vocals, with HTDemucs v4 |
 | `kiln-core` | | what the others share: native loading, `ModelPool`, `HfCache`, `Audio` |
 
 Every model class is `AutoCloseable`, and its weights are freed on `close()`. A model can be called from any thread;
@@ -64,6 +65,8 @@ How each module binds its engine depends on what the engine offers:
   out.
 - `whisper.cpp` has a C API, but it passes two large parameter structs by value, so `kiln-whisper` binds a small C
   layer that takes plain arguments and reads the results back token by token.
+- `stems.cpp` has a C ABI of size-tagged structs in a function table, so `kiln-demucs` binds a small C layer over it:
+  planar audio in, planar stems out.
 
 Kiln doesn't download anything. You fetch weights with the Hugging Face CLI, and `HfCache` finds them in the cache,
 or you pass file paths directly.
@@ -82,6 +85,7 @@ Kiln is early. Everything below runs from Java on Linux with an AMD Radeon 8060S
 | FLUX.2 [klein] base 4B (fp8) | 768×768, 12 steps in ~130 s |
 | Qwen-Image 2512 (fp8) | 1024×1024, 20 steps in ~13 min |
 | Whisper large-v3-turbo (q5_0) | 55 s of speech in 1.8 s (31× real time), with DTW word timings |
+| HTDemucs v4 (F32) | a 3 min 9 s song split into four stems in 26 s (7.3 s of audio per second) |
 
 ## Supported backends
 

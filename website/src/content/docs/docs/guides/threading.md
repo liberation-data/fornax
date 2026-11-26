@@ -163,6 +163,7 @@ firing, stops that call only: if it is still queued, it never starts. Cancelling
 | `DiffusionModel` (images and video) | at the next step, through `sd_cancel_generation` | throws `CancellationException` |
 | `AceStepModel` | between LM tokens, DiT steps and VAE tiles | throws `CancellationException` |
 | `Yue2Model` | between LM tokens, diffusion steps and VAE tiles | throws `CancellationException` |
+| `DemucsModel` | between segments (about 7.8 s of audio each) | throws `CancellationException` |
 
 Limits:
 

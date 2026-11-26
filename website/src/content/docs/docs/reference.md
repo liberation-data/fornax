@@ -126,6 +126,21 @@ Package `org.liberationdata.kiln.whisper`. See [Speech to text](/docs/guides/spe
 | `Transcript` | `text`, `language`, `segments`; `words()`, `wordsTsv()`, `srt()`, `vtt()` |
 | `Transcript.Segment`, `Transcript.Word` | `start`, `end` (seconds), `text`; a segment's `words`, a word's `probability` |
 
+## kiln-demucs
+
+Package `org.liberationdata.kiln.demucs`. See [Stem separation](/docs/guides/stem-separation/).
+
+| Type | |
+|---|---|
+| `DemucsModel` | an HTDemucs model: `new DemucsModel(Weights)`, `(path)` or `(path, gpu, cpuThreads)` |
+| `separate(audio[, options][, progress])` | `Stems` from `Audio` at any rate, at its rate and length |
+| `separateAsync(audio[, options, progress])`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops it between segments (it throws `CancellationException`) |
+| `name()`, `backend()`, `sources()`, `sampleRate()` | the checkpoint, the ggml backend, the stem names in order, and the model's own rate (44100) |
+| `DemucsModel.Weights` | the models Kiln knows by name: `HTDEMUCS`, `HTDEMUCS_F16`, `HTDEMUCS_6S`, `HTDEMUCS_FT`; `named(...)`, `path()`, `downloaded()` |
+| `DemucsModel.Options` | `shifts`, `overlap`, `seed`; `DEFAULT` and a `with...` for each |
+| `DemucsModel.Progress` | `update(done, total)`, segment passes, as the separation runs |
+| `Stems` | `names()`, `get(name)`, `vocals()`, `backing()` (every stem but the vocals), `mix()`, `asMap()`, `sampleRate()` |
+
 ## kiln-examples
 
 Package `org.liberationdata.kiln.examples`: runnable programs, each a Gradle task, and the best place to see the API
@@ -141,13 +156,14 @@ used end to end.
 | `song` | `Song` | an ACE-Step song |
 | `yue2` | `Yue2Song` | a YuE2 song and its score |
 | `transcribe` | `Transcribe` | speech to text: prints the text, writes `<name>.words.tsv` and `<name>.srt` |
+| `separate` | `Separate` | stem separation: writes `<name>-vocals.wav` and `<name>-backing.wav` (`--all` for every stem) |
 
 ## System properties and environment
 
 | Name | |
 |---|---|
 | `-Dkiln.library.path`, `KILN_LIBRARY_PATH` | where to look for the native libraries |
-| `-Dkiln.<name>.lib` | one library's exact file; the names are `kiln_llama`, `kiln_tts`, `stable-diffusion`, `kiln_acestep`, `kiln_yue2` and `kiln_whisper` |
+| `-Dkiln.<name>.lib` | one library's exact file; the names are `kiln_llama`, `kiln_tts`, `stable-diffusion`, `kiln_acestep`, `kiln_yue2`, `kiln_whisper` and `kiln_demucs` |
 | `-Dkiln.backend`, `KILN_BACKEND` | which natives jar's backend to load when several for this platform are on the classpath |
 | `-Dkiln.cache.dir`, `KILN_CACHE_DIR` | where natives jars' libraries are extracted to |
 | `-Dkiln.gpu.graphs` | ggml's CUDA and HIP graphs; `false` by default |

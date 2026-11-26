@@ -25,9 +25,10 @@ The Java modules, each with sources and javadoc jars:
 | `kiln-acestep` | ACE-Step songs (acestep.cpp) |
 | `kiln-yue2` | YuE2 songs (yue2.cpp) |
 | `kiln-whisper` | speech to text with word timings (whisper.cpp) |
+| `kiln-demucs` | stem separation: vocals and backing, drums, bass, ... (stems.cpp) |
 | `kiln-core` | what they share; each engine module brings it in |
 
-The natives, one jar per platform and GPU backend, each with all six engines' libraries:
+The natives, one jar per platform and GPU backend, each with all seven engines' libraries:
 
 | Natives artifact | Platform | GPU backend |
 |---|---|---|
