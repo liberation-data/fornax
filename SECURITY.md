@@ -19,7 +19,7 @@ Fixes go into the latest release and `main`. Older releases don't get patches.
 Fornax loads model files and runs native code in your JVM's process, so a bug that would be a crash elsewhere can be
 memory corruption here. In scope:
 
-- **Parsing model files.** GGUF and safetensors parsing, in Fornax's Java code and in the native engines as Fornax
+- **Parsing model files.** GGUF and safetensors parsing in the native engines, as Fornax
   builds and calls them (including the patches in `native/patches/`). A model file from the Hub is untrusted input: a
   crafted one that crashes, corrupts memory or runs code is a vulnerability.
 - **Downloads and the model cache.** The hub client (`org.liberationdata.fornax.hub`) and `fornax pull`: path

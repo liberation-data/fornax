@@ -26,7 +26,7 @@ the pull request which ones you ran and on what hardware.
 ## What every change needs
 
 - **Code that matches the code around it.** There's no formatter to run; follow the file's style (4-space indent,
-  lines up to about 120 characters, Javadoc that says why rather than what). The build compiles with `-Xlint:all`,
+  lines up to about 120 characters, Javadoc that says why rather than what). The build compiles with `-Xlint:all,-restricted`,
   so keep it free of new warnings.
 - **Tests.** A new branch or failure path needs a test that drives it. A bug fix needs a test that failed before it.
 - **Docs in the same pull request.** If behaviour a user can see changes, update the Javadoc, the README and the
