@@ -3,11 +3,6 @@ title: "Vision: images in, text or JSON out"
 description: Send images to a vision language model from Java - Qwen3-VL, PaddleOCR-VL, MedGemma - ask about them, or extract their contents to JSON that follows a schema.
 ---
 
-:::note[Ships with the next release]
-Vision is on `main` (from [pull request #13](https://github.com/liberation-data/kiln/pull/13)) but not yet in a
-release, and the API may still change before it is.
-:::
-
 A vision language model is a language model with a vision encoder in front. In GGUF form it comes as two files: the
 language model, and an **mmproj** that holds the vision encoder and its projector. Load both into a `LlamaModel` and
 user messages can carry images. It runs through llama.cpp's `mtmd` library, the way `llama-mtmd-cli` and

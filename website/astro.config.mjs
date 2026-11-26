@@ -52,14 +52,14 @@ export default defineConfig({
                     items: [
                         { label: 'Introduction', link: '/docs/' },
                         { slug: 'docs/getting-started' },
-                        { slug: 'docs/maven-and-gradle', badge: { text: 'Next', variant: 'default' } }
+                        'docs/maven-and-gradle'
                     ]
                 },
                 {
                     label: 'Guides',
                     items: [
                         { slug: 'docs/guides/language-models' },
-                        { slug: 'docs/guides/vision', badge: { text: 'Next', variant: 'default' } },
+                        'docs/guides/vision',
                         { slug: 'docs/guides/speech' },
                         { slug: 'docs/guides/images' },
                         { slug: 'docs/guides/video' },
