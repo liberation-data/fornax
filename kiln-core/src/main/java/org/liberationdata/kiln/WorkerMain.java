@@ -20,9 +20,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * so a native call still running can't hold the process up.
  */
 public final class WorkerMain {
-    private record Hosted(WorkerService service, ModelThread thread, long[] running) {}
+    private record Hosted(WorkerService service, ModelThread thread) {}
 
-    private record Running(Hosted hosted, CompletableFuture<byte[]> future) {}
+    /** A call the parent made: cancelled marks it whether or not it has started here yet. */
+    private static final class Running {
+        volatile Call call;           // set as it starts
+        volatile boolean cancelled;
+    }
 
     private final SocketChannel channel;
     private final Path sharedDir;
@@ -92,7 +96,7 @@ public final class WorkerMain {
             try {
                 WorkerService s = create(f.name(), f.payload());
                 String name = f.name().substring(f.name().lastIndexOf('.') + 1) + "-" + f.ref();
-                Hosted h = new Hosted(s, new ModelThread(name, s::close, s::cancel, null), new long[]{-1});
+                Hosted h = new Hosted(s, new ModelThread(name, s::close, s::cancel, null));
                 instances.put(f.ref(), h);
                 reply(f.id(), null, null);
             } catch (Throwable t) {
@@ -117,18 +121,16 @@ public final class WorkerMain {
             return;
         }
         long id = f.id();
+        Running r = new Running();
+        calls.put(id, r);
         CompletableFuture<byte[]> future = h.thread().submit(c -> {
-            synchronized (h.running()) { h.running()[0] = id; }
-            try {
-                return h.service().call(f.name(), f.payload(), c, item -> {
-                    try { out.send(Frames.EVENT, id, 0, null, item); }
-                    catch (IOException e) { throw new java.io.UncheckedIOException(e); }
-                });
-            } finally {
-                synchronized (h.running()) { h.running()[0] = -1; }
-            }
+            r.call = c;
+            if (r.cancelled) c.cancel();
+            return h.service().call(f.name(), f.payload(), c, item -> {
+                try { out.send(Frames.EVENT, id, 0, null, item); }
+                catch (IOException e) { throw new java.io.UncheckedIOException(e); }
+            });
         });
-        calls.put(id, new Running(h, future));
         future.whenComplete((v, e) -> {
             calls.remove(id);
             reply(id, v, e);
@@ -136,16 +138,15 @@ public final class WorkerMain {
     }
 
     /**
-     * The call running stops the way the engine's own cancel stops it (an LLM returns the text so far); one that
-     * hasn't started yet never does.
+     * The call stops the way the engine's own cancel stops it (an LLM returns the text so far), as in-process. The
+     * parent counts it as running once sent, so one that hasn't started here yet starts already cancelled.
      */
     private void cancel(long id) {
         Running r = calls.get(id);
         if (r == null) return;
-        synchronized (r.hosted().running()) {
-            if (r.hosted().running()[0] == id) { r.hosted().thread().cancel(); return; }
-        }
-        r.future().cancel(false);
+        r.cancelled = true;
+        Call c = r.call;
+        if (c != null) c.cancel();
     }
 
     private void free(Frames.Frame f) {

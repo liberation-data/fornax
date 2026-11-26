@@ -445,7 +445,7 @@ public final class LlamaModel implements AutoCloseable {
         return thread.run(c -> chatOn(c, messages, o, onPiece));
     }
 
-    private Result chatOn(Call call, List<Message> messages, Options o, Consumer<String> onPiece) {
+    Result chatOn(Call call, List<Message> messages, Options o, Consumer<String> onPiece) {
         if (remote != null)
             return LlamaService.decodeResult(remote(call, "chat", LlamaService.chatArgs(messages, o, onPiece != null), onPiece));
         if (messages.stream().anyMatch(m -> !m.images().isEmpty())) return chatImages(call, messages, o, onPiece);
@@ -479,7 +479,7 @@ public final class LlamaModel implements AutoCloseable {
         return thread.run(c -> chatJsonOn(c, requestJson, List.of(), onContent));
     }
 
-    private String chatJsonOn(Call call, String requestJson, List<Image> images, Consumer<String> onContent) {
+    String chatJsonOn(Call call, String requestJson, List<Image> images, Consumer<String> onContent) {
         if (remote != null)
             return LlamaService.decodeString(remote(call, "chatJson", LlamaService.chatJsonArgs(requestJson, images, onContent != null), onContent));
         if (!images.isEmpty()) return chatJsonImages(call, requestJson, images, onContent);
@@ -574,7 +574,7 @@ public final class LlamaModel implements AutoCloseable {
         return thread.run(c -> images.isEmpty() ? completeOn(c, prompt, o, onPiece) : completeImages(c, prompt, images, o, onPiece));
     }
 
-    private Result completeImages(Call call, String prompt, List<Image> images, Options o, Consumer<String> onPiece) {
+    Result completeImages(Call call, String prompt, List<Image> images, Options o, Consumer<String> onPiece) {
         if (remote != null) return completeRemote(call, prompt, images, o, onPiece);
         requireVision();
         try (Arena a = Arena.ofConfined()) {
@@ -617,7 +617,7 @@ public final class LlamaModel implements AutoCloseable {
         return thread.run(c -> completeOn(c, prompt, o, onPiece));
     }
 
-    private Result completeOn(Call call, String prompt, Options o, Consumer<String> onPiece) {
+    Result completeOn(Call call, String prompt, Options o, Consumer<String> onPiece) {
         if (remote != null) return completeRemote(call, prompt, List.of(), o, onPiece);
         try (Arena a = Arena.ofConfined()) {
             Out out = new Out(a);

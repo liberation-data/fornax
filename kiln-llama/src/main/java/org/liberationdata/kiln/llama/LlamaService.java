@@ -16,6 +16,10 @@ import java.util.function.Consumer;
 /**
  * The worker side of an isolated {@link LlamaModel} ({@link LlamaModel#isolated}): an in-process LlamaModel in the
  * worker process, and the encoding of its calls. Not for direct use; the worker creates it by name.
+ *
+ * <p>Calls go straight to the model's own methods with the worker's {@link Call}, which the worker's ModelThread runs
+ * one at a time: its token upcalls poll that Call, so a cancel from the parent stops the generation even if it arrives
+ * before the generation has started.
  */
 public final class LlamaService implements WorkerService {
     private final LlamaModel model;
@@ -33,24 +37,23 @@ public final class LlamaService implements WorkerService {
             case "chat" -> {
                 List<Message> messages = messages(in);
                 Options o = options(in);
-                yield result(model.chat(messages, o, in.bool() ? pieces(events) : null));
+                yield result(model.chatOn(call, messages, o, in.bool() ? pieces(events) : null));
             }
             case "chatJson" -> {
                 String request = in.string();
                 List<Image> images = images(in);
-                yield utf8(model.chatJson(request, images, in.bool() ? pieces(events) : null));
+                yield utf8(model.chatJsonOn(call, request, images, in.bool() ? pieces(events) : null));
             }
             case "complete" -> {
                 String prompt = in.string();
                 List<Image> images = images(in);
                 Options o = options(in);
-                yield result(model.complete(prompt, images, o, in.bool() ? pieces(events) : null));
+                Consumer<String> p = in.bool() ? pieces(events) : null;
+                yield result(images.isEmpty() ? model.completeOn(call, prompt, o, p) : model.completeImages(call, prompt, images, o, p));
             }
             default -> throw new UnsupportedOperationException("LlamaService has no method " + method);
         };
     }
-
-    @Override public void cancel() { model.cancel(); }
 
     @Override public void close() { model.close(); }
 
@@ -88,7 +91,7 @@ public final class LlamaService implements WorkerService {
 
     static String decodeString(byte[] b) { return new String(b, StandardCharsets.UTF_8); }
 
-    private static byte[] result(Result r) {
+    static byte[] result(Result r) {
         return new Wire.Out().string(r.text()).integer(r.promptTokens()).integer(r.generatedTokens()).toBytes();
     }
 
@@ -100,14 +103,14 @@ public final class LlamaService implements WorkerService {
         return out;
     }
 
-    private static List<Image> images(Wire.In in) {
+    static List<Image> images(Wire.In in) {
         int n = in.integer();
         List<Image> images = new ArrayList<>(n);
         for (int i = 0; i < n; i++) images.add(new Image(in.integer(), in.integer(), in.bytes()));
         return images;
     }
 
-    private static List<Message> messages(Wire.In in) {
+    static List<Message> messages(Wire.In in) {
         int n = in.integer();
         List<Message> messages = new ArrayList<>(n);
         for (int i = 0; i < n; i++) messages.add(new Message(in.string(), in.string(), images(in)));
@@ -118,7 +121,7 @@ public final class LlamaService implements WorkerService {
         return out.integer(o.maxTokens()).floatValue(o.temperature()).floatValue(o.topP()).floatValue(o.minP()).integer(o.seed());
     }
 
-    private static Options options(Wire.In in) {
+    static Options options(Wire.In in) {
         return new Options(in.integer(), in.floatValue(), in.floatValue(), in.floatValue(), in.integer());
     }
 }

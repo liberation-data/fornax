@@ -151,6 +151,21 @@ class WorkerTest {
         }
     }
 
+    /**
+     * A cancel that reaches the worker before its call has started there (it was cancelled as it was sent) still
+     * stops the call the way the engine's own cancel does, as in-process: the result, not a CancellationException.
+     */
+    @Test
+    void aCancelThatArrivesBeforeTheWorkerStartsTheCallStillReturnsItsResult() {
+        var svc = worker(FAST).open(SERVICE, null);
+        try (var model = new ModelThread("isolated", svc::close, svc::cancel, null)) {
+            for (int i = 0; i < 20; i++) {
+                byte[] r = model.run(c -> { c.cancel(); return svc.invoke("spin", null, c, null); });
+                assertEquals("stopped", new Wire.In(r).string(), "round " + i);
+            }
+        }
+    }
+
     // ---- crashes ----
 
     @Test
