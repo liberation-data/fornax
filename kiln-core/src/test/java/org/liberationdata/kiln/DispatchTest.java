@@ -286,6 +286,36 @@ class DispatchTest {
         assertThrows(CancellationException.class, cancelled::join);
     }
 
+    /** Granted, then cancelled while its model loads: the body never runs, the model stays loaded, the worker is free. */
+    @Test
+    void aRequestCancelledWhileItsModelLoadsGivesTheWorkerBack() throws Exception {
+        var d = dispatch(1, 10);
+        var loading = new CountDownLatch(1);
+        var proceed = new CountDownLatch(1);
+        var a = d.register("a", 1, w -> {
+            loading.countDown();
+            try { proceed.await(); } catch (InterruptedException e) { throw new IllegalStateException(e); }
+            return w.open(SERVICE, null);
+        });
+        var ran = new AtomicBoolean();
+        var cancelled = a.submit(QoS.INTERACTIVE, i -> { ran.set(true); return CompletableFuture.completedFuture(1); });
+        var lease = a.acquireAsync(QoS.INTERACTIVE);
+        assertTrue(loading.await(30, TimeUnit.SECONDS));
+        assertTrue(cancelled.cancel(true));
+        proceed.countDown();
+        try (var l = lease.get(30, TimeUnit.SECONDS)) {
+            assertFalse(lease.completeExceptionally(new IllegalStateException()), "a granted lease's future stays granted");
+            assertTrue(WorkerTest.pid(l.model()) > 0);
+        }
+        assertEquals(2L, (long) a.call(QoS.BATCH, i -> 2L));
+        assertFalse(ran.get());
+        var s = d.stats();
+        assertEquals(1, s.loads());
+        assertEquals(2, s.hits(), "the lease and the call found it loaded");
+        assertEquals(3, s.requests());
+        assertEquals(0, s.queuedInteractive() + s.queuedBatch());
+    }
+
     @Test
     void cancellingARunningRequestCancelsItsBodysFutureAndFreesTheWorker() throws Exception {
         var d = dispatch(1, 10);
