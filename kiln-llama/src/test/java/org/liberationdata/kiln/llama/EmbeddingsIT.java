@@ -175,6 +175,18 @@ class EmbeddingsIT {
         assertTrue(e.getMessage().contains("EMBED"), e.getMessage());
         assertThrows(IllegalStateException.class, () -> model.rerank("q", List.of("d")));
         assertThrows(IllegalStateException.class, () -> model.complete("hello", Options.DEFAULT, null));
+        assertEquals(Mode.EMBED, model.mode());
+        // the JSON, extract and image paths check the mode too, before they reach the engine
+        assertThrows(IllegalStateException.class,
+                () -> model.chatJson("{\"messages\": [{\"role\": \"user\", \"content\": \"hello\"}]}", null));
+        assertThrows(IllegalStateException.class,
+                () -> model.extract(List.of(Message.user("hello")), "{\"type\": \"object\"}", Options.DEFAULT));
+        var pixel = new LlamaModel.Image(1, 1, new byte[3]);
+        e = assertThrows(IllegalStateException.class,
+                () -> model.complete(LlamaModel.mediaMarker(), List.of(pixel), Options.DEFAULT, null));
+        assertTrue(e.getMessage().contains("EMBED"), e.getMessage());
+        e = assertThrows(IllegalStateException.class, () -> model.chat(List.of(Message.user("hi", pixel)), Options.DEFAULT));
+        assertTrue(e.getMessage().contains("EMBED"), e.getMessage());
     }
 
     @Test
