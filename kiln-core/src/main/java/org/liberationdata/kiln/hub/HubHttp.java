@@ -132,7 +132,10 @@ final class HubHttp {
         if (f.size() >= 0 && have > f.size()) { Files.delete(part); have = 0; }
         if (digest != null) { digest.reset(); if (have > 0) digest.hash(part, cancel); }
         progress.accept(have);
-        if (f.size() >= 0 && have == f.size()) return;
+        if (f.size() >= 0 && have == f.size()) {
+            if (have == 0) { Files.createDirectories(part.getParent()); Files.write(part, new byte[0]); }   // an empty file
+            return;
+        }
 
         HttpResponse<InputStream> r = null;
         for (int hops = 0; hops < 10; hops++) {

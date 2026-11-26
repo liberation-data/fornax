@@ -92,6 +92,17 @@ class KilnHubTest {
         assertEquals(State.PRESENT, hub().status(set).state());
     }
 
+    @Test void anEmptyFileIsPulledToo() throws Exception {
+        var f = fake.add(REPO, "added_tokens.json", 0, false);
+        var set = set("empty", Part.of("t", REPO, "added_tokens.json"));
+
+        Path p = hub().pull(set, PullListener.NONE).get("t");
+
+        assertEquals(0, Files.size(p));
+        assertEquals(Path.of("../../blobs/" + f.etag()), Files.readSymbolicLink(p));
+        assertEquals(State.PRESENT, hub().status(set).state());
+    }
+
     @Test void reportsProgressForABar() throws Exception {
         var a = fake.add(REPO, "a.gguf", 2_000_000, true);
         var b = fake.add(REPO, "b.gguf", 1_000_000, true);
