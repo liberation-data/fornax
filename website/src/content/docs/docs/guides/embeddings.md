@@ -87,7 +87,7 @@ documents)` runs it on the model's thread, and `cancel()` stops it between batch
 ## Search a folder
 
 `Vectors` (in `kiln-core`) is all the search there is: `topK(query, vectors, k)` scans the vectors for the k most
-similar by cosine. A scan over 200,000 1024-float vectors takes under 0.2 s on one core, so many applications
+similar by cosine. A scan over 200,000 1024-float vectors takes about 0.2 s on one core, so many applications
 don't need a vector database: keep the vectors in memory, or save them next to the documents.
 `Vectors` also has `cosine`, `dot`, `normalize`, and `rank(scores)` (indexes sorted by score).
 
