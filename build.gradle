@@ -157,6 +157,51 @@ project(':kiln-whisper') {
     dependencies { testImplementation project(':kiln-tts') }
 }
 
+project(':kiln-cli') {
+    apply plugin: 'application'
+    // The natives, as the samples take them: a kiln-natives jar, here every one this build has (settings.gradle
+    // includes a platform when native/build.sh has built it). -Pkiln.cli.nativesVersion=0.1.0 takes this platform's
+    // from Maven Central instead, for a build without natives of its own.
+    def publishedNatives = findProperty('kiln.cli.nativesVersion')
+    def hostPlatform = os != 'macos' ? 'linux-x86_64-vulkan' : (arch == 'arm64' ? 'macos-aarch64-metal' : 'macos-x86_64-metal')
+    def natives = publishedNatives ? ["org.kiln4j:kiln-natives-${hostPlatform}:${publishedNatives}".toString()]
+                                   : gradle.nativesDirs.keySet().collect { project(":kiln-natives-${it}") }
+    dependencies {
+        implementation project(':kiln-llama')
+        implementation project(':kiln-sd')
+        implementation project(':kiln-acestep')
+        implementation project(':kiln-yue2')
+        // 0.1.0's natives jar says Java 25 in its metadata (it holds no classes), so ask for it as 25
+        natives.each { n -> runtimeOnly(n) { attributes { attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25) } } }
+    }
+    // ./gradlew :kiln-cli:installDist  ->  kiln-cli/build/install/kiln-cli/bin/kiln, with its jars in lib/.
+    // The launchers are src/dist/bin/kiln and kiln.cmd, not Gradle's: their inputs (the java, the jars folder, the
+    // natives folder) are environment variables or placeholders an installer such as Kiln Studio fills in.
+    application {
+        mainClass = 'org.liberationdata.kiln.cli.Main'
+        applicationName = 'kiln'
+        applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
+    }
+    tasks.named('startScripts') { enabled = false }
+    distributions {
+        main {
+            distributionBaseName = 'kiln-cli'
+            contents { filesMatching('bin/kiln') { filePermissions { unix('rwxr-xr-x') } } }
+        }
+    }
+    // ./gradlew :kiln-cli:run --args='info'
+    tasks.named('run', JavaExec) {
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+        systemProperty 'kiln.library.path', nativeDir.absolutePath
+        standardInput = System.in
+    }
+    // The launcher as an installer renders it, run against the installed distribution (see LauncherTest)
+    tasks.named('test') {
+        dependsOn 'installDist'
+        systemProperty 'kiln.cli.install', layout.buildDirectory.dir('install/kiln-cli').get().asFile.absolutePath
+    }
+}
+
 project(':kiln-bench') {
     dependencies {
         implementation project(':kiln-acestep')

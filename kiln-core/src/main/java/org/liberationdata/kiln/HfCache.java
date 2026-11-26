@@ -4,6 +4,11 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -64,5 +69,55 @@ public final class HfCache {
             if (p.isPresent()) return p.get();
         }
         return require(repoPathPairs[0], repoPathPairs[1]);
+    }
+
+    /** The model repos ({@code "org/name"}) in the cache at {@code root}, sorted ignoring case. */
+    public static List<String> repos(Path root) {
+        if (!Files.isDirectory(root)) return List.of();
+        try (Stream<Path> s = Files.list(root)) {
+            List<String> out = new ArrayList<>();
+            s.map(p -> repoOf(p.getFileName().toString())).filter(r -> r != null).sorted(String.CASE_INSENSITIVE_ORDER)
+                    .forEach(out::add);
+            return out;
+        } catch (IOException e) { throw new UncheckedIOException(e); }
+    }
+
+    /**
+     * Every complete file of {@code repo} in the cache at {@code root}, by its path in the repo, in path order. A path in
+     * several snapshots is the one in the snapshot {@code refs/main} names, else in the first other. A link whose blob
+     * isn't there (a download still in progress) doesn't count.
+     */
+    public static Map<String, Path> files(Path root, String repo) {
+        Path snapshots = root.resolve("models--" + repo.replace("/", "--")).resolve("snapshots");
+        if (!Files.isDirectory(snapshots)) return Map.of();
+        String main = "";
+        try {
+            Path ref = snapshots.resolveSibling("refs").resolve("main");
+            if (Files.isRegularFile(ref)) main = Files.readString(ref).trim();
+        } catch (IOException e) { throw new UncheckedIOException(e); }
+        String head = main;
+        Map<String, Path> byPath = new LinkedHashMap<>();
+        try (Stream<Path> s = Files.list(snapshots)) {
+            List<Path> snaps = s.filter(Files::isDirectory)
+                    .sorted(Comparator.comparing((Path p) -> !p.getFileName().toString().equals(head)).thenComparing(Path::toString))
+                    .toList();
+            for (Path snap : snaps) {
+                try (Stream<Path> w = Files.walk(snap)) {
+                    for (Path f : w.filter(Files::isRegularFile).sorted().toList())   // follows links; drops dangling ones
+                        byPath.putIfAbsent(snap.relativize(f).toString().replace('\\', '/'), f);
+                }
+            }
+        } catch (IOException e) { throw new UncheckedIOException(e); }
+        Map<String, Path> sorted = new LinkedHashMap<>();
+        byPath.keySet().stream().sorted().forEach(k -> sorted.put(k, byPath.get(k)));
+        return sorted;
+    }
+
+    /** {@code "models--org--name"} to {@code "org/name"}, or null for anything else (datasets, spaces, {@code .locks}). */
+    static String repoOf(String folderName) {
+        if (!folderName.startsWith("models--")) return null;
+        String rest = folderName.substring("models--".length());
+        int sep = rest.indexOf("--");
+        return sep <= 0 ? null : rest.substring(0, sep) + "/" + rest.substring(sep + 2);
     }
 }

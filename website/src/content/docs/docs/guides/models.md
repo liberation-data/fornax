@@ -10,6 +10,21 @@ it downloads what is missing, finds what is already on the machine, reports what
 Files go into the Hugging Face cache, in the layout `huggingface_hub` uses. `hf`, transformers and diffusers see what
 Kiln downloads, and Kiln sees what they download. Nothing is stored twice.
 
+## From the command line
+
+The quickest way to fetch a model is the [`kiln` command](/docs/guides/cli/), which pulls through `KilnHub`:
+
+```sh
+kiln pull flux2-klein     # an alias from the catalogue: all three files
+kiln list                 # what of each model is on disk
+kiln rm flux2-klein       # evict it again
+```
+
+To get `kiln`, choose **Install kiln command** from Kiln Studio's menu (coming in the next Kiln Studio release), or
+build it from source with `./gradlew :kiln-cli:installDist`. The Hugging Face CLI is the alternative:
+`hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors` and so on, one command
+per file, into the same cache. The rest of this page is the Java API.
+
 ## Pulling a model
 
 ```java

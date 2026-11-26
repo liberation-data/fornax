@@ -1,6 +1,6 @@
 ---
 title: Getting started
-description: Build Kiln's native libraries, fetch model weights with the Hugging Face CLI, run the all-in-one demo, and use Kiln from your own app.
+description: Build Kiln's native libraries, fetch model weights with kiln pull (or the Hugging Face CLI), run the all-in-one demo, and use Kiln from your own app.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
@@ -10,7 +10,8 @@ This page takes you from a fresh clone to a song, its lyrics and its cover art, 
 Then it shows what your own application needs.
 
 :::tip[Just want to try the models?]
-[Kiln Studio](#kiln-studio) is a desktop app around Kiln. It needs no build and no code.
+[Kiln Studio](#kiln-studio) is a desktop app around Kiln. It needs no build and no code, and it can install the
+[`kiln` command](/docs/guides/cli/) for fetching models.
 :::
 
 ## What you need
@@ -27,7 +28,8 @@ Then it shows what your own application needs.
   [Choosing a GPU backend](/docs/guides/gpu-backends/) lists what HIP, CUDA and Metal need.
 - **A GPU driver.** On Linux, your GPU's Vulkan driver: desktop Fedora and Ubuntu have it already. If not, follow
   [Installing GPU drivers](/docs/gpu-drivers/). Macs need nothing.
-- **The Hugging Face CLI** (`hf`), to download weights.
+- **A way to download weights:** the [`kiln` command](/docs/guides/cli/) (built in step 3 below, or installed by
+  Kiln Studio), or the Hugging Face CLI (`hf`). Both use the Hugging Face cache.
 
 ## Build and run
 
@@ -59,6 +61,17 @@ Then it shows what your own application needs.
 3. **Fetch the weights for the demo.**
 
    ```sh
+   ./gradlew :kiln-cli:installDist      # the kiln command
+   export PATH="$PWD/kiln-cli/build/install/kiln-cli/bin:$PATH"
+   kiln pull qwen3-4b                   # Qwen3 4B Instruct
+   kiln pull ace-step                   # ACE-Step 1.5 turbo and its 4B lyric LM: four files
+   kiln pull flux2-klein                # FLUX.2 [klein]: three files, from three repos
+   ```
+
+   If Kiln Studio has installed `kiln` for you, skip the first two lines. Or fetch the same files with the Hugging
+   Face CLI:
+
+   ```sh
    hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
    hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Embedding-0.6B-Q8_0.gguf \
        acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
@@ -67,7 +80,8 @@ Then it shows what your own application needs.
    hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetensors
    ```
 
-   Kiln never downloads anything itself. See [Finding weights](#finding-weights) for where it looks.
+   Both put the files in the Hugging Face cache, so either can fetch what the other started, and nothing is stored
+   twice. See [Finding weights](#finding-weights) for where Kiln looks.
 
 4. **Run the demo.**
 
@@ -99,8 +113,9 @@ argument. Each guide lists the weights its example needs.
 
 ## Finding weights
 
-`HfCache` finds files that `hf download` has already put in the Hugging Face cache. It looks in `HF_HUB_CACHE`, then
-`$HF_HOME/hub`, then `~/.cache/huggingface/hub`.
+`HfCache` finds files that `kiln pull` or `hf download` has already put in the Hugging Face cache. It looks in
+`HF_HUB_CACHE`, then `$HF_HOME/hub`, then `~/.cache/huggingface/hub`. To download from Java as well, or to find a
+whole model set's files at once, use `KilnHub` (see [Downloading models](/docs/guides/models/)).
 
 ```java
 import org.liberationdata.kiln.HfCache;
@@ -155,6 +170,8 @@ build. See [Maven and Gradle](/docs/maven-and-gradle/).
 [Kiln Studio](https://github.com/liberation-data/kiln-studio) is a desktop app around Kiln: chat with a GGUF model
 and watch the tokens per second, watch it call tools, make an image or a song, and see what is loaded and how much
 memory it holds. It runs Kiln in a JVM of its own, with its own Java, and finds models in your Hugging Face cache.
-Models aren't included: fetch them with `hf download` as above.
+Models aren't included. Choose **Install kiln command** from Studio's menu to put [`kiln`](/docs/guides/cli/) on your
+`PATH` (coming in the next Kiln Studio release), then fetch them with `kiln pull <alias>`, such as
+`kiln pull qwen3-4b`. Or use `hf download` as above: Studio, `kiln` and `hf` share the one cache.
 
 <StudioDownloads />
