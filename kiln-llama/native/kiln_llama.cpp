@@ -521,12 +521,17 @@ int kiln_llama_complete_images(kiln_llama * h, const char * prompt, const unsign
     std::vector<mtmd::bitmap_ptr> bmps;
     try { bmps = rgb_bitmaps(rgb, widths, heights, n_images); }
     catch (const std::exception & e) { return fail(e.what(), 11); }
+    // Counted here: mtmd_tokenize reports a marker mismatch as 2, the same as a failed image, despite its header.
+    const std::string marker = mtmd_default_marker(), text_in = prompt;
+    int n_markers = 0;
+    for (size_t at = text_in.find(marker); at != std::string::npos; at = text_in.find(marker, at + marker.size())) n_markers++;
+    if (n_markers != n_images)
+        return fail("the prompt has " + std::to_string(n_markers) + " image markers for " + std::to_string(n_images) + " images", 9);
     auto ptrs = raw(bmps);
     std::vector<const mtmd_bitmap *> cptrs(ptrs.begin(), ptrs.end());
     mtmd_input_text text = {prompt, strlen(prompt), true, true};
     mtmd::input_chunks_ptr chunks(mtmd_input_chunks_init());
     int r = mtmd_tokenize(h->mctx, chunks.get(), &text, cptrs.data(), cptrs.size());
-    if (r == 1) return fail("the prompt has a different number of image markers than the " + std::to_string(n_images) + " images", 9);
     if (r != 0) return fail("tokenizing the prompt with images failed: " + std::to_string(r), 10);
     int pos = 0, n_prompt = 0;
     if (int rc = eval_chunks(h, chunks.get(), &pos, &n_prompt); rc != 0) return rc;

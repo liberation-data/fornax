@@ -87,16 +87,50 @@ class VisionIT {
     }
 
     @Test
-    void chatJsonTakesAnImageUrl() throws Exception {
+    void extractThatRunsOutOfTokensIsAnError() {
+        String schema = """
+            {"type": "object", "properties": {"description": {"type": "string"}}, "required": ["description"]}""";
+        var e = assertThrows(IllegalStateException.class, () -> model.extract(
+                List.of(Message.user("Describe the image in detail.", Image.of(redSquare()))), schema,
+                Options.DEFAULT.withTemperature(0).withMaxTokens(3)));
+        assertTrue(e.getMessage().contains("cut off (length)"), e.getMessage());
+    }
+
+    static String imageUrlRequest() throws Exception {
         var png = new ByteArrayOutputStream();
         ImageIO.write(redSquare(), "png", png);
         String url = "data:image/png;base64," + Base64.getEncoder().encodeToString(png.toByteArray());
-        String req = """
+        return """
             {"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "%s"}},
                {"type": "text", "text": "What colour is the square? Answer in one word."}]}],
              "temperature": 0, "max_tokens": 16}""".formatted(url);
-        String res = model.chatJson(req, List.of(), null);
+    }
+
+    @Test
+    void chatJsonTakesAnImageUrl() throws Exception {
+        String res = model.chatJson(imageUrlRequest(), List.of(), null);
         assertTrue(res.toLowerCase().contains("red"), res);
+    }
+
+    @Test
+    void aPromptWithoutItsMarkerIsAnError() {
+        var e = assertThrows(IllegalStateException.class,
+                () -> model.complete("What colour is the square?", List.of(Image.of(redSquare())), GREEDY, null));
+        assertTrue(e.getMessage().contains("image markers"), e.getMessage());
+    }
+
+    /** The same GGUF without its mmproj, on the CPU (its weights are mmapped, so this costs little): no images. */
+    @Test
+    void withoutItsMmprojAModelRejectsImages() throws Exception {
+        try (var text = new LlamaModel(W.model(), null, 0, 512)) {
+            assertFalse(text.supportsVision());
+            var e = assertThrows(IllegalStateException.class,
+                    () -> text.chat(List.of(Message.user("Colour?", Image.of(redSquare()))), GREEDY));
+            assertTrue(e.getMessage().contains("takes no images"), e.getMessage());
+            String req = imageUrlRequest();
+            e = assertThrows(IllegalStateException.class, () -> text.chatJson(req, List.of(), null));
+            assertTrue(e.getMessage().contains("takes no images"), e.getMessage());
+        }
     }
 
     /**

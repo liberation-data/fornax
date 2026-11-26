@@ -72,7 +72,8 @@ surprises you.
   images for free.
 - **The marker is private.** The shim uses a random marker per process rather than `mtmd_default_marker()`
   (`<__media__>`), so user text that happens to contain `<__media__>` can't claim an image. Raw `complete` with images
-  does use the default marker, since the caller writes the whole prompt.
+  does use the default marker, since the caller writes the whole prompt. The shim counts those markers itself:
+  `mtmd_tokenize` returns 2 for a marker/image mismatch (its header says 1), the same code as a failed image.
 - **Text tokens after an image need only one position.** Qwen3-VL uses M-RoPE; `mtmd_helper_eval_chunks` returns the
   next position (fewer positions than tokens for an image), and text tokens after it take a single position each
   through `llama_batch_ext_set_pos`. So the shim counts context cells apart from positions: a ~1200-token image
