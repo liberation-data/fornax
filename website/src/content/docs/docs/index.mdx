@@ -68,8 +68,9 @@ How each module binds its engine depends on what the engine offers:
 - `stems.cpp` has a C ABI of size-tagged structs in a function table, so `fornax-demucs` binds a small C layer over it:
   planar audio in, planar stems out.
 
-Fornax doesn't download anything. You fetch weights with the Hugging Face CLI, and `HfCache` finds them in the cache,
-or you pass file paths directly.
+Give an engine a catalogue name (`qwen3-4b`) or a Hugging Face reference (`unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M`)
+and Fornax downloads it into the Hugging Face cache on first use. Or fetch weights ahead of time with `fornax pull` or
+the Hugging Face CLI, or pass file paths directly: a path never downloads anything.
 
 ## Status
 
