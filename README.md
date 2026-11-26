@@ -75,8 +75,9 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 | FLUX.2 [klein] base 4B (fp8) | 768×768, 12 steps in ~130 s |
 | Qwen-Image 2512 (fp8) | 1024×1024, 20 steps in ~13 min |
 
-The build script also knows the **ROCm (HIP)**, **CUDA** and **Metal** backends of the underlying engines, but
-those Kiln builds haven't been tested yet. The Java code is the same for every backend: you pick one when you
+The build script also knows the **ROCm (HIP)**, **CUDA** and **Metal** backends of the underlying engines. HIP has
+run LTX-2.5 video on the same machine (about 2.7× faster per step than Vulkan, and the way to render long clips; see
+[engine notes](docs/engine-notes.md)), and Kiln Studio's CI builds Metal for macOS. CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
 build the native libraries. Reports and fixes welcome.
 
 ## How it works
