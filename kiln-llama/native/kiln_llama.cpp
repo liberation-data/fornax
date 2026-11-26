@@ -60,9 +60,10 @@ int decode(kiln_llama * h, const llama_token * cur, int n_cur, int pos) {
 }
 
 // Samples and decodes until end of turn, max_tokens or a full context, starting from logits already computed for
-// the prompt (which ends at position pos). Shared by the completions that take images.
-int generate(kiln_llama * h, llama_sampler * smpl, int pos, int max_tokens, kiln_llama_token_cb cb, void * user,
-             std::string & out, int & generated) {
+// the prompt (which ends at position pos and fills `cells` of the context). Positions and cells differ after an
+// M-RoPE image (Qwen-VL: ~40 positions for ~1200 tokens), and it's the cells that run out.
+int generate(kiln_llama * h, llama_sampler * smpl, int pos, int cells, int max_tokens, kiln_llama_token_cb cb,
+             void * user, std::string & out, int & generated) {
     const int n_ctx = (int) llama_n_ctx(h->ctx);
     while (max_tokens <= 0 || generated < max_tokens) {
         llama_token tok = llama_sampler_sample(smpl, h->ctx, -1);
@@ -74,9 +75,10 @@ int generate(kiln_llama * h, llama_sampler * smpl, int pos, int max_tokens, kiln
         out += piece;
         generated++;
         if (cb && cb(piece.c_str(), user) != 0) break;
-        if (pos + 1 > n_ctx) break;  // context full: return what we have
+        if (cells + 1 > n_ctx) break;  // context full: return what we have
         if (int r = decode(h, &tok, 1, pos); r != 0) return fail("llama_process failed: " + std::to_string(r), 3);
         pos++;
+        cells++;
     }
     return 0;
 }
@@ -199,7 +201,8 @@ int tokenize_chat(kiln_llama * h, const common_chat_prompt & prompt, const std::
 }
 
 // Runs a prompt with images through the model from position 0 (images through the vision encoder, then everything
-// through the language model), leaving the logits of its last token. *out_pos is the position after it.
+// through the language model), leaving the logits of its last token. *out_pos is the position after it, and
+// *out_n_prompt the number of tokens (context cells) it took.
 int eval_chunks(kiln_llama * h, const mtmd_input_chunks * chunks, int * out_pos, int * out_n_prompt) {
     const int n_ctx = (int) llama_n_ctx(h->ctx);
     const int n = (int) mtmd_helper_get_n_tokens(chunks);
@@ -209,7 +212,7 @@ int eval_chunks(kiln_llama * h, const mtmd_input_chunks * chunks, int * out_pos,
     if (int r = mtmd_helper_eval_chunks(h->mctx, h->ctx, chunks, 0, 0, (int) llama_n_batch(h->ctx), true, &new_pos); r != 0)
         return fail("evaluating the prompt and images failed: " + std::to_string(r), 8);
     *out_pos = (int) new_pos;
-    if (out_n_prompt) *out_n_prompt = n;
+    *out_n_prompt = n;
     return 0;
 }
 
@@ -270,10 +273,10 @@ int chat_json_impl(kiln_llama * h, const char * request_json, const std::vector<
         const int max_tokens = req.value("max_tokens", -1);
         llama_memory_clear(llama_get_memory(h->ctx), true);
         std::string finish = "stop", raw, sent_content;
-        int pos = 0, generated = 0;
+        int pos = 0, generated = 0, cells = 0;  // cells: of the context used (more than pos after an M-RoPE image)
         std::vector<llama_token> cur = prompt;  // empty when the prompt went in with its images
         if (with_images) {
-            if (int rc = eval_chunks(h, chunks.get(), &pos, nullptr); rc != 0) {
+            if (int rc = eval_chunks(h, chunks.get(), &pos, &cells); rc != 0) {
                 common_sampler_free(smpl);
                 return rc;
             }
@@ -281,12 +284,13 @@ int chat_json_impl(kiln_llama * h, const char * request_json, const std::vector<
         while (true) {
             if (max_tokens > 0 && generated >= max_tokens) { finish = "length"; break; }
             if (!cur.empty()) {
-                if (pos + (int) cur.size() > n_ctx) { finish = "length"; break; }
+                if (cells + (int) cur.size() > n_ctx) { finish = "length"; break; }
                 if (int r = decode(h, cur.data(), (int) cur.size(), pos); r != 0) {
                     common_sampler_free(smpl);
                     return fail("llama_process failed: " + std::to_string(r), 3);
                 }
                 pos += (int) cur.size();
+                cells += (int) cur.size();
             }
             llama_token tok = common_sampler_sample(smpl, h->ctx, -1);
             common_sampler_accept(smpl, tok, true);
@@ -524,12 +528,13 @@ int kiln_llama_complete_images(kiln_llama * h, const char * prompt, const unsign
     int r = mtmd_tokenize(h->mctx, chunks.get(), &text, cptrs.data(), cptrs.size());
     if (r == 1) return fail("the prompt has a different number of image markers than the " + std::to_string(n_images) + " images", 9);
     if (r != 0) return fail("tokenizing the prompt with images failed: " + std::to_string(r), 10);
-    int pos = 0;
-    if (int rc = eval_chunks(h, chunks.get(), &pos, out_n_prompt); rc != 0) return rc;
+    int pos = 0, n_prompt = 0;
+    if (int rc = eval_chunks(h, chunks.get(), &pos, &n_prompt); rc != 0) return rc;
+    if (out_n_prompt) *out_n_prompt = n_prompt;
     llama_sampler * smpl = simple_sampler(temperature, top_p, min_p, seed);
     std::string out;
     int generated = 0;
-    int rc = generate(h, smpl, pos, max_tokens, cb, user, out, generated);
+    int rc = generate(h, smpl, pos, n_prompt, max_tokens, cb, user, out, generated);
     llama_sampler_free(smpl);
     if (out_n_generated) *out_n_generated = generated;
     *out_text = dup(out);

@@ -29,6 +29,8 @@ class JsonTest {
         assertEquals("tab\tquote\" é slash/", m.get("s"));
         assertEquals(-2.5, Json.get(m, "a", 1));
         assertNull(Json.get(m, "a", 7));
+        assertEquals(1.2345678901234567e19, Json.parse("12345678901234567890"));  // past a long: a double, not an error
+        assertThrows(IllegalArgumentException.class, () -> Json.parse("1-2"));
     }
 
     @Test

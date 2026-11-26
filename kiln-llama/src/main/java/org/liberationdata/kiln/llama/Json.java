@@ -8,7 +8,7 @@ import java.util.Map;
 /**
  * Just enough JSON for building requests and reading the replies of {@link LlamaModel#chatJson}, so Kiln needs no
  * JSON library. {@link #parse} gives {@code Map<String, Object>} (in order), {@code List<Object>}, {@code String},
- * {@code Double} or {@code Long}, {@code Boolean} and {@code null}.
+ * {@code Double} or {@code Long} (an integer too big for a long is a Double), {@code Boolean} and {@code null}.
  */
 public final class Json {
     private Json() {}
@@ -157,7 +157,9 @@ public final class Json {
             String n = s.substring(start, i);
             if (n.isEmpty()) throw error("unexpected '" + s.charAt(start) + "'");
             try {
-                return n.contains(".") || n.contains("e") || n.contains("E") ? (Object) Double.parseDouble(n) : (Object) Long.parseLong(n);
+                if (n.contains(".") || n.contains("e") || n.contains("E")) return Double.parseDouble(n);
+                try { return Long.parseLong(n); }
+                catch (NumberFormatException tooBig) { return Double.parseDouble(n); }  // valid JSON, past a long
             } catch (NumberFormatException ex) {
                 throw error("bad number " + n);
             }

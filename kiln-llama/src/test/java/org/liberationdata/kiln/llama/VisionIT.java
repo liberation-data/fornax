@@ -13,6 +13,7 @@ import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -96,6 +97,29 @@ class VisionIT {
              "temperature": 0, "max_tokens": 16}""".formatted(url);
         String res = model.chatJson(req, List.of(), null);
         assertTrue(res.toLowerCase().contains("red"), res);
+    }
+
+    /**
+     * Qwen3-VL's M-RoPE gives a ~1200-token image only ~40 positions, so generation must stop when the context's
+     * cells are full, not when the position reaches the context size (which would overrun the KV cache).
+     */
+    @Test
+    void aFullContextAfterAnImageStopsGeneration() {
+        var page = new BufferedImage(1000, 1300, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = page.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 1000, 1300);
+        g.dispose();
+        Message ask = Message.user("Ignore the image. Count from 1 to 2000, one number per line.", Image.of(page));
+        try (var small = new LlamaModel(W, -1, 1536)) {
+            var r = small.chat(List.of(ask), Options.DEFAULT.withTemperature(0).withMaxTokens(0));
+            assertTrue(r.promptTokens() > 1000, "the image should take most of the context: " + r.promptTokens());
+            // the last token is sampled but never decoded, so it takes no cell
+            assertEquals(1537, r.promptTokens() + r.generatedTokens(), r.promptTokens() + " + " + r.generatedTokens());
+            String json = small.chatJson("{\"messages\": " + ChatRequests.messages(List.of(ask), new ArrayList<>())
+                    + ", \"temperature\": 0}", List.of(Image.of(page)), null);
+            assertEquals("length", Json.get(Json.parse(json), "finish_reason"), json);
+        }
     }
 
     @Test

@@ -37,7 +37,13 @@ Package `org.liberationdata.kiln.llama`. See [Language models](/docs/guides/lang
 | `chatJson(requestJson, onContent)` | an OpenAI-format request and reply, with tool calls and `json_schema` |
 | `complete(prompt, options, onPiece)` | raw completion of a prompt you've formatted |
 | `cancel()` | stops a streaming call, from any thread |
-| `LlamaModel.Message` | `role` and `content`; `system(...)`, `user(...)`, `assistant(...)` |
+| `new LlamaModel(Weights)`, `(gguf, mmproj)` | a vision language model with its mmproj; see [Vision](/docs/guides/vision/). `supportsVision()` |
+| `extract(messages, jsonSchema, options)` | a reply constrained to a JSON schema, as JSON text; messages may carry images |
+| `chatJson(requestJson, images, onContent)`, `complete(prompt, images, options, onPiece)` | `chatJson` and `complete` with images; `mediaMarker()` |
+| `LlamaModel.Message` | `role`, `content` and `images`; `system(...)`, `user(...)`, `user(text, images...)`, `assistant(...)` |
+| `LlamaModel.Image` | packed RGB: `of(BufferedImage)`, `read(Path)`, `decode(bytes)` |
+| `LlamaModel.Weights` | the models Kiln knows by name: `QWEN3_4B`, `QWEN3_VL_4B`, `PADDLEOCR_VL`, `MEDGEMMA_4B`; `named(...)`, `model()`, `mmproj()`, `downloaded()` |
+| `Json` | just enough JSON to read `chatJson` replies: `parse`, `get(doc, path...)`, `quote` |
 | `LlamaModel.Options` | `maxTokens`, `temperature`, `topP`, `minP`, `seed`; `DEFAULT`, `withSeed`, `withMaxTokens`, `withTemperature` |
 | `LlamaModel.Result` | `text`, `promptTokens`, `generatedTokens` |
 

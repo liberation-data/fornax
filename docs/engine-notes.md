@@ -75,7 +75,8 @@ surprises you.
   does use the default marker, since the caller writes the whole prompt.
 - **Text tokens after an image need only one position.** Qwen3-VL uses M-RoPE; `mtmd_helper_eval_chunks` returns the
   next position (fewer positions than tokens for an image), and text tokens after it take a single position each
-  through `llama_batch_ext_set_pos`.
+  through `llama_batch_ext_set_pos`. So the shim counts context cells apart from positions: a ~1200-token image
+  takes ~40 positions, and checking the position against `n_ctx` would overrun the KV cache.
 - **Non-causal image attention needs the whole image in one ubatch.** Gemma 3 (MedGemma) attends over an image
   non-causally. Like `llama-mtmd-cli`, `kiln_llama_create_mm` caps the image's tokens at `n_ubatch` (512 by default)
   for such models, using `mtmd_get_memory_usage` (an unstable mtmd API that may move).

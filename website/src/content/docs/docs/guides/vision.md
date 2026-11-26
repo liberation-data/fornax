@@ -4,8 +4,8 @@ description: Send images to a vision language model from Java - Qwen3-VL, Paddle
 ---
 
 :::note[Ships with the next release]
-Vision is in [pull request #13](https://github.com/liberation-data/kiln/pull/13) and isn't on `main` yet. This page
-describes that branch, and the API may still change before it is released.
+Vision is on `main` (from [pull request #13](https://github.com/liberation-data/kiln/pull/13)) but not yet in a
+release, and the API may still change before it is.
 :::
 
 A vision language model is a language model with a vision encoder in front. In GGUF form it comes as two files: the
