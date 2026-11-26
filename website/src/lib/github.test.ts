@@ -56,6 +56,14 @@ test('a private repository offers nothing, and its releases are never asked for'
     assert.ok(!asked.some((it) => it.path.includes('releases')));
 });
 
+test('a private repository this build cannot see (GitHub answers 404) offers nothing', async () => {
+    const asked = github({});
+    const { studioRelease, studioRepoPublic } = await load();
+    assert.equal(await studioRepoPublic(), false);
+    assert.equal(await studioRelease(), undefined);
+    assert.ok(!asked.some((it) => it.path.includes('releases')));
+});
+
 test('a public repository with no release yet offers nothing', async () => {
     github({ 'repos/liberation-data/fornax-studio': PUBLIC });
     const { studioRelease, studioRepoPublic } = await load();
