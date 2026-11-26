@@ -1,3 +1,12 @@
+// Plugins come from the Gradle Plugin Portal, with Maven Central as a fallback: the publishing plugin is on both, and a
+// Portal hiccup once failed a release dry run.
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
 rootProject.name = 'kiln'
 
 include 'kiln-core'     // native library loading, Hugging Face cache lookup, audio
