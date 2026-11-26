@@ -48,6 +48,7 @@ class ModelReferencesTest {
         assertTrue(ModelReferences.isPath(file.toString()));
         assertEquals(Optional.empty(), ModelReferences.locate(file.toString(), STT, hub(List.of())));
         assertEquals(Optional.empty(), ModelReferences.locate("/not/there.bin", STT, hub(List.of())));   // a path, missing: the engine says so
+        assertFalse(ModelReferences.isPath("owner/repo\0:tag"));   // a string the platform can't make a path of isn't one
         assertEquals(List.of(), fake.listings);
         assertEquals(0, fake.heads.get());
     }

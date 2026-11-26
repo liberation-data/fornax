@@ -29,7 +29,7 @@ per file, into the same cache. The rest of this page is the Java API.
 
 `fetch` takes a model by name, downloads whatever of it is missing, and returns its files by role. This is what
 `new LlamaModel("owner/repo:Q4_K_M")` does, and `WhisperModel`, `TtsModel` and `DemucsModel` too. Each refuses an
-alias or file it can't load before downloading anything:
+alias or file it can't load before downloading it:
 
 ```java
 Map<String, Path> files = hub.fetch("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M", PullListener.logging());
