@@ -20,6 +20,7 @@ class HfHomeTest {
         public static void main(String[] args) {
             System.out.println("root=" + HfCache.root());
             System.out.println("token=" + HubToken.tokenFile());
+            System.out.println("found=/" + HubToken.find().orElse("none"));
         }
     }
 
@@ -27,7 +28,7 @@ class HfHomeTest {
         var pb = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                 "-Duser.home=" + dir.resolve("home"), "-cp", System.getProperty("java.class.path"), Print.class.getName())
                 .redirectErrorStream(true);
-        for (String k : List.of("HF_HUB_CACHE", "HF_HOME", "XDG_CACHE_HOME", "HF_TOKEN_PATH")) pb.environment().remove(k);
+        for (String k : List.of("HF_HUB_CACHE", "HF_HOME", "XDG_CACHE_HOME", "HF_TOKEN_PATH", "HF_TOKEN", "HUGGING_FACE_HUB_TOKEN")) pb.environment().remove(k);
         pb.environment().putAll(env);
         Process p = pb.start();
         String out = new String(p.getInputStream().readAllBytes());
@@ -61,6 +62,12 @@ class HfHomeTest {
                 "HF_TOKEN_PATH", dir.resolve("t").toString()));
         assertEquals(dir.resolve("cache"), m.get("root"));
         assertEquals(dir.resolve("t"), m.get("token"));
+    }
+
+    @Test void readsTheLegacyTokenVariableAfterHfToken() throws Exception {
+        assertEquals(Path.of("/none"), run(Map.of()).get("found"));
+        assertEquals(Path.of("/hf_old"), run(Map.of("HUGGING_FACE_HUB_TOKEN", "hf_old")).get("found"));
+        assertEquals(Path.of("/hf_new"), run(Map.of("HF_TOKEN", "hf_new", "HUGGING_FACE_HUB_TOKEN", "hf_old")).get("found"));
     }
 
     @Test void aLeadingTildeIsTheHomeDirectory() throws Exception {

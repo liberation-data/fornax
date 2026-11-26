@@ -147,7 +147,7 @@ Some repos, such as `Lightricks/LTX-2.5`, ask you to accept their terms before y
 terms on the repo's page while signed in to Hugging Face, then create a token (Settings, Access Tokens; read access is
 enough). Give the token to Kiln in one of these ways:
 
-- set `HF_TOKEN`;
+- set `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`, its older name, which Kiln reads after it, as `hf` does);
 - run `hf auth login`, which saves it where Kiln looks for it (`HF_TOKEN_PATH`, else `$HF_HOME/token`, else
   `$XDG_CACHE_HOME/huggingface/token`, else `~/.cache/huggingface/token`);
 - pass it to the builder: `KilnHub.builder().token("hf_...").build()`.
@@ -167,7 +167,9 @@ e.kept();   // parts left in place because another model on disk uses the same f
 ```
 
 `evict` removes the set's files from the Hugging Face cache: the file's entry in every snapshot of its repo, then the
-blob that entry pointed to, and any partial download of it. It keeps:
+blob that entry pointed to, and any partial download of it. A part that more than one repo publishes is removed only
+from the repo it was found in (the one `find` and `status` report): evicting `qwen-image` removes its text encoder
+from the Qwen-Image repo, and leaves the copy in the HunyuanVideo repo, which other tools may use. It keeps:
 
 - a blob that another snapshot entry still points to;
 - a file that another model set on disk also uses. Evicting ACE-Step turbo keeps the VAE and text encoder that ACE-Step
@@ -213,6 +215,6 @@ A `Source` can pin a revision: `new ModelSet.Source(repo, file, "<40-character c
 |---|---|
 | `HF_HUB_CACHE`, `HF_HOME` | where the cache is: `HF_HUB_CACHE`, else `$HF_HOME/hub`, else `$XDG_CACHE_HOME/huggingface/hub`, else `~/.cache/huggingface/hub`, as `hf` has it. `KilnHub.builder().cacheRoot(path)` overrides them |
 | `-Dkiln.modelDirs`, `KILN_MODEL_DIRS` | model folders searched after the cache |
-| `HF_TOKEN`, `HF_TOKEN_PATH` | the access token for gated repos |
+| `HF_TOKEN`, `HUGGING_FACE_HUB_TOKEN`, `HF_TOKEN_PATH` | the access token for gated repos |
 | `HF_ENDPOINT` | the Hub to download from (default `https://huggingface.co`), for a mirror |
 | `HF_HUB_OFFLINE` | when set to `1`, a pull that needs the network fails at once with reason `OFFLINE` |

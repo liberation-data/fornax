@@ -366,8 +366,11 @@ public final class KilnHub {
     public Eviction evict(ModelSet set) throws IOException { return evict(set, catalogue); }
 
     /**
-     * Removes the set's files from the Hugging Face cache: its snapshot entries in every snapshot, then each blob
-     * they pointed at unless another snapshot entry still points at it, and any partial download of them. A part
+     * Removes the set's files from the Hugging Face cache. For each part, only the source it resolves to there (the
+     * one {@link #find} and {@link #status} report) is removed, not the same file published in its other sources'
+     * repos, which Kiln did not pull for this set: that source's entries in every snapshot of its repo, then each blob
+     * they pointed at unless another snapshot entry still points at it. Any partial download a Kiln pull left of the
+     * part, from whichever source, goes too. A part
      * is kept whole when a set in {@code others} that is on disk (has a part present that this set doesn't share)
      * uses the same file: evicting ACE-Step turbo keeps the VAE that ACE-Step XL, also downloaded, needs.
      * Files in model folders are never touched. A blob another pull is downloading (its lock is held) is left.
@@ -380,7 +383,9 @@ public final class KilnHub {
         Map<String, Set<Path>> candidates = new LinkedHashMap<>();
         for (Part part : set.parts()) {
             if (sharedWithAnother(set, part, others)) { kept.add(part); continue; }
-            for (Source s : part.sources()) {
+            Optional<Source> resolved = part.sources().stream().filter(s -> cache.find(s).isPresent()).findFirst();
+            if (resolved.isPresent()) {
+                Source s = resolved.get();
                 String repo = s.repo();
                 Set<Path> blobs = candidates.computeIfAbsent(repo, r -> new LinkedHashSet<>());
                 Path snaps = cache.snapshots(repo);
@@ -397,6 +402,9 @@ public final class KilnHub {
                         }
                     }
                 }
+            }
+            for (Source s : part.sources()) {   // partial downloads are Kiln's own (its .pending notes), from any source
+                String repo = s.repo();
                 for (CacheLayout.Pending p : cache.pendings(repo)) {
                     if (!p.path().equals(s.file())) continue;
                     Path incomplete = cache.incomplete(repo, p.etag());
@@ -405,6 +413,7 @@ public final class KilnHub {
                         long size = sizeOrZero(incomplete);
                         if (Files.deleteIfExists(incomplete)) { freed += size; removed.add(incomplete); }
                         Files.deleteIfExists(cache.pending(repo, p.etag()));
+                        candidates.computeIfAbsent(repo, r -> new LinkedHashSet<>());   // to prune its folder
                     }
                 }
             }

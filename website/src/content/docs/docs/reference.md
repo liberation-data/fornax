@@ -161,4 +161,4 @@ used end to end.
 | `KILN_ACESTEP_VAE_CHUNK` | ACE-Step's VAE decode tile, in frames (512) |
 | `HF_HUB_CACHE`, `HF_HOME` | where `HfCache` and `KilnHub` look |
 | `-Dkiln.modelDirs`, `KILN_MODEL_DIRS` | model folders `KilnHub` searches after the cache |
-| `HF_TOKEN`, `HF_TOKEN_PATH`, `HF_ENDPOINT`, `HF_HUB_OFFLINE` | `KilnHub`'s token for gated repos, the Hub to download from, and no network |
+| `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`), `HF_TOKEN_PATH`, `HF_ENDPOINT`, `HF_HUB_OFFLINE` | `KilnHub`'s token for gated repos, the Hub to download from, and no network |

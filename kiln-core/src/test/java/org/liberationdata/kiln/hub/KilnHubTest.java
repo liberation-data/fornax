@@ -418,6 +418,25 @@ class KilnHubTest {
         assertNotNull(vae);
     }
 
+    @Test void evictRemovesOnlyTheSourceThePartResolvesTo() throws Exception {
+        var first = fake.add("first/repo", "te.safetensors", 1_000, true);
+        var second = fake.add("second/repo", "te.safetensors", 2_000, true);
+        var part = Part.anyOf("llm", new ModelSet.Source("first/repo", "te.safetensors"), new ModelSet.Source("second/repo", "te.safetensors"));
+        var set = set("y", part);
+        KilnHub hub = hub();
+        // Another tool's download of the same file from the other repo, which Kiln did not pull for this set.
+        hub.pull(set("x", Part.of("llm", "second/repo", "te.safetensors")), PullListener.NONE);
+        hub.pull(set("z", Part.of("llm", "first/repo", "te.safetensors")), PullListener.NONE);
+        assertTrue(hub.status(set).parts().get(0).path().toString().contains("models--first--repo"));
+
+        Eviction e = hub.evict(set);
+        assertEquals(1_000, e.bytesFreed());
+        assertFalse(Files.exists(cache.resolve("models--first--repo")));
+        assertTrue(Files.exists(cache.resolve("models--second--repo/blobs").resolve(second.etag())), "the other repo's file stays");
+        assertTrue(hub.status(set).parts().get(0).path().toString().contains("models--second--repo"));
+        assertNotNull(first);
+    }
+
     @Test void evictKeepsABlobAnotherSnapshotStillLinksTo() throws Exception {
         var f = fake.add(REPO, "model.gguf", 4_000, true);
         var set = set("one", Part.of("m", REPO, "model.gguf"));
@@ -449,6 +468,7 @@ class KilnHubTest {
         Eviction e = hub().evict(set);
         assertTrue(e.bytesFreed() > 0);
         assertEquals(State.MISSING, hub().status(set).state());
+        assertFalse(Files.exists(cache.resolve("models--test-org--Model-GGUF")), "the emptied repo folder goes too");
     }
 
     @Test void aServerThatIgnoresRangeRestartsTheFileFromZero() throws Exception {

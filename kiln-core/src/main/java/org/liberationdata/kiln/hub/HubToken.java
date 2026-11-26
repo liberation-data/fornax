@@ -15,12 +15,15 @@ public final class HubToken {
     private HubToken() {}
 
     /**
-     * {@code HF_TOKEN}, else the file {@code hf auth login} writes: {@code HF_TOKEN_PATH}, else {@code token} in
+     * {@code HF_TOKEN}, else {@code HUGGING_FACE_HUB_TOKEN} (its older name, still read by {@code huggingface_hub}),
+     * else the file {@code hf auth login} writes: {@code HF_TOKEN_PATH}, else {@code token} in
      * {@link HfCache#home()} ({@code $HF_HOME}, {@code $XDG_CACHE_HOME/huggingface} or {@code ~/.cache/huggingface}).
      */
     public static Optional<String> find() {
-        String env = System.getenv("HF_TOKEN");
-        if (env != null && !env.isBlank()) return Optional.of(env.trim());
+        for (String name : new String[] {"HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"}) {
+            String env = System.getenv(name);
+            if (env != null && !env.isBlank()) return Optional.of(env.trim());
+        }
         return fromFile(tokenFile());
     }
 
