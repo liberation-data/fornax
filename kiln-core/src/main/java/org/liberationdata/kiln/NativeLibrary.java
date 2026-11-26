@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Finds and binds one of Kiln's native libraries.
@@ -19,6 +20,10 @@ import java.util.List;
  *   <li>system property {@code kiln.NAME.lib}: an exact file path</li>
  *   <li>each directory in system property {@code kiln.library.path}</li>
  *   <li>each directory in env {@code KILN_LIBRARY_PATH}</li>
+ *   <li>a Kiln natives jar on the classpath ({@code org.kiln4j:kiln-natives-<os>-<arch>-<backend>}), extracted to
+ *   a per-version cache directory; with several backends there, {@code -Dkiln.backend} or {@code KILN_BACKEND}
+ *   picks one, else Metal, CUDA, HIP, Vulkan, CPU in that order. Set {@code -Dkiln.cache.dir} (or
+ *   {@code KILN_CACHE_DIR}) to move the cache; by default it is {@code ~/.cache/kiln} or {@code ~/Library/Caches/kiln}</li>
  *   <li>the platform loader (LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, system dirs)</li>
  * </ol>
  *
@@ -55,11 +60,14 @@ public final class NativeLibrary {
             Path p = Path.of(d, file);
             if (Files.isRegularFile(p)) return new NativeLibrary(name, SymbolLookup.libraryLookup(p, Arena.global()));
         }
+        Optional<Path> bundled = BundledNatives.find(name);
+        if (bundled.isPresent()) return new NativeLibrary(name, SymbolLookup.libraryLookup(bundled.get(), Arena.global()));
         try {
             return new NativeLibrary(name, SymbolLookup.libraryLookup(file, Arena.global()));
         } catch (IllegalArgumentException e) {
-            throw new UnsatisfiedLinkError("Kiln could not find " + file + " (searched " + dirs
-                    + " and the platform loader). Set -Dkiln.library.path=<dir> or -Dkiln." + name + ".lib=<file>.");
+            throw new UnsatisfiedLinkError("Kiln could not find " + file + " (searched " + dirs + ", the classpath for a "
+                    + "kiln-natives jar, and the platform loader). Add the org.kiln4j:kiln-natives-<os>-<arch>-<backend> "
+                    + "dependency, or set -Dkiln.library.path=<dir> or -Dkiln." + name + ".lib=<file>.");
         }
     }
 

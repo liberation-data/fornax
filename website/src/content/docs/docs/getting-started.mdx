@@ -134,7 +134,8 @@ Kiln looks for each library (`libkiln_llama.so`, or `.dylib` on macOS) in this o
 1. `-Dkiln.<name>.lib=<file>`: an exact file, for example `-Dkiln.kiln_llama.lib=/opt/kiln/libkiln_llama.so`;
 2. each directory in `-Dkiln.library.path` (separated by your platform's path separator);
 3. each directory in the `KILN_LIBRARY_PATH` environment variable;
-4. the platform loader's path (`LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH` and the system directories).
+4. a Kiln natives jar on the classpath (see [Maven and Gradle](/docs/maven-and-gradle/));
+5. the platform loader's path (`LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH` and the system directories).
 
 If it finds none, the first use of that engine's model class fails with an `UnsatisfiedLinkError` that says where it
 looked.

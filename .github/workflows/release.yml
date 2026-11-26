@@ -1,0 +1,301 @@
+# Publishes Kiln to Maven Central as org.kiln4j:*: the Java modules (kiln-core, kiln-llama, kiln-tts, kiln-sd,
+# kiln-acestep, kiln-yue2) and one natives jar per platform and backend (kiln-natives-<os>-<arch>-<backend>).
+#
+# On a published GitHub Release tagged v<version> (v0.1.0 publishes 0.1.0). Run by hand for a dry run, which builds
+# and signs every jar exactly as a release does, and stops before the upload; the signed repository is left as an
+# artifact to look through. A run by hand that isn't a dry run must be on a v* tag.
+# After a release, verify-central waits for repo1.maven.org to serve it and builds samples/hello-kiln from there.
+#
+# NO SECRETS WHERE THIRD-PARTY CODE BUILDS. The natives job builds llama.cpp, stable-diffusion.cpp, acestep.cpp and
+# yue2.cpp (fetched by native/build.sh at the commits native/engines.properties pins), so it gets no secrets; only the
+# publish job, which runs Gradle on this repository's own code, sees the signing key and the Central credentials.
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and sign everything, but don't upload to Maven Central
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  # Resolves the sample's runtime dependencies too (its natives jar), which `mvn compile` alone never does.
+  RESOLVE: org.apache.maven.plugins:maven-dependency-plugin:3.8.1:resolve
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      dry_run: ${{ steps.v.outputs.dry_run }}
+    steps:
+      - id: v
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          elif [ "$DRY_RUN" = true ]; then
+            version="0.0.0-dryrun"
+          else
+            echo "::error::a release must be on a v* tag (this is $GITHUB_REF)"; exit 1
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || { echo "::error::not a version: $version"; exit 1; }
+          [[ "$version" != *-SNAPSHOT ]] || { echo "::error::a release can't be a snapshot: $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
+          echo "Kiln $version (dry run: $DRY_RUN)"
+
+  natives:
+    name: Natives (${{ matrix.platform }})
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    # From cold, four copies of ggml (and on Vulkan its shaders four times over); the cache below keeps them while
+    # native/ and the engines' sources stay the same.
+    timeout-minutes: 180
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Ubuntu 24.04 rather than newer keeps the glibc the libraries need at 2.39.
+          - { platform: linux-x86_64-vulkan, runner: ubuntu-24.04, backend: vulkan, dir: linux-x86_64-vulkan }
+          # native/build.sh names the directory by `uname -m`, which is arm64 on macOS
+          - { platform: macos-aarch64-metal, runner: macos-15, backend: metal, dir: macos-arm64-metal }
+          - { platform: macos-x86_64-metal, runner: macos-15-intel, backend: metal, dir: macos-x86_64-metal }
+    env:
+      # Libraries for anyone's machine, not the runner's: no -march=native (on x86, ggml's AVX2/FMA baseline instead).
+      CMAKE_EXTRA: -DGGML_NATIVE=OFF
+      # macOS: the oldest release the libraries run on (llama.cpp's own releases use 13.3). Ignored on Linux.
+      MACOSX_DEPLOYMENT_TARGET: '13.3'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build > /dev/null
+
+      # The LunarG SDK, for glslc and current Vulkan headers: Ubuntu 24.04's own (1.3.275) are older than ggml's Vulkan
+      # backend is tested with. The way llama.cpp's own CI does it (.github/workflows/build-vulkan.yml there).
+      - name: Set up the Vulkan SDK (Linux)
+        if: runner.os == 'Linux' && matrix.backend == 'vulkan'
+        run: |
+          set -euo pipefail
+          version="$(curl -fsSL https://vulkan.lunarg.com/sdk/latest/linux.txt)"
+          mkdir -p "$RUNNER_TEMP/vulkan_sdk"
+          curl -fsSL "https://sdk.lunarg.com/sdk/download/$version/linux/vulkan_sdk.tar.xz" | tar -xJ -C "$RUNNER_TEMP/vulkan_sdk" --strip-components 1
+          echo "VULKAN_SDK_VERSION=$version" >> "$GITHUB_ENV"
+          echo "Vulkan SDK $version"
+
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew list ninja > /dev/null 2>&1 || brew install ninja
+
+      - name: Cache the native libraries
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: build/native/${{ matrix.dir }}
+          key: natives-${{ matrix.platform }}-${{ env.VULKAN_SDK_VERSION }}-${{ hashFiles('native/**', 'kiln-llama/native/**', 'kiln-tts/native/**', 'kiln-acestep/native/**', 'kiln-yue2/native/**') }}
+
+      - name: Build the native libraries
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          if [ -n "${VULKAN_SDK_VERSION:-}" ]; then
+            # setup-env.sh reads $1 without a default, which set -u rejects; source it with -u off.
+            set +u
+            source "$RUNNER_TEMP/vulkan_sdk/setup-env.sh"
+            set -u
+            # For the link's -lvulkan: setup-env.sh sets the loader's path for running, not for linking. Since SDK
+            # 1.4.x the loader is in lib/VulkanLoader/lib, not lib.
+            export LIBRARY_PATH="$VULKAN_SDK/lib/VulkanLoader/lib:$VULKAN_SDK/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
+          fi
+          native/build.sh ${{ matrix.backend }} llama tts sd acestep yue2
+
+      # What the libraries need of the system: on Linux the Vulkan loader, OpenMP and the C++ runtime; on macOS only
+      # system frameworks. A library that needs anything else fails here.
+      - name: Check the native libraries
+        env:
+          DIR: build/native/${{ matrix.dir }}
+        run: |
+          set -euo pipefail
+          ls -l "$DIR"
+          for lib in libkiln_llama libkiln_tts libstable-diffusion libkiln_acestep libkiln_yue2; do
+            [ -f "$DIR/$lib.so" ] || [ -f "$DIR/$lib.dylib" ] || { echo "::error::no $lib in $DIR"; exit 1; }
+          done
+          # kiln-llama binds its vision functions when it loads, so a libkiln_llama built without mtmd fails every model.
+          if [ "$RUNNER_OS" = Linux ]; then syms="nm -D --defined-only"; else syms="nm -gU"; fi
+          $syms "$DIR"/libkiln_llama.* | grep 'kiln_llama_create_mm$' > /dev/null || { echo "::error::libkiln_llama has no vision (mtmd)"; exit 1; }
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get install -y -qq libvulkan1 > /dev/null
+            for lib in "$DIR"/*.so; do
+              echo "== $lib"; ldd "$lib"
+              if ldd "$lib" | grep -q 'not found'; then echo "::error::$lib needs a library that isn't there"; exit 1; fi
+            done
+            echo "Newest glibc needed: $(objdump -T "$DIR"/*.so | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)"
+          else
+            for lib in "$DIR"/*.dylib; do
+              echo "== $lib"; otool -L "$lib"
+              # Line 1 is the file, line 2 the library's own name; then what it links.
+              if otool -L "$lib" | tail -n +3 | grep -v -e '/usr/lib/' -e '/System/Library/'; then
+                echo "::error::$lib links a library outside the system"; exit 1
+              fi
+            done
+            otool -l "$DIR"/*.dylib | grep -A3 LC_BUILD_VERSION | grep minos | sort -u
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: natives-${{ matrix.platform }}
+          path: build/native/${{ matrix.dir }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish ${{ needs.version.outputs.version }}${{ needs.version.outputs.dry_run == 'true' && ' (dry run)' || '' }}
+    needs: [version, natives]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      DRY_RUN: ${{ needs.version.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      # Back into build/native/<dir>, where native/build.sh left them.
+      - uses: actions/download-artifact@v8
+        with:
+          name: natives-linux-x86_64-vulkan
+          path: build/native/linux-x86_64-vulkan
+      - uses: actions/download-artifact@v8
+        with:
+          name: natives-macos-aarch64-metal
+          path: build/native/macos-arm64-metal
+      - uses: actions/download-artifact@v8
+        with:
+          name: natives-macos-x86_64-metal
+          path: build/native/macos-x86_64-metal
+
+      # The Java modules' unit tests; the engine tests skip themselves without models.
+      - name: Build and test
+        run: ./gradlew --no-daemon build -Pversion="$VERSION" -Pkiln.natives.require=true
+
+      # Everything signed, into a local repository: what a release uploads, and what a dry run stops at.
+      - name: Sign into a local repository
+        env:
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon publishToMavenLocal -Pversion="$VERSION" -Pkiln.natives.require=true -Dmaven.repo.local="$RUNNER_TEMP/m2"
+          repo="$RUNNER_TEMP/m2/org/kiln4j"
+          for a in kiln-core kiln-llama kiln-tts kiln-sd kiln-acestep kiln-yue2 \
+                   kiln-natives-linux-x86_64-vulkan kiln-natives-macos-aarch64-metal kiln-natives-macos-x86_64-metal; do
+            for f in "$a-$VERSION.pom" "$a-$VERSION.jar" "$a-$VERSION-sources.jar" "$a-$VERSION-javadoc.jar"; do
+              [ -f "$repo/$a/$VERSION/$f" ] || { echo "::error::$f was not built"; exit 1; }
+              [ -f "$repo/$a/$VERSION/$f.asc" ] || { echo "::error::$f was not signed"; exit 1; }
+            done
+          done
+          du -ah "$repo" | grep -E '\.jar$' | sort -k2
+          # The Central Portal takes deployments of up to 1 GB.
+          total=$(du -sb "$repo" | cut -f1)
+          echo "Deployment: $((total / 1024 / 1024)) MB"
+          [ "$total" -lt 1000000000 ] || { echo "::error::the deployment is over the Central Portal's 1 GB"; exit 1; }
+
+      # samples/hello-kiln, a standalone build, against what was just signed: the coordinates users will copy work.
+      # Compiling alone never resolves the runtime-only natives jar, so Gradle installs the app and Maven resolves.
+      - name: Build the sample against the signed repository
+        run: |
+          set -euo pipefail
+          samples/hello-kiln/gradlew --no-daemon -p samples/hello-kiln installDist -PkilnLocal=true -PkilnVersion="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
+          mvn -B -q -f samples/hello-kiln/pom.xml compile $RESOLVE -Dkiln.version="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
+
+      - name: Keep the signed repository (dry run)
+        if: env.DRY_RUN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: maven-repository-${{ env.VERSION }}
+          path: ${{ runner.temp }}/m2/org/kiln4j
+          retention-days: 3
+
+      # Uploads one deployment, waits for the Central Portal to validate it, and publishes it.
+      - name: Publish to Maven Central
+        if: env.DRY_RUN != 'true'
+        env:
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # A re-run after an upload that went through (the job failed later, or while waiting): Central refuses a
+          # version it already has, so go on to verify-central instead of failing here every time.
+          if curl -fsI -o /dev/null "https://repo1.maven.org/maven2/org/kiln4j/kiln-core/$VERSION/kiln-core-$VERSION.pom"; then
+            echo "::notice::Kiln $VERSION is already on Maven Central; not uploading it again"; exit 0
+          fi
+          ./gradlew --no-daemon publishAndReleaseToMavenCentral -Pversion="$VERSION" -Pkiln.natives.require=true
+
+  # After a release: wait until Maven Central serves every artifact, then build the sample from Central alone, the
+  # way a user would (built, not run: runners have no GPU to run it on).
+  verify-central:
+    name: Resolve ${{ needs.version.outputs.version }} from Maven Central
+    needs: [version, publish]
+    if: needs.version.outputs.dry_run != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Wait for repo1.maven.org
+        run: |
+          set -euo pipefail
+          base=https://repo1.maven.org/maven2/org/kiln4j
+          files=()
+          for a in kiln-core kiln-llama kiln-tts kiln-sd kiln-acestep kiln-yue2 \
+                   kiln-natives-linux-x86_64-vulkan kiln-natives-macos-aarch64-metal kiln-natives-macos-x86_64-metal; do
+            files+=("$base/$a/$VERSION/$a-$VERSION.pom" "$base/$a/$VERSION/$a-$VERSION.jar")
+          done
+          deadline=$(( $(date +%s) + 30 * 60 ))
+          while :; do
+            missing=0
+            for f in "${files[@]}"; do curl -fsI -o /dev/null "$f" || missing=$((missing + 1)); done
+            [ "$missing" = 0 ] && { echo "All ${#files[@]} files are on Maven Central"; break; }
+            [ "$(date +%s)" -lt "$deadline" ] || { echo "::error::$missing of ${#files[@]} files still missing from Maven Central after 30 minutes"; exit 1; }
+            echo "$missing of ${#files[@]} files not there yet; waiting"
+            sleep 60
+          done
+
+      - name: Build the sample from Maven Central
+        run: |
+          set -euo pipefail
+          samples/hello-kiln/gradlew --no-daemon -p samples/hello-kiln installDist --refresh-dependencies -PkilnVersion="$VERSION"
+          mvn -B -q -U -f samples/hello-kiln/pom.xml compile $RESOLVE -Dkiln.version="$VERSION"

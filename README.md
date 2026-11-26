@@ -48,7 +48,92 @@ try (var vlm = new LlamaModel(LlamaModel.Weights.QWEN3_VL_4B)) {   // the GGUF p
 }
 ```
 
-## Quick start
+## Getting started
+
+Kiln is on Maven Central as `org.kiln4j`. Add an engine module (`kiln-llama`, `kiln-tts`, `kiln-sd`, `kiln-acestep`
+or `kiln-yue2`) and the **natives jar** for your platform, which holds the engines' native libraries.
+
+The quickest start is [`samples/hello-kiln`](samples/hello-kiln): a standalone app for Gradle and Maven that streams
+a chat reply from Qwen3 4B. Copy it out and run `./gradlew run` or `mvn -q compile exec:java`.
+
+The natives jars:
+
+| Natives artifact | Platform | GPU backend |
+|---|---|---|
+| `kiln-natives-linux-x86_64-vulkan` | Linux x86-64 (glibc 2.39+: Ubuntu 24.04, Fedora 40 or newer) | Vulkan (AMD, Intel, NVIDIA) |
+| `kiln-natives-macos-aarch64-metal` | macOS 13.3+ on Apple silicon | Metal |
+| `kiln-natives-macos-x86_64-metal` | macOS 13.3+ on Intel | Metal |
+
+On Linux, the GPU's Vulkan driver must be installed (it usually is).
+
+Gradle (`build.gradle.kts`), choosing the natives jar for the machine that builds:
+
+```kotlin
+val kilnVersion = "0.1.0"
+val kilnNatives = when {
+    !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
+    System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
+    else -> "macos-x86_64-metal"
+}
+
+dependencies {
+    implementation("org.kiln4j:kiln-llama:$kilnVersion")
+    runtimeOnly("org.kiln4j:kiln-natives-$kilnNatives:$kilnVersion")
+}
+```
+
+Maven, with a profile per platform that the OS activates and that names the natives jar:
+
+```xml
+<properties>
+    <kiln.version>0.1.0</kiln.version>
+</properties>
+
+<dependencies>
+    <dependency>
+        <groupId>org.kiln4j</groupId>
+        <artifactId>kiln-llama</artifactId>
+        <version>${kiln.version}</version>
+    </dependency>
+    <dependency>
+        <groupId>org.kiln4j</groupId>
+        <artifactId>kiln-natives-${kiln.natives}</artifactId>
+        <version>${kiln.version}</version>
+        <scope>runtime</scope>
+    </dependency>
+</dependencies>
+
+<profiles>
+    <profile>
+        <id>kiln-linux-x86_64</id>
+        <activation><os><name>Linux</name><arch>amd64</arch></os></activation>
+        <properties><kiln.natives>linux-x86_64-vulkan</kiln.natives></properties>
+    </profile>
+    <profile>
+        <id>kiln-macos-aarch64</id>
+        <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
+        <properties><kiln.natives>macos-aarch64-metal</kiln.natives></properties>
+    </profile>
+    <profile>
+        <id>kiln-macos-x86_64</id>
+        <activation><os><family>mac</family><arch>x86_64</arch></os></activation>
+        <properties><kiln.natives>macos-x86_64-metal</kiln.natives></properties>
+    </profile>
+</profiles>
+```
+
+Run with `--enable-native-access=ALL-UNNAMED`. The first time an engine loads, Kiln extracts its library from the
+natives jar into a per-version cache (`~/.cache/kiln/<version>/` on Linux, `~/Library/Caches/kiln/<version>/` on
+macOS; move it with `-Dkiln.cache.dir`) and loads it from there.
+
+**Choosing a backend.** Each natives jar is one platform and one GPU backend, so the jar you add is the choice.
+Natives jars for different platforms can sit side by side (to ship one build for every platform, add all three);
+Kiln loads the one for the machine it runs on. If jars for several backends of the same platform are on the
+classpath, `-Dkiln.backend=vulkan` (or `KILN_BACKEND`) picks one; otherwise Kiln prefers Metal, then CUDA, HIP and
+Vulkan. For ROCm (HIP), CUDA or anything else, build the libraries yourself (see [Building](#building)) and point
+`-Dkiln.library.path` at them, which always wins over a natives jar.
+
+## Quick start (from source)
 
 The fastest way to see Kiln work: build the engines, fetch three models, and run the demo. One Java program
 has Qwen3 4B write a country song, ACE-Step 1.5 sing it and FLUX.2 [klein] paint its cover, all in one JVM.
@@ -130,8 +215,9 @@ native/build.sh vulkan            # or hip | cuda | metal | cpu; optionally list
 and writes the libraries to `build/native/<os>-<arch>-<backend>/`. The Gradle build points the examples and tests
 at that folder; pick another backend with `-Pkiln.backend=hip`.
 
-In your own application, put the libraries on `-Dkiln.library.path=<dir>` (or `KILN_LIBRARY_PATH`, or the
-platform loader path) and run with `--enable-native-access=ALL-UNNAMED`. Set `KILN_VERBOSE=1` to see the
+To use your own build in an application, put the libraries on `-Dkiln.library.path=<dir>` (or `KILN_LIBRARY_PATH`,
+or the platform loader path) and run with `--enable-native-access=ALL-UNNAMED`; an explicit path wins over a
+natives jar. Set `KILN_VERBOSE=1` to see the
 engines' own logs.
 
 On a power-limited GPU (for example a laptop on battery), a single long GPU dispatch can exceed the driver's
@@ -179,7 +265,7 @@ second argument. The request formats are the engines' own (see
 
 ## Roadmap
 
-- Test and document the HIP, CUDA and Metal builds; prebuilt native libraries per platform.
+- Test and document the HIP, CUDA and Metal builds; natives jars for HIP and CUDA.
 - Video through stable-diffusion.cpp (`sd_generate_video`: Wan, LTX).
 - `kiln-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `kiln-llama`).
 - An optional OpenAI-compatible server.

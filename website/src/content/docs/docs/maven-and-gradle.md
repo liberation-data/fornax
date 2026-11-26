@@ -13,13 +13,19 @@ From the first release, Kiln is on Maven Central under the group **`org.kiln4j`*
 engine module, and the **natives jar** for your platform, which holds the engines' native libraries. Your app then
 needs no native build of its own.
 
+For a complete app to copy, see [`samples/hello-kiln`](https://github.com/liberation-data/kiln/tree/main/samples/hello-kiln):
+a standalone Gradle and Maven project that streams a chat reply from Qwen3 4B. Fetch the model, then run
+`./gradlew run` or `mvn -q compile exec:java`. To try it against a Kiln you built, `./gradlew publishToMavenLocal`
+in the Kiln repository and run the sample with `-PkilnLocal=true -PkilnVersion=0.1.0-SNAPSHOT` (Gradle) or
+`-Dkiln.version=0.1.0-SNAPSHOT` (Maven).
+
 ## The artifacts
 
 The Java modules, each with sources and javadoc jars:
 
 | Artifact | |
 |---|---|
-| `kiln-llama` | language models (llama.cpp) |
+| `kiln-llama` | language and vision language models (llama.cpp, with `mtmd` for images) |
 | `kiln-tts` | text to speech (llama.cpp's audio generation) |
 | `kiln-sd` | images and video (stable-diffusion.cpp) |
 | `kiln-acestep` | ACE-Step songs (acestep.cpp) |
@@ -107,7 +113,7 @@ Run with `--enable-native-access=ALL-UNNAMED`, as for any Kiln app.
 The first time an engine loads, Kiln extracts its library from the natives jar into a per-version cache and loads it
 from there:
 
-- Linux: `~/.cache/kiln/<version>/<platform>/`
+- Linux: `~/.cache/kiln/<version>/<platform>/` (`$XDG_CACHE_HOME/kiln/...` when that is set)
 - macOS: `~/Library/Caches/kiln/<version>/<platform>/`
 
 Move the cache with `-Dkiln.cache.dir` or `KILN_CACHE_DIR`. Each copy is written to a temporary file and moved into

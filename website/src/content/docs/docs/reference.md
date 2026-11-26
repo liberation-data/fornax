@@ -120,6 +120,8 @@ used end to end.
 |---|---|
 | `-Dkiln.library.path`, `KILN_LIBRARY_PATH` | where to look for the native libraries |
 | `-Dkiln.<name>.lib` | one library's exact file; the names are `kiln_llama`, `kiln_tts`, `stable-diffusion`, `kiln_acestep` and `kiln_yue2` |
+| `-Dkiln.backend`, `KILN_BACKEND` | which natives jar's backend to load when several for this platform are on the classpath |
+| `-Dkiln.cache.dir`, `KILN_CACHE_DIR` | where natives jars' libraries are extracted to |
 | `-Dkiln.gpu.graphs` | ggml's CUDA and HIP graphs; `false` by default |
 | `-Dkiln.vulkan.maxNodesPerSubmit` | graph nodes per Vulkan submission |
 | `KILN_VERBOSE` | the engines' own logs; `debug` for everything from stable-diffusion.cpp |
