@@ -961,7 +961,7 @@ const theme = 'vitesse-dark';
                             ))}
                         </div>
                         <div class="qs-frames">
-                            <div class="qs-frame" role="tabpanel" id="qs-add" aria-labelledby="qs-step-add">
+                            <div class="qs-frame" id="qs-add">
                                 <h3 class="qs-title">1. Add Fornax</h3>
                                 <div class="qs-tabs" role="group" aria-label="Build tool">
                                     <button type="button" aria-pressed="true" data-qs="gradle">Gradle</button>
@@ -971,12 +971,12 @@ const theme = 'vitesse-dark';
                                 <div class="shell" data-qs-pane="maven" hidden><Code code={qsMaven} lang="xml" theme={theme} /></div>
                                 <p class="qs-note">One natives jar holds every engine’s libraries, so there’s no native build. Fornax unpacks the one it needs into its cache the first time it loads.</p>
                             </div>
-                            <div class="qs-frame" role="tabpanel" id="qs-hello" aria-labelledby="qs-step-hello" hidden>
+                            <div class="qs-frame" id="qs-hello" hidden>
                                 <h3 class="qs-title">2. Write hello</h3>
                                 <div class="shell"><Code code={qsHello} lang="java" theme={theme} /></div>
                                 <p class="qs-note">The first run downloads Qwen3 4B (2.5 GB) into the Hugging Face cache, which <code>hf</code>, Fornax Studio and the <a href="/docs/guides/cli/"><code>fornax</code> command</a> share. To fetch it ahead of time: <code>fornax pull qwen3-4b</code>.</p>
                             </div>
-                            <div class="qs-frame" role="tabpanel" id="qs-run" aria-labelledby="qs-step-run" hidden>
+                            <div class="qs-frame" id="qs-run" hidden>
                                 <h3 class="qs-title">3. Run it</h3>
                                 <div class="qs-tabs" role="group" aria-label="Build tool">
                                     <button type="button" aria-pressed="true" data-qs="gradle">Gradle</button>
@@ -987,7 +987,7 @@ const theme = 'vitesse-dark';
                                 <pre class="qs-out" aria-label="What it prints" set:html={qsOutput} />
                                 <p class="qs-note">A real run on a Radeon 8060S: loaded in 0.7 s, then 58 tokens a second, printed as they come. The JVM needs <code>--enable-native-access=ALL-UNNAMED</code>: Gradle’s <code>application</code> block passes it, and Maven’s <code>exec:java</code> runs the app inside Maven’s own JVM, so it goes in <code>MAVEN_OPTS</code>. <a href="https://github.com/liberation-data/fornax/tree/main/samples/hello-fornax">samples/hello-fornax</a> is this app, ready to copy.</p>
                             </div>
-                            <div class="qs-frame" role="tabpanel" id="qs-more" aria-labelledby="qs-step-more" hidden>
+                            <div class="qs-frame" id="qs-more" hidden>
                                 <h3 class="qs-title">4. Add another engine</h3>
                                 <div class="qs-tabs" role="group" aria-label="Engine">
                                     <button type="button" aria-pressed="true" data-qs="speech">Speech</button>
@@ -1138,6 +1138,12 @@ const theme = 'vitesse-dark';
                 const qs = document.querySelector<HTMLElement>('.qs');
                 if (qs) {
                     qs.classList.add('on');
+                    // Tab roles only once the tabs work: without script the frames are a plain list of steps.
+                    for (const b of qs.querySelectorAll<HTMLElement>('.qs-steps [role="tab"]')) {
+                        const frame = document.getElementById(b.getAttribute('aria-controls')!)!;
+                        frame.setAttribute('role', 'tabpanel');
+                        frame.setAttribute('aria-labelledby', b.id);
+                    }
                     const steps = [...qs.querySelectorAll<HTMLButtonElement>('.qs-steps [role="tab"]')];
                     const frames = steps.map((b) => document.getElementById(b.getAttribute('aria-controls')!)!);
                     const where = qs.querySelector('.qs-where span')!;
