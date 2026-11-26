@@ -49,6 +49,10 @@ try (var vlm = new LlamaModel(LlamaModel.Weights.QWEN3_VL_4B)) {   // the GGUF p
 }
 ```
 
+`DiffusionModel` also edits: a `Request` can carry reference images (Qwen-Image-Edit, FLUX.2), an init image and
+strength (img2img), a mask (inpainting), a ControlNet hint and LoRAs. `Upscaler` runs ESRGAN models. See the
+[images guide](https://kiln4j.org/docs/guides/images/).
+
 ## Getting started
 
 Kiln is on Maven Central as `org.kiln4j`. Add an engine module (`kiln-llama`, `kiln-tts`, `kiln-sd`, `kiln-acestep`,
@@ -329,6 +333,9 @@ CC BY-NC 4.0, for example.
 ./gradlew see --args='form.png "Fill in the fields."' -Pschema=schema.json   # a reply that follows a JSON schema
 ./gradlew invoice   # draws a made-up invoice and reads it into JSON; -Pmodel=paddleocr-vl reads it with OCR first
 ./gradlew defects   # a tray of parts with a dented one: Qwen3-VL boxes the defects (out/defects-found.png)
+./gradlew edit --args='in.png out.png "the same street in snow"' -Pstrength=0.6   # img2img; -Pmask=m.png inpaints
+./gradlew edit --args='in.png out.png "make the sign say KILN"' -Pmodel=qwen-edit -Plora=lightning.safetensors:1 -Psteps=4 -Pcfg=1
+./gradlew upscale --args='in.png out.png'                # RealESRGAN_x4plus: 4x
 ```
 
 The song examples use the requests in `kiln-examples/src/main/resources/requests/`; pass your own JSON as a
