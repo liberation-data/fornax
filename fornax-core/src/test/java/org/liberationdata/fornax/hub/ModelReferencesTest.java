@@ -153,6 +153,12 @@ class ModelReferencesTest {
         assertEquals(List.of(), fake.listings);
     }
 
+    @Test void aSetThatCantBeDownloadedFailsAsTheHubSays() {
+        var missing = ModelSet.of("gone", Kind.SONG, "Gone", "acestep.cpp", Part.of("dit", "stems/htdemucs-GGUF", "missing.gguf"));
+        var e = assertThrows(java.io.UncheckedIOException.class, () -> ModelReferences.set("gone", SONGS, "acestep.cpp", hub(List.of(missing))));
+        assertTrue(e.getMessage().startsWith("gone: "), e.getMessage());
+    }
+
     @Test void aPathIsKeptAndAReferenceBecomesItsFile() throws Exception {
         Path file = Files.writeString(dir.resolve("vae.gguf"), "x");
         assertEquals(file.toString(), ModelReferences.path(file.toString(), STEMS, hub(List.of())));

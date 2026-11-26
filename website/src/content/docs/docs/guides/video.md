@@ -29,8 +29,8 @@ The upscaler is only for the [two-stage recipe](#the-two-stage-recipe). For the 
 ## A clip with sound
 
 `Config.builder().model("ltx-2.5-distilled")` (or `"ltx-2.5-dev"`) names the four model files, downloading what's
-missing, and sets the `tensor_type_rules` below; the repo is gated, so accept its terms and set `HF_TOKEN` first. File
-by file, as Fornax's example does:
+missing (the upscaler too, for a request's `hires.model_path`), and sets the `tensor_type_rules` below. The repo is
+gated, so accept its terms and set `HF_TOKEN` first. File by file, as Fornax's example does:
 
 ```java
 import org.liberationdata.fornax.HfCache;
