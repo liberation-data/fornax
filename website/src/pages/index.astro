@@ -157,7 +157,8 @@ const qsMaven = `<!-- pom.xml: Maven picks the natives jar for the machine build
         <scope>runtime</scope>
     </dependency>
 </dependencies>`;
-const qsHello = `import org.liberationdata.fornax.llama.LlamaModel;
+const qsHello = `// src/main/java/Hello.java
+import org.liberationdata.fornax.llama.LlamaModel;
 import org.liberationdata.fornax.llama.LlamaModel.*;
 import java.util.List;
 
@@ -984,7 +985,7 @@ const theme = 'vitesse-dark';
                                 <div class="shell" data-qs-pane="gradle"><Code code={qsRunGradle} lang="sh" theme={theme} /></div>
                                 <div class="shell" data-qs-pane="maven" hidden><Code code={qsRunMaven} lang="sh" theme={theme} /></div>
                                 <pre class="qs-out" aria-label="What it prints" set:html={qsOutput} />
-                                <p class="qs-note">A real run on a Radeon 8060S: loaded in 0.7 s, then 58 tokens a second, printed as they come. The JVM needs <code>--enable-native-access=ALL-UNNAMED</code>: Gradle’s <code>application</code> block passes it, and Maven runs the app in its own JVM, so it goes in <code>MAVEN_OPTS</code>. <a href="https://github.com/liberation-data/fornax/tree/main/samples/hello-fornax">samples/hello-fornax</a> is this app, ready to copy.</p>
+                                <p class="qs-note">A real run on a Radeon 8060S: loaded in 0.7 s, then 58 tokens a second, printed as they come. The JVM needs <code>--enable-native-access=ALL-UNNAMED</code>: Gradle’s <code>application</code> block passes it, and Maven’s <code>exec:java</code> runs the app inside Maven’s own JVM, so it goes in <code>MAVEN_OPTS</code>. <a href="https://github.com/liberation-data/fornax/tree/main/samples/hello-fornax">samples/hello-fornax</a> is this app, ready to copy.</p>
                             </div>
                             <div class="qs-frame" role="tabpanel" id="qs-more" aria-labelledby="qs-step-more" hidden>
                                 <h3 class="qs-title">4. Add another engine</h3>
