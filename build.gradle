@@ -121,6 +121,9 @@ configure(subprojects.findAll { it.name.startsWith('fornax-natives-') }) { p ->
     def ext = platform.startsWith('macos-') ? 'dylib' : 'so'
     tasks.named('jar', Jar) {
         from(libs) { include "*.$ext"; into "org/fornax4j/natives/$platform" }
+        // The name the JDK would derive from the file name has a segment that starts with a digit ("64"), which the
+        // module path rejects, so name it: org.fornax4j.natives.linux_x86_64_vulkan.
+        manifest { attributes 'Automatic-Module-Name': "org.fornax4j.natives.${platform.replace('-', '_')}" }
         // A release ships every engine; a local build may have only some of them.
         def required = providers.gradleProperty('fornax.natives.require').map { it.toBoolean() }.getOrElse(false)
         if (required) doFirst {
