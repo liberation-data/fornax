@@ -73,7 +73,11 @@ kiln test ace-step --seconds 5          # a short song
 or a path to a `.gguf` file.
 
 A reasoning model, such as Qwen3, thinks aloud in `<think>…</think>` before it answers. `kiln chat` hides that, and
-shows only the answer; `--think` shows the reasoning too. Other options: `--system`, `--max-tokens`,
+shows only the answer; `--think` shows the reasoning too. Some models (Qwen3 Thinking, DeepSeek-R1 distills) are
+trained with the `<think>` in the prompt and only close the block. `kiln chat` holds the first couple of hundred
+characters of a reply until it can tell, or longer while the reply opens the way reasoning does ("Okay, the user…").
+If the reasoning runs past that, you see it, but the `</think>` is still hidden and, in an interactive chat, the
+model's later replies are taken as starting inside the reasoning. Other options: `--system`, `--max-tokens`,
 `--temperature`, `--seed`, `--ctx` and `--gpu-layers` (`kiln chat --help`).
 
 Set `KILN_VERBOSE=1` to see the engines' own logs.

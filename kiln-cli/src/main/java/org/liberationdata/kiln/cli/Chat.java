@@ -66,10 +66,11 @@ final class Chat {
             if (system != null) history.add(Message.system(system));
             if (!interactive) {
                 history.add(Message.user(prompt));
-                reply(model, history, o, think, out, err);
+                reply(model, history, o, think, false, out, err);
                 return 0;
             }
             err.println("[kiln] chatting with " + llm.name() + ". /reset clears the history, /exit quits.");
+            boolean opensInside = false;   // the model's replies start inside a think block (its <think> in the prompt)
             while (true) {
                 out.print("> ");
                 out.flush();
@@ -84,18 +85,21 @@ final class Chat {
                     continue;
                 }
                 history.add(Message.user(line));
-                history.add(Message.assistant(reply(model, history, o, think, out, err)));
+                var r = reply(model, history, o, think, opensInside, out, err);
+                opensInside |= r.openedInside();
+                history.add(Message.assistant(r.reply()));
             }
         }
     }
 
     /**
      * Streams one reply to {@code out}, without its think blocks unless {@code think}, and its token rate to
-     * {@code err}. Returns the reply without think blocks, for the history.
+     * {@code err}. Returns the filter, which has the reply without think blocks, for the history.
      */
-    private static String reply(LlamaModel model, List<Message> history, Options o, boolean think, PrintStream out, PrintStream err) {
+    private static ThinkFilter reply(LlamaModel model, List<Message> history, Options o, boolean think,
+                                     boolean startsInside, PrintStream out, PrintStream err) {
         long g0 = System.nanoTime();
-        var shown = new ThinkFilter(piece -> { out.print(piece); out.flush(); }, think);
+        var shown = new ThinkFilter(piece -> { out.print(piece); out.flush(); }, think, startsInside);
         var r = model.chat(history, o, shown);
         shown.finish();
         double s = (System.nanoTime() - g0) / 1e9;
@@ -104,7 +108,7 @@ final class Chat {
                 r.promptTokens(), r.generatedTokens(), Fmt.seconds(s), r.generatedTokens() / s);
         if (!think && shown.reply().isEmpty() && !r.text().isBlank())
             err.println("[kiln] the reply was all reasoning, which is hidden: raise --max-tokens, or pass --think to see it");
-        return shown.reply();
+        return shown;
     }
 
     private static String readAll(BufferedReader in) throws IOException {
