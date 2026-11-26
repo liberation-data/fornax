@@ -241,7 +241,7 @@ class StudioServerTest {
     @Test void inspectStreamsAReplyAboutTheImage() throws Exception {
         assertEquals(true, model("vision:qwen3-vl-4b").get("available"));
         assertEquals(false, model("vision:medgemma-4b").get("available"));
-        assertTrue(model("vision:medgemma-4b").get("license").toString().contains("not for clinical use"));
+        assertTrue(model("vision:medgemma-4b").get("license").toString().contains("regulator"));
         // The vision models are the Inspect window's, not chat models.
         var status = Json.object(call("GET", "/api/models", null).body());
         assertFalse(Json.list(status, "models").stream().map(m -> ((Map<?, ?>) m).get("id").toString())
@@ -278,6 +278,44 @@ class StudioServerTest {
         assertEquals("vision:qwen3-vl-4b", done.get("filledBy"));
         assertTrue(done.get("read").toString().startsWith("(stub)"));
         assertEquals(1L, ((Map<?, ?>) done.get("json")).get("total"));
+    }
+
+    @Test void anOcrModelWithASchemaAndNothingToFillItIsRefused() throws Exception {
+        var qwen = LlamaModel.Weights.QWEN3_VL_4B;
+        Files.delete(dir.resolve("hub").resolve("models--" + qwen.repo.replace("/", "--")).resolve("snapshots/abc").resolve(qwen.modelFile));
+        var r = call("POST", "/api/inspect", "{\"model\": \"vision:paddleocr-vl\", \"prompt\": \"OCR:\","
+                + "\"schema\": {\"type\": \"object\"}, \"image\": \"" + pngDataUrl(8, 8) + "\"}");
+        assertEquals(400, r.statusCode());
+        assertTrue(r.body().contains("download Qwen3-VL 4B"), r.body());
+        // Without a schema it reads on its own.
+        var done = event(call("POST", "/api/inspect", "{\"model\": \"vision:paddleocr-vl\", \"image\": \"" + pngDataUrl(8, 8) + "\"}").body(), "done");
+        assertNull(done.get("read"));
+        assertNull(done.get("filledBy"));
+    }
+
+    @Test void anImageClaimingTooManyPixelsIsRefusedBeforeItIsDecoded() throws Exception {
+        var out = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", out);
+        byte[] png = out.toByteArray();
+        // IHDR's width and height (bytes 16 to 23) say 50000 × 50000, and its CRC (over bytes 12 to 28) agrees.
+        var b = java.nio.ByteBuffer.wrap(png);
+        b.putInt(16, 50_000).putInt(20, 50_000);
+        var crc = new java.util.zip.CRC32();
+        crc.update(png, 12, 17);
+        b.putInt(29, (int) crc.getValue());
+        var r = call("POST", "/api/inspect", "{\"model\": \"vision:qwen3-vl-4b\", \"prompt\": \"x\", \"image\": \"data:image/png;base64,"
+                + java.util.Base64.getEncoder().encodeToString(png) + "\"}");
+        assertEquals(400, r.statusCode());
+        assertTrue(r.body().contains("too large"), r.body());
+    }
+
+    @Test void aTransparentImageIsLaidOnWhite() {
+        var clear = new java.awt.image.BufferedImage(4, 4, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        assertEquals(0xFFFFFF, StudioServer.fit(clear, StudioServer.INSPECT_MAX_SIDE).getRGB(1, 1) & 0xFFFFFF);
+        var big = new java.awt.image.BufferedImage(2560, 100, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        var fitted = StudioServer.fit(big, StudioServer.INSPECT_MAX_SIDE);
+        assertEquals(1280, fitted.getWidth());
+        assertEquals(0xFFFFFF, fitted.getRGB(10, 10) & 0xFFFFFF);
     }
 
     @Test void aSilentStreamIsKeptAlive() throws Exception {

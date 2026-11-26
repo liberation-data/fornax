@@ -531,20 +531,30 @@ public final class StudioServer {
         return Json.str(message, "content", "");
     }
 
-    /** The image, scaled down (keeping its shape) so its longest side is at most max; as it is when it fits. */
+    /**
+     * The image, scaled down (keeping its shape) so its longest side is at most max; as it is when it fits. One with
+     * transparency is laid on white: the model sees RGB alone, and a transparent PNG's clear pixels would otherwise be
+     * black, hiding black text.
+     */
     static BufferedImage fit(BufferedImage img, int max) {
         int w = img.getWidth(), h = img.getHeight();
-        if (Math.max(w, h) <= max) return img;
-        double k = (double) max / Math.max(w, h);
+        boolean alpha = img.getColorModel().hasAlpha();
+        if (Math.max(w, h) <= max && !alpha) return img;
+        double k = Math.min(1, (double) max / Math.max(w, h));
         int nw = Math.max(1, (int) Math.round(w * k)), nh = Math.max(1, (int) Math.round(h * k));
         var out = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_RGB);
         var g = out.createGraphics();
+        g.setColor(java.awt.Color.WHITE);
+        g.fillRect(0, 0, nw, nh);
         g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
         g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
         g.drawImage(img, 0, 0, nw, nh, null);
         g.dispose();
         return out;
     }
+
+    /** The most pixels an image sent in a request may have (a 64 MP photo is 8000 × 8000). */
+    static final long MAX_IMAGE_PIXELS = 64_000_000L;
 
     /** An image sent in a request, as a data: URL or bare base64 (null for none). */
     private static BufferedImage image(String data) throws IOException {
@@ -553,6 +563,17 @@ public final class StudioServer {
         byte[] bytes;
         try { bytes = java.util.Base64.getMimeDecoder().decode(b64); }
         catch (IllegalArgumentException e) { throw new IllegalArgumentException("the image is not base64"); }
+        // Its size from its header first: a small file can claim enough pixels to exhaust the heap when decoded.
+        try (var in = ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(bytes))) {
+            var readers = ImageIO.getImageReaders(in);
+            if (!readers.hasNext()) throw new IllegalArgumentException("the image is not a PNG or JPEG");
+            var reader = readers.next();
+            try {
+                reader.setInput(in);
+                if ((long) reader.getWidth(0) * reader.getHeight(0) > MAX_IMAGE_PIXELS)
+                    throw new IllegalArgumentException("the image is too large: at most " + MAX_IMAGE_PIXELS / 1_000_000 + " megapixels");
+            } finally { reader.dispose(); }
+        }
         BufferedImage img = ImageIO.read(new java.io.ByteArrayInputStream(bytes));
         if (img == null) throw new IllegalArgumentException("the image is not a PNG or JPEG");
         return img;

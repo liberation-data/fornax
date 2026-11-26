@@ -71,8 +71,8 @@ final class Catalog {
     /** YuE2's weights' license, as Kiln's README and website say it. */
     static final String YUE2_LICENSE = "CC BY-NC 4.0: no commercial use of the weights or of what they make";
 
-    /** MedGemma's weights' terms, as Kiln's README says them. */
-    static final String MEDGEMMA_LICENSE = "Health AI Developer Foundations terms: for research and development, not for clinical use";
+    /** MedGemma's weights' terms: not research-only; use in diagnosis or treatment may need a regulator's authorization (HAI-DEF terms, 3.1). */
+    static final String MEDGEMMA_LICENSE = "Health AI Developer Foundations terms: diagnosing or treating patients with it may need a health regulator's authorization";
 
     /** The vision language models the Inspect window offers, as Kiln names them; the first is its default. */
     static final List<LlamaModel.Weights> VISION = List.of(
