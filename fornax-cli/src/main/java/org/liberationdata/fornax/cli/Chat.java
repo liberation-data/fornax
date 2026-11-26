@@ -97,7 +97,7 @@ final class Chat {
      * Streams one reply to {@code out}, without its think blocks unless {@code think}, and its token rate to
      * {@code err}. Returns the filter, which has the reply without think blocks, for the history.
      */
-    private static ThinkFilter reply(LlamaModel model, List<Message> history, Options o, boolean think,
+    static ThinkFilter reply(LlamaModel model, List<Message> history, Options o, boolean think,
                                      boolean startsInside, PrintStream out, PrintStream err) {
         long g0 = System.nanoTime();
         var shown = new ThinkFilter(piece -> { out.print(piece); out.flush(); }, think, startsInside);
@@ -112,7 +112,7 @@ final class Chat {
         return shown;
     }
 
-    private static String readAll(BufferedReader in) throws IOException {
+    static String readAll(BufferedReader in) throws IOException {
         StringBuilder b = new StringBuilder();
         for (String line; (line = in.readLine()) != null; ) b.append(line).append('\n');
         return b.toString().strip();

@@ -95,9 +95,11 @@ final class Listing {
     private static String heading(Kind kind) {
         return switch (kind) {
             case CHAT -> "Chat (fornax chat <alias>)";
-            case VISION -> "Vision (fornax chat <alias> for text; images from Java)";
-            case IMAGE -> "Image (fornax test <alias>)";
-            case SONG -> "Song (fornax test <alias>)";
+            case VISION -> "Vision (fornax see <alias> <image>)";
+            case SPEECH -> "Speech (fornax speak --model <alias>)";
+            case TRANSCRIPTION -> "Speech to text (fornax transcribe --model <alias>)";
+            case IMAGE -> "Image (fornax image <alias>)";
+            case SONG -> "Song (fornax song <alias>)";
             default -> kind.name().charAt(0) + kind.name().substring(1).toLowerCase(Locale.ROOT) + " (from Java)";
         };
     }

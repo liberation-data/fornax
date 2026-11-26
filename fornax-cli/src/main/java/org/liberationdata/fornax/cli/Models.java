@@ -9,9 +9,12 @@ import org.liberationdata.fornax.hub.ModelSet;
 import org.liberationdata.fornax.hub.ModelSet.Kind;
 import org.liberationdata.fornax.hub.ModelStatus;
 
+import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -23,6 +26,8 @@ import java.util.stream.Collectors;
  *   <li>{@code org/name:file.gguf} or {@code org/name:TAG} (a quant such as Q4_K_M) from the cache</li>
  *   <li>{@code org/name} when the cache holds exactly one GGUF model from it</li>
  * </ul>
+ * {@link #fetch} is the other way in, for the commands that make things (image, song, speak, transcribe, see): one kind
+ * of model, downloaded first when it isn't in the cache yet.
  */
 final class Models {
     private Models() {}
@@ -63,6 +68,73 @@ final class Models {
         }
         throw new Main.Failure("No such file, alias or repo: " + spec + "\n  aliases: " + aliases());
     }
+
+    /**
+     * A model to load, by the files it needs.
+     *
+     * @param name  what the user typed, for messages
+     * @param set   its catalogue set, or null for a file or a reference
+     * @param files its files by role, as {@link FornaxHub#pull} gives them ({@code "gguf"} or {@code "model"} for one file)
+     */
+    record Fetched(String name, ModelSet set, Map<String, Path> files) {
+        Path file(String role) {
+            Path p = files.get(role);
+            if (p == null) throw new IllegalStateException(name + " has no " + role + " among " + files.keySet());
+            return p;
+        }
+    }
+
+    /**
+     * The model {@code spec} names for {@code command}, which runs {@code kind} models: a catalogue alias of that kind,
+     * or, for a command that loads one file ({@code oneFile}: speech, transcription and vision), also a path to that file
+     * or an {@code org/name[@REV][:TAG]} reference. An alias or reference not yet in the cache is downloaded first,
+     * with {@code fornax pull}'s progress line on {@code err}. An alias of another kind is refused before anything is
+     * downloaded.
+     */
+    static Fetched fetch(String spec, Kind kind, String command, boolean oneFile, FornaxHub hub, PrintStream err,
+                         boolean terminal) throws IOException {
+        String role = kind == Kind.TRANSCRIPTION ? "model" : "gguf";
+        if (oneFile && Files.isRegularFile(Path.of(spec))) return new Fetched(spec, null, Map.of(role, Path.of(spec)));
+        var alias = ModelCatalog.byName(spec);
+        if (alias.isPresent()) {
+            ModelSet m = alias.get();
+            if (m.kind() != kind) throw new Main.Failure(m.id() + " is " + aKind(m.kind()) + "; " + command + " takes " + kinds(kind));
+            return new Fetched(spec, m, pulled(m, m.id() + ": " + m.title() + " (" + m.engine() + ")", hub, err, terminal));
+        }
+        var ref = ModelRef.tryParse(spec);
+        if (ref.isPresent() && oneFile) {
+            ModelSet m = hub.resolve(ref.get());   // from the cache when it's there, else the repo's file list
+            Map<String, Path> files = pulled(m, spec + ": " + m.parts().get(0).primary().file() + " from " + ref.get().repo(), hub, err, terminal);
+            if (!files.containsKey(role)) throw new Main.Failure(spec + " names " + m.parts().get(0).primary().file() + ", not "
+                    + (kind == Kind.TRANSCRIPTION ? "a whisper.cpp model" : "a GGUF model"));
+            return new Fetched(spec, null, files);
+        }
+        if (ref.isPresent()) throw new Main.Failure(spec + ": " + command + " loads a model set from the catalogue (its files "
+                + "come from several repos), not a reference; " + command + " takes " + kinds(kind));
+        throw new Main.Failure("No such " + (oneFile ? "file or " : "") + "model: " + spec + "\n  " + command + " takes " + kinds(kind)
+                + (oneFile ? ", org/name[:TAG] or a path" : ""));
+    }
+
+    /** The set's files, pulled first (after {@code header}, with fornax pull's progress line) if any is missing. */
+    private static Map<String, Path> pulled(ModelSet m, String header, FornaxHub hub, PrintStream err, boolean terminal) throws IOException {
+        ModelStatus status = hub.status(m);
+        if (status.available()) return status.paths();
+        err.println("[fornax] downloading " + header);
+        Pull.notes(m, err);
+        return hub.pull(m, new PullLine(err, terminal));
+    }
+
+    /** "a chat model", "an image model". */
+    static String aKind(Kind kind) {
+        String k = kind == Kind.TRANSCRIPTION ? "speech-to-text" : kind.name().toLowerCase(Locale.ROOT);
+        return ("aeiou".indexOf(k.charAt(0)) >= 0 ? "an " : "a ") + k + " model";
+    }
+
+    /** "an image model: flux2-klein, qwen-image, qwen-image-edit". */
+    static String kinds(Kind kind) { return aKind(kind) + ": " + ids(kind); }
+
+    /** The catalogue's ids of one kind: "flux2-klein, qwen-image, qwen-image-edit". */
+    static String ids(Kind kind) { return ModelCatalog.of(kind).stream().map(ModelSet::id).collect(Collectors.joining(", ")); }
 
     private static Path fromRepo(String repo, String tag, Path cacheRoot) {
         Map<String, Path> byPath = HfCache.files(cacheRoot, repo);
