@@ -55,8 +55,8 @@ subprojects {
 
 // What goes to Maven Central, as org.kiln4j:<project name>. The version is gradle.properties' unless -Pversion=...
 def published = [
-    'kiln-core'   : 'Kiln core: native library loading, Hugging Face cache lookup, audio and the model pool',
-    'kiln-llama'  : 'Kiln llama: GGUF language and vision language models through llama.cpp, in-process via Java FFM',
+    'kiln-core'   : 'Kiln core: native library loading, model download and Hugging Face cache lookup, audio, the model pool and vector search',
+    'kiln-llama'  : 'Kiln llama: GGUF language, vision language, embedding and reranker models through llama.cpp, in-process via Java FFM',
     'kiln-tts'    : 'Kiln TTS: text to speech through llama.cpp (mtmd), in-process via Java FFM',
     'kiln-sd'     : 'Kiln SD: images and video through stable-diffusion.cpp, in-process via Java FFM',
     'kiln-acestep': 'Kiln ACE-Step: ACE-Step 1.5 songs through acestep.cpp, in-process via Java FFM',
@@ -131,8 +131,9 @@ project(':kiln-examples') {
     // ./gradlew chat --args='"your prompt"'   image --args='klein out.png "a prompt"'   song   yue2
     // speak --args='out.wav "text" am_michael' -Pmodel=kokoro
     // see --args='image.png "question"' -Pmodel=qwen3-vl-4b -Pschema=schema.json   invoice   defects
-    // transcribe --args='audio.wav'
-    [chat: 'Chat', image: 'Image', song: 'Song', yue2: 'Yue2Song', single: 'Single', video: 'VideoClip', speak: 'Speak', speakBatch: 'SpeakBatch', see: 'See', invoice: 'Invoice', defects: 'Defects', transcribe: 'Transcribe'].each { task, cls ->
+    // edit --args='in.png out.png "a prompt"' -Pmask=m.png -Pstrength=0.6 -Plora=style.safetensors:0.8   upscale --args='in.png out.png'
+    // transcribe --args='audio.wav'   search --args='docs "how do I cancel a call?"' -Pk=5 -Prerank=false
+    [chat: 'Chat', image: 'Image', edit: 'Edit', upscale: 'Upscale', song: 'Song', yue2: 'Yue2Song', single: 'Single', video: 'VideoClip', speak: 'Speak', speakBatch: 'SpeakBatch', see: 'See', invoice: 'Invoice', defects: 'Defects', transcribe: 'Transcribe', search: 'Search'].each { task, cls ->
         tasks.register(task, JavaExec) {
             group = 'kiln examples'
             description = "Runs org.liberationdata.kiln.examples.${cls}"
@@ -145,16 +146,87 @@ project(':kiln-examples') {
             // -Pmodel=... -Psteps=... etc. become system properties (only ones given on the command line), and so do
             // NativeLibrary's tunables, which the forked JVM would not see as -D on gradlew
             def cli = gradle.startParameter.projectProperties
-            ['kiln.gpu.graphs', 'kiln.vulkan.maxNodesPerSubmit', 'kiln.allowCpu', 'model', 'mmproj', 'llm', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio', 'preprocess', 'hires', 'upscaler', 'refine', 'strength', 'schema', 'song', 'song.start'].each { p ->
+            ['kiln.gpu.graphs', 'kiln.vulkan.maxNodesPerSubmit', 'kiln.allowCpu', 'model', 'mmproj', 'llm', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio', 'preprocess', 'hires', 'upscaler', 'refine', 'strength', 'schema',
+             'mask', 'lora', 'ref', 'shift', 'sampler', 'scheduler', 'factor', 'tile', 'control', 'controlnet', 'controlStrength', 'k', 'rerank', 'song', 'song.start'].each { p ->
                 if (cli.containsKey(p)) systemProperty p, cli[p]
             }
         }
     }
 }
 
+project(':kiln-core') {
+    // ./gradlew :kiln-core:workerBench: per-call overhead of an isolated worker vs in-process, with a trivial service
+    tasks.register('workerBench', JavaExec) {
+        group = 'kiln examples'
+        description = 'Isolation overhead: a trivial echo service in-process vs in a worker process'
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = 'org.liberationdata.kiln.WorkerBenchmark'
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+    }
+}
+
+project(':kiln-llama') {
+    // ./gradlew :kiln-llama:isolationBench --args=model.gguf: tokens/s in-process vs isolated, one model at a time
+    tasks.register('isolationBench', JavaExec) {
+        group = 'kiln examples'
+        description = 'Isolation overhead with a real model: tokens/s and short-call latency, in-process vs isolated'
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = 'org.liberationdata.kiln.llama.IsolationBenchmark'
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+        systemProperty 'kiln.library.path', nativeDir.absolutePath
+    }
+}
+
 project(':kiln-whisper') {
     // the integration test speaks its own test audio with Kokoro
     dependencies { testImplementation project(':kiln-tts') }
+}
+
+project(':kiln-cli') {
+    apply plugin: 'application'
+    // The natives, as the samples take them: a kiln-natives jar, here every one this build has (settings.gradle
+    // includes a platform when native/build.sh has built it). -Pkiln.cli.nativesVersion=0.1.0 takes this platform's
+    // from Maven Central instead, for a build without natives of its own.
+    def publishedNatives = findProperty('kiln.cli.nativesVersion')
+    def hostPlatform = os != 'macos' ? 'linux-x86_64-vulkan' : (arch == 'arm64' ? 'macos-aarch64-metal' : 'macos-x86_64-metal')
+    def natives = publishedNatives ? ["org.kiln4j:kiln-natives-${hostPlatform}:${publishedNatives}".toString()]
+                                   : gradle.nativesDirs.keySet().collect { project(":kiln-natives-${it}") }
+    dependencies {
+        implementation project(':kiln-llama')
+        implementation project(':kiln-sd')
+        implementation project(':kiln-acestep')
+        implementation project(':kiln-yue2')
+        // 0.1.0's natives jar says Java 25 in its metadata (it holds no classes), so ask for it as 25
+        natives.each { n -> runtimeOnly(n) { attributes { attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25) } } }
+    }
+    // ./gradlew :kiln-cli:installDist  ->  kiln-cli/build/install/kiln-cli/bin/kiln, with its jars in lib/.
+    // The launchers are src/dist/bin/kiln and kiln.cmd, not Gradle's: their inputs (the java, the jars folder, the
+    // natives folder) are environment variables or placeholders an installer such as Kiln Studio fills in.
+    application {
+        mainClass = 'org.liberationdata.kiln.cli.Main'
+        applicationName = 'kiln'
+        applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
+    }
+    tasks.named('startScripts') { enabled = false }
+    distributions {
+        main {
+            distributionBaseName = 'kiln-cli'
+            contents { filesMatching('bin/kiln') { filePermissions { unix('rwxr-xr-x') } } }
+        }
+    }
+    // ./gradlew :kiln-cli:run --args='info'
+    tasks.named('run', JavaExec) {
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+        systemProperty 'kiln.library.path', nativeDir.absolutePath
+        standardInput = System.in
+    }
+    // The launcher as an installer renders it, run against the installed distribution (see LauncherTest)
+    tasks.named('test') {
+        dependsOn 'installDist'
+        systemProperty 'kiln.cli.install', layout.buildDirectory.dir('install/kiln-cli').get().asFile.absolutePath
+    }
 }
 
 project(':kiln-bench') {
@@ -176,5 +248,45 @@ project(':kiln-bench') {
         workingDir = rootProject.projectDir
         def cli = gradle.startParameter.projectProperties
         ['size', 'steps'].each { p -> if (cli.containsKey(p)) systemProperty p, cli[p] }
+    }
+}
+
+project(':kiln-studio-server') {
+    apply plugin: 'application'
+    dependencies {
+        implementation project(':kiln-llama')
+        implementation project(':kiln-sd')
+        implementation project(':kiln-acestep')
+        implementation project(':kiln-yue2')
+    }
+    application {
+        mainClass = 'org.liberationdata.kiln.studio.StudioServer'
+        applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
+    }
+    // ./gradlew studioServer: the backend on its own, for the studio's dev server to talk to (-Pport=7860, -Pstub=image,song,video)
+    tasks.register('studioServer', JavaExec) {
+        group = 'kiln examples'
+        description = 'Runs the Kiln Studio backend'
+        classpath = sourceSets.main.runtimeClasspath
+        mainClass = 'org.liberationdata.kiln.studio.StudioServer'
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+        systemProperty 'kiln.library.path', nativeDir.absolutePath
+        // ggml-vulkan's default of 100 nodes a submission lets one LTX decode outlast amdgpu's compute timeout (docs/engine-notes.md).
+        environment 'GGML_VK_MAX_NODES_PER_SUBMIT', System.getenv('GGML_VK_MAX_NODES_PER_SUBMIT') ?: '8'
+        def cli = gradle.startParameter.projectProperties
+        ['port', 'stub', 'budget', 'ffmpeg'].each { p -> if (cli.containsKey(p)) systemProperty "kiln.studio.${p}", cli[p] }
+    }
+    // One jar holding the server and the Kiln modules it uses: what the desktop app ships and starts with `java -jar`.
+    tasks.register('studioJar', Jar) {
+        group = 'build'
+        description = 'The Kiln Studio backend as one runnable jar'
+        archiveFileName = 'kiln-studio-server.jar'
+        manifest { attributes 'Main-Class': 'org.liberationdata.kiln.studio.StudioServer', 'Enable-Native-Access': 'ALL-UNNAMED' }
+        from sourceSets.main.output
+        dependsOn configurations.runtimeClasspath
+        from { configurations.runtimeClasspath.findAll { it.name.endsWith('.jar') }.collect { zipTree(it) } }
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
     }
 }

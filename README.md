@@ -24,7 +24,7 @@ Kiln binds native inference engines with Java's Foreign Function & Memory API (J
 
 | Module | Engine | Models |
 |---|---|---|
-| `kiln-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (with `mtmd` for images) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...); vision language models (Qwen3-VL, PaddleOCR-VL, MedGemma, ...) |
+| `kiln-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (with `mtmd` for images) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...); vision language models (Qwen3-VL, PaddleOCR-VL, MedGemma, ...); embedding and reranker models (Qwen3-Embedding, Qwen3-Reranker) |
 | `kiln-tts` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`mtmd`) | text to speech: Kokoro, ZONOS3, LFM3-Audio, Chatterbox, VoxCPM2, ... |
 | `kiln-sd` | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) | FLUX.1/FLUX.2, Qwen-Image and Qwen-Image-Edit, SD 1.x/2.x/XL/3, Wan, LTX |
 | `kiln-acestep` | [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) | ACE-Step 1.5 songs (vocals, lyrics, up to several minutes) |
@@ -48,6 +48,10 @@ try (var vlm = new LlamaModel(LlamaModel.Weights.QWEN3_VL_4B)) {   // the GGUF p
             invoiceSchema, Options.DEFAULT.withTemperature(0));      // constrained to a JSON schema
 }
 ```
+
+`DiffusionModel` also edits: a `Request` can carry reference images (Qwen-Image-Edit, FLUX.2), an init image and
+strength (img2img), a mask (inpainting), a ControlNet hint and LoRAs. `Upscaler` runs ESRGAN models. See the
+[images guide](https://kiln4j.org/docs/guides/images/).
 
 ## Getting started
 
@@ -143,15 +147,15 @@ has Qwen3 4B write a country song, ACE-Step 1.5 sing it and FLUX.2 [klein] paint
 
 ```sh
 native/build.sh vulkan            # or hip | cuda | metal | cpu (see Building)
-hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
-hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Embedding-0.6B-Q8_0.gguf \
-    acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
-hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors
-hf download Comfy-Org/flux2-dev split_files/vae/flux2-vae.safetensors
-hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetensors
+./gradlew :kiln-cli:installDist   # the kiln command (see The kiln command)
+export PATH="$PWD/kiln-cli/build/install/kiln-cli/bin:$PATH"
+kiln pull qwen3-4b                # Qwen3 4B Instruct
+kiln pull ace-step                # ACE-Step 1.5 turbo with its 4B lyric LM: four files
+kiln pull flux2-klein             # FLUX.2 [klein]: three files, from three repos
 ./gradlew single                  # writes single/single.wav, single/cover.png and single/lyrics.txt
 ```
 
+`hf download` works too (the files are listed under [Models](#models)); both use the Hugging Face cache.
 To try models without writing code, use [Kiln Studio](https://github.com/liberation-data/kiln-studio).
 
 ## Status
@@ -162,6 +166,7 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 | Model | Result |
 |---|---|
 | Qwen3 4B Instruct (Q4_K_M) | ~60 tokens/s, streamed through a Java callback |
+| Qwen3-Embedding 0.6B (Q8_0) | ~420 embeddings/s (20-token passages, 256 to a batch), matching `llama-embedding`'s vectors (cosine 1.000000) |
 | Qwen3-VL 4B Instruct (Q4_K_M) | a 1000×1300 invoice to schema-checked JSON (vendor, date, 4 line items, totals) in ~6 s; images read in 0.4 to 1.6 s, then ~60 tokens/s |
 | PaddleOCR-VL 1.6 (0.9B) | the same invoice's text (prompt "OCR:") in ~1.5 s, ~200 tokens/s |
 | MedGemma 1.5 4B (Q4_K_M) | the same invoice to JSON in ~6 s (Gemma 3 vision: 256 tokens an image, read in ~0.8 s) |
@@ -187,7 +192,8 @@ private. The engines pin different ggml versions, so this is what lets several o
   `kiln-llama` binds a small stable C layer (`kiln-llama/native`) instead.
 - `acestep.cpp` and `yue2.cpp` are C++ only, so each gets a ~100-line C layer: JSON request in, PCM audio out.
 - `whisper.cpp` has a C API, but it passes two large parameter structs by value, so `kiln-whisper` binds a small C
-  layer (`kiln-whisper/native`) that takes plain arguments and reads results back token by token.
+  layer (`kiln-whisper/native`) that takes plain arguments and a small struct of its own, and reads results back token
+  by token.
 
 Engine quirks and how to debug them: [docs/engine-notes.md](docs/engine-notes.md).
 
@@ -198,9 +204,21 @@ A model takes calls from any thread and runs them one at a time. The blocking me
 `Flow.Subscriber` through a bounded buffer. `cancel()` works for every engine, and a callback that throws stops the
 call and rethrows instead of crashing the JVM. See [Threading](https://kiln4j.org/docs/guides/threading/).
 
+A native crash (a failed `GGML_ASSERT`, a segfault, a malformed GGUF) still takes the JVM down in-process, so Kiln
+can also run a model in a **worker process**, opt-in: `LlamaModel.isolated(gguf)`, or `-Dkiln.isolation=process` for
+every `LlamaModel`. It is the same `LlamaModel`, with the same blocking, async, streaming and cancel API. A crash fails
+the call in flight with a `WorkerCrashedException`, and the next call restarts the worker and reloads the model. It
+costs about 15 µs a call and a microsecond a streamed token. See [Isolation](https://kiln4j.org/docs/guides/isolation/).
+
 `ModelPool` keeps models resident between uses, the way ComfyUI does: it unloads idle models least recently used
 first to stay within a memory budget, optionally unloads after an idle timeout, and gives each model one user at a
 time.
+
+For servers, `Dispatch` serves many models from a few worker processes: it routes each request to the worker that
+already has its model loaded, loads models on demand within one memory budget (least recently used out first), queues
+requests as `INTERACTIVE` or `BATCH` with aging so batch work can't starve, and reloads a crashed worker's models
+elsewhere. `qwen.submit(QoS.INTERACTIVE, llm -> llm.chatAsync(messages, options))`. See
+[Dispatch](https://kiln4j.org/docs/guides/dispatch/).
 
 `LlamaModel.chatJson` does OpenAI-style chat with **tool calling**, using the model's own chat template and
 tool-call format (the same templates and parsers as llama-server): messages and tools in OpenAI's format in, a
@@ -211,6 +229,21 @@ Loaded with an mmproj GGUF, a `LlamaModel` is a vision language model, through l
 and `llama-server --mmproj` run them): `Message.user(text, images...)` with `Image.of(BufferedImage)`,
 `Image.read(Path)` or `Image.decode(bytes)`; `chat`, `chatJson` and `extract` (a reply constrained to a JSON schema)
 all take images. `LlamaModel.Weights` names the models Kiln has been tried with.
+
+Loaded in `Mode.EMBED` or `Mode.RERANK`, a `LlamaModel` is an embedding model or a reranker, through llama.cpp's
+pooled embeddings output (as `llama-embedding` and `llama-server --embedding` / `--reranking` run them), for search
+over your own documents (RAG) with no vector database: `kiln-core`'s `Vectors.topK` scans the vectors in memory.
+
+```java
+try (var emb = new LlamaModel(LlamaModel.Weights.QWEN3_EMBEDDING_0_6B, LlamaModel.Mode.EMBED)) {
+    float[][] docs = emb.embed(passages);                                       // L2-normalised, batched
+    float[] q = emb.embed(List.of(question), EmbedOptions.query("Given a question, retrieve passages that answer it"))[0];
+    List<Scored> nearest = Vectors.topK(q, docs, 20);
+}
+try (var rr = new LlamaModel(LlamaModel.Weights.QWEN3_RERANKER_0_6B, LlamaModel.Mode.RERANK)) {
+    List<Scored> best = rr.rerank(question, candidates);                        // best first
+}
+```
 
 ## Building
 
@@ -238,13 +271,38 @@ compute timeout and lose the device. Kiln decodes ACE-Step audio in 512-frame ti
 
 ## Models
 
-Kiln doesn't download anything. Fetch weights with the Hugging Face CLI, and `HfCache` finds them in the cache
-(`HF_HUB_CACHE`, `HF_HOME/hub` or `~/.cache/huggingface/hub`), or pass file paths directly.
+Fetch a model with `kiln pull <alias>`. To get the `kiln` command, install Kiln Studio and choose
+**Install kiln command** from its menu (coming in the next Kiln Studio release), or build it from source (see
+[The kiln command](#the-kiln-command)).
+
+```sh
+kiln pull qwen3-4b        # chat
+kiln pull flux2-klein     # an image model: diffusion model, VAE and text encoder, from three repos
+kiln list                 # every alias, what is downloaded, and other GGUF models in the cache
+```
+
+The aliases are Kiln's model catalogue (`ModelCatalog`): `qwen3-0.6b`, `qwen3-4b`, `qwen3-vl-4b`, `paddleocr-vl`,
+`medgemma-4b`, `kokoro`, `whisper-large-v3-turbo`, `whisper-base.en`, `flux2-klein`, `qwen-image`, `qwen-image-edit`,
+`ace-step-turbo`, `ace-step`, `ace-step-xl-turbo`, `ace-step-xl`, `yue2`, `ltx-2.5-distilled` and `ltx-2.5-dev`.
+`kiln pull` also takes a repo (`kiln pull unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M`, or file names and globs).
+
+Files go to the Hugging Face cache (`HF_HUB_CACHE`, `HF_HOME/hub` or `~/.cache/huggingface/hub`), in the layout
+`hf download` uses. There is one cache: `kiln`, `hf`, Kiln Studio and your own app all see the same files, and nothing
+is downloaded twice. Kiln also finds weights in a ComfyUI models folder (`KILN_MODEL_DIRS`).
+
+From Java, the same thing is `KilnHub`, in `kiln-core`: `KilnHub.standard().pull(ModelCatalog.require("flux2-klein"),
+listener)` fetches a model's missing files with resume, SHA-256 checks, progress, and a token for gated repos; it also
+reports what is on disk and evicts a model's files. Or pass file paths directly. See
+[Downloading models](https://kiln4j.org/docs/guides/models/).
+
+Or fetch the files with the Hugging Face CLI:
 
 ```sh
 hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
 hf download Qwen/Qwen3-VL-4B-Instruct-GGUF Qwen3VL-4B-Instruct-Q4_K_M.gguf mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf
 hf download PaddlePaddle/PaddleOCR-VL-1.6-GGUF PaddleOCR-VL-1.6-GGUF.gguf PaddleOCR-VL-1.6-GGUF-mmproj.gguf
+hf download Qwen/Qwen3-Embedding-0.6B-GGUF Qwen3-Embedding-0.6B-Q8_0.gguf
+hf download ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF qwen3-reranker-0.6b-q8_0.gguf
 hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Embedding-0.6B-Q8_0.gguf \
     acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
 hf download Serveurperso/YuE2-GGUF YuE2-3B-Q8_0.gguf YuE2-Vae-F32.gguf
@@ -253,6 +311,42 @@ hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.
 hf download Comfy-Org/flux2-dev split_files/vae/flux2-vae.safetensors
 hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetensors
 ```
+
+## The kiln command
+
+`kiln` fetches models and tries them without writing any code:
+
+```sh
+kiln pull qwen3-4b                              # an alias: every file the model needs
+kiln pull unsloth/Qwen3-4B-Instruct-2507-GGUF   # lists the repo's GGUF models and asks which
+kiln pull bartowski/google_gemma-3-4b-it-GGUF:Q4_K_M
+kiln list                                       # the catalogue, what is downloaded, sizes
+kiln rm flux2-klein                             # delete a model's files from the cache
+kiln chat qwen3-4b "Write a haiku about a kiln"
+kiln chat qwen3-4b                              # interactive; /reset, /exit
+kiln test flux2-klein                           # load, generate a little, report speed
+kiln info                                       # Java, native libraries, cache, token
+```
+
+A reasoning model's `<think>` blocks (Qwen3's) are hidden in `kiln chat`; `--think` shows them. A gated repo
+(LTX-2.5) needs its terms accepted on huggingface.co and `HF_TOKEN` (or `hf auth login`); the error says so.
+
+**Installing it.** Kiln Studio installs `kiln` onto your `PATH` from its menu, **Install kiln command**, using
+Studio's own Java and engines (coming in the next Kiln Studio release). On a machine without a desktop, such as a
+server, build it from source: it needs JDK 25 to build and Java 22 or newer to run (`JAVA_HOME`, or `java` on
+`PATH`).
+
+```sh
+native/build.sh vulkan                          # the engines (or -Pkiln.cli.nativesVersion=0.1.0, below)
+./gradlew :kiln-cli:installDist                 # -> kiln-cli/build/install/kiln-cli/{bin,lib}
+export PATH="$PWD/kiln-cli/build/install/kiln-cli/bin:$PATH"
+```
+
+The distribution's `lib/` holds the natives jar of each platform built in `build/native/`; with
+`-Pkiln.cli.nativesVersion=0.1.0` it takes this platform's from Maven Central instead. `KILN_LIBRARY_PATH` points it
+at other native libraries. The launcher, `bin/kiln`, takes its Java, its jars and its natives from `KILN_JAVA`,
+`KILN_CLI_LIB` and `KILN_LIBRARY_PATH`, or from placeholders an installer fills in; see
+[The kiln command](https://kiln4j.org/docs/guides/cli/).
 
 Check each model's license before you use what it makes. Some are non-commercial: YuE2's weights are
 CC BY-NC 4.0, for example.
@@ -271,11 +365,32 @@ CC BY-NC 4.0, for example.
 ./gradlew see --args='form.png "Fill in the fields."' -Pschema=schema.json   # a reply that follows a JSON schema
 ./gradlew invoice   # draws a made-up invoice and reads it into JSON; -Pmodel=paddleocr-vl reads it with OCR first
 ./gradlew defects   # a tray of parts with a dented one: Qwen3-VL boxes the defects (out/defects-found.png)
+./gradlew edit --args='in.png out.png "the same street in snow"' -Pstrength=0.6   # img2img; -Pmask=m.png inpaints
+./gradlew edit --args='in.png out.png "make the sign say KILN"' -Pmodel=qwen-edit -Plora=lightning.safetensors:1 -Psteps=4 -Pcfg=1
+./gradlew upscale --args='in.png out.png'                # RealESRGAN_x4plus: 4x
+./gradlew search --args='docs "Why does a long video lose the GPU on Vulkan?"'   # embed, find and rerank passages in a folder
 ```
 
 The song examples use the requests in `kiln-examples/src/main/resources/requests/`; pass your own JSON as a
 second argument. The request formats are the engines' own (see
 [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) and [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp)).
+
+## Kiln Studio
+
+`kiln-studio-server` is the backend of [Kiln Studio](https://github.com/liberation-data/kiln-studio), a desktop app for
+trying models: a JDK-only HTTP server on localhost (`com.sun.net.httpserver`, replies streamed as server-sent events)
+that lists what in the Hugging Face cache Kiln can run, keeps models in a `ModelPool`, and serves chat (with a
+tool-calling demo through `chatJson`), images, songs (ACE-Step and YuE2), video clips with sound (LTX-2.5, whose .mp4
+needs ffmpeg) and questions about an image for a vision model (Qwen3-VL, PaddleOCR-VL, MedGemma), as text or held to a
+JSON schema. The app starts it; to run it on its own:
+
+```sh
+./gradlew studioServer                    # http://127.0.0.1:5191; -Pport=, -Pbudget=<GB>, -Pstub=image,song,video
+./gradlew :kiln-studio-server:studioJar   # one runnable jar, which the app ships
+```
+
+On Linux, as with every Kiln engine, a GPU build refuses to load a model on a machine with no usable GPU (the request's
+error says what to install) unless `KILN_ALLOW_CPU=true` is set in the server's environment.
 
 ## Roadmap
 

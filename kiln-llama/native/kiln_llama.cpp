@@ -7,9 +7,11 @@
 #include "mtmd-helper.h"
 #include "sampling.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <random>
 #include <string>
 #include <vector>
@@ -31,9 +33,18 @@ struct kiln_llama {
     const llama_vocab * vocab = nullptr;
     llama_batch_ext * batch = nullptr;
     mtmd_context *  mctx  = nullptr;  // only for a handle from kiln_llama_create_mm
+    enum llama_pooling_type pooling = LLAMA_POOLING_TYPE_NONE;  // not NONE: a handle from kiln_llama_create_pooled
 };
 
 namespace {
+// A pooled handle (kiln_llama_create_pooled) has no logits to sample from.
+int require_generative(kiln_llama * h) {
+    if (h->pooling != LLAMA_POOLING_TYPE_NONE)
+        return fail(h->pooling == LLAMA_POOLING_TYPE_RANK ? "this model was loaded as a reranker: it can only rerank"
+                                                          : "this model was loaded for embeddings: it can only embed", 14);
+    return 0;
+}
+
 llama_sampler * simple_sampler(float temperature, float top_p, float min_p, uint32_t seed) {
     llama_sampler * smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
     if (temperature <= 0) {
@@ -220,6 +231,7 @@ int eval_chunks(kiln_llama * h, const mtmd_input_chunks * chunks, int * out_pos,
 int chat_json_impl(kiln_llama * h, const char * request_json, const std::vector<mtmd_bitmap *> & given,
                    kiln_llama_token_cb cb, void * user, char ** out_response_json) {
     *out_response_json = nullptr;
+    if (int rc = require_generative(h); rc != 0) return rc;
     common_sampler * smpl = nullptr;
     try {
         common_json req = common_json::parse(request_json);
@@ -338,13 +350,8 @@ int chat_json_impl(kiln_llama * h, const char * request_json, const std::vector<
     }
 }
 
-}  // namespace
-
-extern "C" {
-
-const char * kiln_llama_last_error(void) { return g_err.c_str(); }
-
-kiln_llama * kiln_llama_create(const char * model_path, int n_gpu_layers, int n_ctx) {
+// Process-wide setup (once), then the model's weights. The caller creates the context.
+kiln_llama * load_model(const char * model_path, int n_gpu_layers) {
     static bool inited = false;
     if (!inited) {
         // Quiet by default: only errors, unless KILN_VERBOSE is set.
@@ -364,6 +371,62 @@ kiln_llama * kiln_llama_create(const char * model_path, int n_gpu_layers, int n_
     h->model = llama_model_load_from_file(model_path, mp);
     if (!h->model) { g_err = std::string("unable to load model: ") + model_path; delete h; return nullptr; }
     h->vocab = llama_model_get_vocab(h->model);
+    return h;
+}
+
+// Runs inputs through a pooled (embeddings or rerank) context, each as its own sequence, packing as many into one
+// batch as fit (n_batch tokens, n_seq_max sequences), as llama-embedding does. Calls out(i, pooled) for input i, with
+// the n_embd_out floats (or n_cls_out scores) llama.cpp pooled for it. Between batches, cb("") lets the caller stop.
+int run_pooled(kiln_llama * h, const std::vector<std::vector<llama_token>> & inputs,
+               const std::function<void(int, const float *)> & out, kiln_llama_token_cb cb, void * user) {
+    const int n_batch = (int) llama_n_batch(h->ctx);
+    const int n_seq_max = (int) llama_n_seq_max(h->ctx);
+    for (size_t i = 0; i < inputs.size(); i++) {
+        if (inputs[i].empty()) return fail("input " + std::to_string(i) + " has no tokens", 15);
+        if ((int) inputs[i].size() > n_batch)
+            return fail("input " + std::to_string(i) + " has " + std::to_string(inputs[i].size()) +
+                        " tokens, more than the batch of " + std::to_string(n_batch) + " (raise the context size or split it)", 2);
+    }
+    size_t next = 0;
+    while (next < inputs.size()) {
+        const size_t first = next;
+        int n_tokens = 0;
+        llama_batch_ext_clear(h->batch);
+        while (next < inputs.size() && (int) (next - first) < n_seq_max && n_tokens + (int) inputs[next].size() <= n_batch) {
+            const llama_seq_id seq = (llama_seq_id) (next - first);
+            const auto & toks = inputs[next];
+            for (size_t j = 0; j < toks.size(); j++) {
+                int idx = llama_batch_ext_add_token(h->batch, seq, toks[j]);
+                if (idx < 0) return fail("llama_batch_ext_add_token failed: " + std::to_string(idx), 3);
+                llama_pos p = (llama_pos) j;
+                llama_batch_ext_set_pos(h->batch, idx, &p);
+                llama_batch_ext_set_output_embd(h->batch, idx, true);
+            }
+            n_tokens += (int) toks.size();
+            next++;
+        }
+        llama_memory_clear(llama_get_memory(h->ctx), true);  // each batch stands alone
+        if (int r = llama_process(h->ctx, LLAMA_PROCESS_TYPE_DECODE, h->batch); r != 0)
+            return fail("llama_process failed: " + std::to_string(r), 3);
+        for (size_t i = first; i < next; i++) {
+            const float * v = llama_get_embeddings_seq(h->ctx, (llama_seq_id) (i - first));
+            if (!v) return fail("no pooled output for input " + std::to_string(i), 16);
+            out((int) i, v);
+        }
+        if (cb && cb("", user) != 0) return fail("cancelled", 13);
+    }
+    return 0;
+}
+
+}  // namespace
+
+extern "C" {
+
+const char * kiln_llama_last_error(void) { return g_err.c_str(); }
+
+kiln_llama * kiln_llama_create(const char * model_path, int n_gpu_layers, int n_ctx) {
+    auto * h = load_model(model_path, n_gpu_layers);
+    if (!h) return nullptr;
     llama_context_params cp = llama_context_default_params();
     cp.n_ctx   = n_ctx > 0 ? n_ctx : 0;
     h->ctx = llama_init_from_model(h->model, cp);
@@ -383,6 +446,7 @@ int kiln_llama_complete(kiln_llama * h, const char * prompt, int max_tokens, flo
                         float min_p, uint32_t seed, kiln_llama_token_cb cb, void * user, char ** out_text,
                         int * out_n_prompt, int * out_n_generated) {
     *out_text = nullptr;
+    if (int rc = require_generative(h); rc != 0) return rc;
     llama_memory_clear(llama_get_memory(h->ctx), true);
 
     const int len = (int) strlen(prompt);
@@ -519,6 +583,7 @@ int kiln_llama_complete_images(kiln_llama * h, const char * prompt, const unsign
                                float min_p, uint32_t seed, kiln_llama_token_cb cb, void * user, char ** out_text,
                                int * out_n_prompt, int * out_n_generated) {
     *out_text = nullptr;
+    if (int rc = require_generative(h); rc != 0) return rc;
     if (!h->mctx || !mtmd_support_vision(h->mctx)) return fail("this model takes no images (load it with its mmproj)", 12);
     std::vector<mtmd::bitmap_ptr> bmps;
     try { bmps = rgb_bitmaps(rgb, widths, heights, n_images); }
@@ -556,6 +621,101 @@ int kiln_llama_chat_json_images(kiln_llama * h, const char * request_json, const
     try { bmps = rgb_bitmaps(rgb, widths, heights, n_images); }
     catch (const std::exception & e) { return fail(e.what(), 11); }
     return chat_json_impl(h, request_json, raw(bmps), cb, user, out_response_json);
+}
+
+kiln_llama * kiln_llama_create_pooled(const char * model_path, int n_gpu_layers, int n_ctx, int rerank) {
+    auto * h = load_model(model_path, n_gpu_layers);
+    if (!h) return nullptr;
+    llama_context_params cp = llama_context_default_params();
+    cp.n_ctx        = n_ctx > 0 ? n_ctx : 0;
+    cp.embeddings   = true;
+    cp.pooling_type = LLAMA_POOLING_TYPE_UNSPECIFIED;  // the model's own (GGUF <arch>.pooling_type)
+    // As llama-embedding: one unified KV cache over as many sequences as llama.cpp allows, and the whole batch in one
+    // ubatch (pooling needs every token of a sequence at once), so one input can be up to n_ctx tokens.
+    cp.kv_unified   = true;
+    if (cp.n_ctx == 0) cp.n_ctx = (uint32_t) llama_model_n_ctx_train(h->model);
+    cp.n_batch = cp.n_ubatch = cp.n_ctx;
+    // no more sequences than outputs: llama.cpp sizes its output buffer for n_seq_max and asserts it fits n_batch
+    cp.n_seq_max    = std::min((uint32_t) llama_max_parallel_sequences(), cp.n_batch);
+    h->ctx = llama_init_from_model(h->model, cp);
+    if (!h->ctx) { g_err = "failed to create llama_context"; kiln_llama_destroy(h); return nullptr; }
+    h->pooling = llama_pooling_type(h->ctx);
+    if (rerank && h->pooling != LLAMA_POOLING_TYPE_RANK) {
+        g_err = "not a reranker: its GGUF has no rank pooling (a classifier head)";
+        kiln_llama_destroy(h);
+        return nullptr;
+    }
+    if (!rerank && h->pooling == LLAMA_POOLING_TYPE_RANK) {
+        g_err = "this is a reranker: load it to rerank, not to embed";
+        kiln_llama_destroy(h);
+        return nullptr;
+    }
+    if (!rerank && h->pooling == LLAMA_POOLING_TYPE_NONE) {
+        g_err = "not an embedding model: its GGUF sets no pooling type";
+        kiln_llama_destroy(h);
+        return nullptr;
+    }
+    h->batch = llama_batch_ext_init(h->ctx);
+    return h;
+}
+
+int kiln_llama_n_embd(kiln_llama * h) { return llama_model_n_embd_out(h->model); }
+
+int kiln_llama_embed(kiln_llama * h, const char ** texts, int n, int normalize, float * out,
+                     kiln_llama_token_cb cb, void * user) {
+    if (h->pooling == LLAMA_POOLING_TYPE_NONE) return fail("this model was not loaded for embeddings", 14);
+    if (h->pooling == LLAMA_POOLING_TYPE_RANK) return fail("this model was loaded as a reranker: it can only rerank", 14);
+    try {
+        // As llama-embedding: the vocab's own BOS/EOS added (Qwen3-Embedding pools the EOS it appends). Unlike it,
+        // the text isn't parsed for special tokens: it is the caller's data, not markup.
+        std::vector<std::vector<llama_token>> inputs;
+        for (int i = 0; i < n; i++) inputs.push_back(common_tokenize(h->vocab, texts[i], true, false));
+        const int dim = llama_model_n_embd_out(h->model);
+        return run_pooled(h, inputs, [&](int i, const float * v) {
+            common_embd_normalize(v, out + (size_t) i * dim, dim, normalize ? 2 : -1);
+        }, cb, user);
+    } catch (const std::exception & e) {
+        return fail(std::string("embed: ") + e.what(), 7);
+    }
+}
+
+int kiln_llama_rerank(kiln_llama * h, const char * query, const char ** docs, int n, float * out_scores,
+                      kiln_llama_token_cb cb, void * user) {
+    if (h->pooling != LLAMA_POOLING_TYPE_RANK) return fail("this model was not loaded as a reranker", 14);
+    try {
+        // The pair's prompt as llama-server's /rerank builds it (format_prompt_rerank): the GGUF's "rerank" template
+        // with {query} and {document} filled in, tokenized whole with special tokens parsed; with no template,
+        // [BOS] query [EOS] [SEP] doc [EOS] by what the vocab adds.
+        const char * tmpl = llama_model_chat_template(h->model, "rerank");
+        std::vector<std::vector<llama_token>> inputs;
+        for (int i = 0; i < n; i++) {
+            if (tmpl) {
+                std::string t = tmpl, prompt;
+                for (size_t p = 0; p < t.size();) {
+                    if (t.compare(p, 7, "{query}") == 0) { prompt += query; p += 7; }
+                    else if (t.compare(p, 10, "{document}") == 0) { prompt += docs[i]; p += 10; }
+                    else prompt += t[p++];
+                }
+                inputs.push_back(common_tokenize(h->vocab, prompt, false, true));
+            } else {
+                llama_token eos = llama_vocab_eos(h->vocab);
+                if (eos == LLAMA_TOKEN_NULL) eos = llama_vocab_sep(h->vocab);
+                std::vector<llama_token> t;
+                if (llama_vocab_get_add_bos(h->vocab)) t.push_back(llama_vocab_bos(h->vocab));
+                auto q = common_tokenize(h->vocab, query, false, false), d = common_tokenize(h->vocab, docs[i], false, false);
+                t.insert(t.end(), q.begin(), q.end());
+                if (llama_vocab_get_add_eos(h->vocab)) t.push_back(eos);
+                if (llama_vocab_get_add_sep(h->vocab)) t.push_back(llama_vocab_sep(h->vocab));
+                t.insert(t.end(), d.begin(), d.end());
+                if (llama_vocab_get_add_eos(h->vocab)) t.push_back(eos);
+                inputs.push_back(std::move(t));
+            }
+        }
+        // llama-server's score: the first class output (for Qwen3-Reranker, the softmax probability of "yes")
+        return run_pooled(h, inputs, [&](int i, const float * v) { out_scores[i] = v[0]; }, cb, user);
+    } catch (const std::exception & e) {
+        return fail(std::string("rerank: ") + e.what(), 7);
+    }
 }
 
 void kiln_llama_free(void * p) { free(p); }
