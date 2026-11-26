@@ -1,5 +1,5 @@
 /*
- * The cards' shared look: the Kiln website's (kiln-website, src/pages/index.astro). Every card is a 1920 × 1080 page,
+ * The cards' shared look: the Fornax website's (fornax-website, src/pages/index.astro). Every card is a 1920 × 1080 page,
  * rendered once to a PNG by build/build.mjs and then given a slow push-in. Nothing under 30px: the video is watched on
  * phones too.
  *
@@ -122,8 +122,8 @@ code { font-family: Mono, monospace; font-variant-ligatures: none; }
 .layer.app { background: var(--card); border: 3px solid var(--line); }
 .layer.foreign { background: #efe6de; border: 3px dashed #c9b6a6; }
 .layer.foreign b { color: #5a4a40; }
-.layer.kiln { background: linear-gradient(135deg, #f6b25a, var(--accent)); color: var(--abyss); border: 3px solid var(--accent); }
-.layer.kiln small { color: #5a2a0e; }
+.layer.fornax { background: linear-gradient(135deg, #f6b25a, var(--accent)); color: var(--abyss); border: 3px solid var(--accent); }
+.layer.fornax small { color: #5a2a0e; }
 .layer.engine { background: var(--card); border: 3px solid #e8a26a; }
 .layer.gpu { background: var(--char); color: #fff; border: 3px solid var(--char); }
 .layer.gpu small { color: var(--dim); }
@@ -142,7 +142,7 @@ body:has(.shot) { padding: 54px 90px 50px; gap: 0; justify-content: flex-start; 
 .group .row { display: grid; grid-template-columns: 230px 1fr 140px; align-items: center; gap: 26px; margin-bottom: 16px; font: 500 40px Ub, sans-serif; }
 .group .track { height: 72px; }
 .group .fill { height: 100%; border-radius: 12px; display: flex; align-items: center; justify-content: flex-end; padding-right: 24px; font: 700 40px Ub, sans-serif; }
-.group .fill.kiln { background: linear-gradient(90deg, #f6b25a, var(--accent)); color: var(--abyss); }
+.group .fill.fornax { background: linear-gradient(90deg, #f6b25a, var(--accent)); color: var(--abyss); }
 .group .fill.other { background: #e2d5c9; color: var(--ink); }
 .group .times { font: 700 44px Ub, sans-serif; color: var(--ember); }
 .note { margin: 0; font: 400 32px/1.45 Ub, sans-serif; color: var(--muted); }

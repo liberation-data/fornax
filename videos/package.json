@@ -1,8 +1,8 @@
 {
-    "name": "kiln-videos",
+    "name": "fornax-videos",
     "private": true,
     "type": "module",
-    "description": "Kiln's videos: one folder each, built by `npm run video -- <name>`.",
+    "description": "Fornax's videos: one folder each, built by `npm run video -- <name>`.",
     "scripts": {
         "video": "node build/build.mjs"
     },
