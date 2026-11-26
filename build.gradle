@@ -44,7 +44,8 @@ project(':kiln-examples') {
     }
     // ./gradlew chat --args='"your prompt"'   image --args='klein out.png "a prompt"'   song   yue2
     // speak --args='out.wav "text" am_michael' -Pmodel=kokoro
-    [chat: 'Chat', image: 'Image', song: 'Song', yue2: 'Yue2Song', single: 'Single', video: 'VideoClip', speak: 'Speak', speakBatch: 'SpeakBatch'].each { task, cls ->
+    // see --args='image.png "question"' -Pmodel=qwen3-vl-4b -Pschema=schema.json   invoice   defects
+    [chat: 'Chat', image: 'Image', song: 'Song', yue2: 'Yue2Song', single: 'Single', video: 'VideoClip', speak: 'Speak', speakBatch: 'SpeakBatch', see: 'See', invoice: 'Invoice', defects: 'Defects'].each { task, cls ->
         tasks.register(task, JavaExec) {
             group = 'kiln examples'
             description = "Runs org.liberationdata.kiln.examples.${cls}"
@@ -57,7 +58,7 @@ project(':kiln-examples') {
             // -Pmodel=... -Psteps=... etc. become system properties (only ones given on the command line), and so do
             // NativeLibrary's tunables, which the forked JVM would not see as -D on gradlew
             def cli = gradle.startParameter.projectProperties
-            ['kiln.gpu.graphs', 'kiln.vulkan.maxNodesPerSubmit', 'model', 'mmproj', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio', 'preprocess', 'hires', 'upscaler', 'refine', 'strength'].each { p ->
+            ['kiln.gpu.graphs', 'kiln.vulkan.maxNodesPerSubmit', 'model', 'mmproj', 'llm', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio', 'preprocess', 'hires', 'upscaler', 'refine', 'strength', 'schema'].each { p ->
                 if (cli.containsKey(p)) systemProperty p, cli[p]
             }
         }

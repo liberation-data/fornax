@@ -24,13 +24,13 @@ Kiln binds native inference engines with Java's Foreign Function & Memory API (J
 
 | Module | Engine | Models |
 |---|---|---|
-| `kiln-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...) |
+| `kiln-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (with `mtmd` for images) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...); vision language models (Qwen3-VL, PaddleOCR-VL, MedGemma, ...) |
 | `kiln-tts` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`mtmd`) | text to speech: Kokoro, ZONOS3, LFM3-Audio, Chatterbox, VoxCPM2, ... |
 | `kiln-sd` | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) | FLUX.1/FLUX.2, Qwen-Image and Qwen-Image-Edit, SD 1.x/2.x/XL/3, Wan, LTX |
 | `kiln-acestep` | [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) | ACE-Step 1.5 songs (vocals, lyrics, up to several minutes) |
 | `kiln-yue2` | [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp) | YuE2 songs |
 
-Images and songs work the same way:
+Images and songs work the same way, and a vision language model takes images in:
 
 ```java
 try (var songs = new AceStepModel(lm, textEncoder, dit, vae, true)) {
@@ -40,6 +40,11 @@ try (var songs = new AceStepModel(lm, textEncoder, dit, vae, true)) {
 try (var images = new DiffusionModel(DiffusionModel.Config.builder()
         .diffusionModel(flux).vae(vae).llm(textEncoder).build())) {
     BufferedImage img = images.generate(new DiffusionModel.Request("a neon sign", 1024, 1024, 20, 4.0, 7)).get(0);
+}
+
+try (var vlm = new LlamaModel(LlamaModel.Weights.QWEN3_VL_4B)) {   // the GGUF plus its mmproj (vision encoder)
+    String invoiceJson = vlm.extract(List.of(Message.user("Read this invoice.", Image.read(Path.of("invoice.png")))),
+            invoiceSchema, Options.DEFAULT.withTemperature(0));      // constrained to a JSON schema
 }
 ```
 
@@ -69,6 +74,9 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 | Model | Result |
 |---|---|
 | Qwen3 4B Instruct (Q4_K_M) | ~60 tokens/s, streamed through a Java callback |
+| Qwen3-VL 4B Instruct (Q4_K_M) | a 1000×1300 invoice to schema-checked JSON (vendor, date, 4 line items, totals) in ~6 s; images read in 0.4 to 1.6 s, then ~60 tokens/s |
+| PaddleOCR-VL 1.6 (0.9B) | the same invoice's text (prompt "OCR:") in ~1.5 s, ~200 tokens/s |
+| MedGemma 1.5 4B (Q4_K_M) | the same invoice to JSON in ~6 s (Gemma 3 vision: 256 tokens an image, read in ~0.8 s) |
 | ACE-Step 1.5 XL turbo | a 3 min 20 s song in 57 s |
 | ACE-Step 1.5 turbo | a 60 s song in ~15 s |
 | YuE2 3B (Q8_0) | a 60 s song in ~60 s |
@@ -100,7 +108,13 @@ time.
 
 `LlamaModel.chatJson` does OpenAI-style chat with **tool calling**, using the model's own chat template and
 tool-call format (the same templates and parsers as llama-server): messages and tools in OpenAI's format in, a
-message with `content`, `reasoning_content` and `tool_calls` out.
+message with `content`, `reasoning_content` and `tool_calls` out. A `json_schema` in the request constrains the reply
+to that schema.
+
+Loaded with an mmproj GGUF, a `LlamaModel` is a vision language model, through llama.cpp's `mtmd` (as `llama-mtmd-cli`
+and `llama-server --mmproj` run them): `Message.user(text, images...)` with `Image.of(BufferedImage)`,
+`Image.read(Path)` or `Image.decode(bytes)`; `chat`, `chatJson` and `extract` (a reply constrained to a JSON schema)
+all take images. `LlamaModel.Weights` names the models Kiln has been tried with.
 
 ## Building
 
@@ -131,6 +145,8 @@ Kiln doesn't download anything. Fetch weights with the Hugging Face CLI, and `Hf
 
 ```sh
 hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+hf download Qwen/Qwen3-VL-4B-Instruct-GGUF Qwen3VL-4B-Instruct-Q4_K_M.gguf mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf
+hf download PaddlePaddle/PaddleOCR-VL-1.6-GGUF PaddleOCR-VL-1.6-GGUF.gguf PaddleOCR-VL-1.6-GGUF-mmproj.gguf
 hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Embedding-0.6B-Q8_0.gguf \
     acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
 hf download Serveurperso/YuE2-GGUF YuE2-3B-Q8_0.gguf YuE2-Vae-F32.gguf
@@ -151,6 +167,10 @@ CC BY-NC 4.0, for example.
 ./gradlew yue2 --args='yue2-song.wav'
 ./gradlew speak --args='out.wav "Hello from the JVM" bm_george'   # -Pmodel=zonos3|lfm3-audio|chatterbox-turbo|...
 ./gradlew image --args='klein out.png "a neon sign that says KILN"' -Psteps=12 -Pwidth=768 -Pheight=768
+./gradlew see --args='photo.jpg "What is in this picture?"'      # -Pmodel=qwen3-vl-4b|paddleocr-vl|medgemma-4b
+./gradlew see --args='form.png "Fill in the fields."' -Pschema=schema.json   # a reply that follows a JSON schema
+./gradlew invoice   # draws a made-up invoice and reads it into JSON; -Pmodel=paddleocr-vl reads it with OCR first
+./gradlew defects   # a tray of parts with a dented one: Qwen3-VL boxes the defects (out/defects-found.png)
 ```
 
 The song examples use the requests in `kiln-examples/src/main/resources/requests/`; pass your own JSON as a
@@ -163,7 +183,6 @@ second argument. The request formats are the engines' own (see
 - Video through stable-diffusion.cpp (`sd_generate_video`: Wan, LTX).
 - `kiln-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `kiln-llama`).
 - An optional OpenAI-compatible server.
-- Vision-language models through llama.cpp's `mtmd` (document parsing, image Q&A).
 - An MLX module for Apple silicon, through `mlx-c`.
 - Speech: whisper.cpp.
 - A Kotlin layer with coroutine `Flow` streaming.

@@ -61,3 +61,33 @@ surprises you.
 - **Call `postprocess_cpu_params` before `common_init_from_params`.** The parser fills in the thread counts after
   the arguments; without it the threadpool is sized from -1 and ggml tries to allocate 2^64 bytes. See
   [tts-notes.md](tts-notes.md) for the rest (models, voices, licences).
+
+## llama.cpp vision (kiln-llama with an mmproj)
+
+- **One path for every chat with images.** The shim converts image parts to media markers, renders the chat with the
+  model's own Jinja template (`common_chat_session`, as llama-server does), splits the rendered prompt on the
+  markers, and tokenizes text and images together with `mtmd_tokenize_from_parts`. Template text is parsed for
+  special tokens and user text isn't, as in the text-only path. `mtmd_helper_eval_chunks` then runs the vision encoder
+  and decodes everything; after that, generation is the usual loop. So `json_schema` grammars and tool calls work with
+  images for free.
+- **The marker is private.** The shim uses a random marker per process rather than `mtmd_default_marker()`
+  (`<__media__>`), so user text that happens to contain `<__media__>` can't claim an image. Raw `complete` with images
+  does use the default marker, since the caller writes the whole prompt. The shim counts those markers itself:
+  `mtmd_tokenize` returns 2 for a marker/image mismatch (its header says 1), the same code as a failed image.
+- **Text tokens after an image need only one position.** Qwen3-VL uses M-RoPE; `mtmd_helper_eval_chunks` returns the
+  next position (fewer positions than tokens for an image), and text tokens after it take a single position each
+  through `llama_batch_ext_set_pos`. So the shim counts context cells apart from positions: a ~1200-token image
+  takes ~40 positions, and checking the position against `n_ctx` would overrun the KV cache.
+- **Non-causal image attention needs the whole image in one ubatch.** Gemma 3 (MedGemma) attends over an image
+  non-causally. Like `llama-mtmd-cli`, `kiln_llama_create_mm` caps the image's tokens at `n_ubatch` (512 by default)
+  for such models, using `mtmd_get_memory_usage` (an unstable mtmd API that may move).
+- **PaddleOCR-VL takes task prompts, not instructions.** It answers "OCR:", "Table Recognition:", "Chart
+  Recognition:" and so on, and ignores a request to fill a schema: a grammar-constrained reply comes back as
+  well-formed JSON with the wrong values. Read the text with PaddleOCR-VL, then extract with a text model
+  (`./gradlew invoice -Pmodel=paddleocr-vl`). Its OCR of a 1000×1300 invoice took ~1.5 s at ~200 tokens/s on the
+  8060S.
+- **Qwen3-VL 4B grounds what is there, not what is missing.** Asked for defects on a tray of parts, it boxed a dented
+  part accurately (with a schema that asks for a short description before each box) but never found an empty slot
+  in the grid, with or without a schema. Its boxes are on a 0 to 1000 grid over the image.
+- **Images are cheap on the GPU.** A 1000×1300 invoice is ~1200 Qwen3-VL tokens and is read (encoded and prefilled)
+  in ~1.6 s; a 720×480 picture in ~0.4 s.

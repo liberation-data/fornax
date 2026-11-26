@@ -30,13 +30,49 @@ int kiln_llama_complete(kiln_llama * h, const char * prompt, int max_tokens, flo
 
 // OpenAI-style chat with tool calling, through llama.cpp's chat templates and parsers (as llama-server does).
 // request_json: {"messages": [...], "tools": [...], "tool_choice": "auto|required|none", "parallel_tool_calls": bool,
-//                "max_tokens": n, "temperature": t, "top_p": p, "min_p": p, "seed": s, "enable_thinking": bool}
+//                "max_tokens": n, "temperature": t, "top_p": p, "min_p": p, "top_k": k, "seed": s, "enable_thinking": bool,
+//                "json_schema": {...}}
 // messages and tools use OpenAI's chat completions format.
 // *out_response_json: {"message": {"role", "content", "reasoning_content", "tool_calls": [...]},
 //                      "finish_reason": "stop|length|tool_calls", "usage": {"prompt_tokens", "completion_tokens"}}
 // cb (optional) receives each new piece of the message's content as it's parsed. Free the response with kiln_llama_free.
 int kiln_llama_chat_json(kiln_llama * h, const char * request_json, kiln_llama_token_cb cb, void * user,
                          char ** out_response_json);
+
+// --- Images (vision language models, through llama.cpp's mtmd) ---
+//
+// Images go in as packed RGB, 3 bytes a pixel, row by row: rgb[i] holds widths[i] * heights[i] * 3 bytes.
+
+// A vision language model: the language model's GGUF plus its mmproj GGUF (the vision encoder and projector).
+// A handle from kiln_llama_create_mm also does everything a kiln_llama_create handle does.
+kiln_llama * kiln_llama_create_mm(const char * model_path, const char * mmproj_path, int n_gpu_layers, int n_ctx);
+
+// 1 if the handle takes images (it was created with an mmproj that has a vision encoder), else 0.
+int kiln_llama_supports_vision(kiln_llama * h);
+
+// The marker kiln_llama_complete_images replaces with an image (llama.cpp's mtmd_default_marker()).
+const char * kiln_llama_media_marker(void);
+
+// kiln_llama_chat with images: message i carries the next image_counts[i] images (in order), placed before its text.
+// The chat is formatted with the model's own (Jinja) chat template, as kiln_llama_chat_json does.
+int kiln_llama_chat_images(kiln_llama * h, const char ** roles, const char ** contents, const int * image_counts,
+                           int n_messages, const unsigned char ** rgb, const uint32_t * widths, const uint32_t * heights,
+                           int n_images, int max_tokens, float temperature, float top_p, float min_p, uint32_t seed,
+                           kiln_llama_token_cb cb, void * user, char ** out_text, int * out_n_prompt, int * out_n_generated);
+
+// kiln_llama_complete with images: the prompt holds kiln_llama_media_marker() once for each image, in order.
+// out_n_prompt counts the image tokens too.
+int kiln_llama_complete_images(kiln_llama * h, const char * prompt, const unsigned char ** rgb, const uint32_t * widths,
+                               const uint32_t * heights, int n_images, int max_tokens, float temperature, float top_p,
+                               float min_p, uint32_t seed, kiln_llama_token_cb cb, void * user, char ** out_text,
+                               int * out_n_prompt, int * out_n_generated);
+
+// kiln_llama_chat_json with images. In a message's content array, {"type": "image", "index": i} stands for the i-th
+// RGB buffer given here, and an OpenAI {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}} part
+// is decoded too (PNG, JPEG, BMP, GIF). "json_schema" constrains the reply to a JSON schema, as in kiln_llama_chat_json.
+int kiln_llama_chat_json_images(kiln_llama * h, const char * request_json, const unsigned char ** rgb,
+                                const uint32_t * widths, const uint32_t * heights, int n_images,
+                                kiln_llama_token_cb cb, void * user, char ** out_response_json);
 
 void kiln_llama_free(void * p);
 void kiln_llama_destroy(kiln_llama * h);
