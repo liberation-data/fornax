@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- hello-kiln for Maven: mvn -q compile exec:java   (.mvn/jvm.config allows Kiln's native access) -->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.kiln4j.samples</groupId>
+    <artifactId>hello-kiln</artifactId>
+    <version>1.0</version>
+
+    <properties>
+        <!-- The Kiln release to build against (Gradle: gradle.properties). Override with -Dkiln.version=... -->
+        <kiln.version>0.1.0</kiln.version>
+        <maven.compiler.release>25</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.kiln4j</groupId>
+            <artifactId>kiln-llama</artifactId>
+            <version>${kiln.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.kiln4j</groupId>
+            <artifactId>kiln-natives-${kiln.natives}</artifactId>
+            <version>${kiln.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.15.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.6.3</version>
+                <configuration>
+                    <mainClass>hello.HelloKiln</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!-- The natives jar for this OS and arch -->
+    <profiles>
+        <profile>
+            <id>kiln-linux-x86_64</id>
+            <activation><os><name>Linux</name><arch>amd64</arch></os></activation>
+            <properties><kiln.natives>linux-x86_64-vulkan</kiln.natives></properties>
+        </profile>
+        <profile>
+            <id>kiln-macos-aarch64</id>
+            <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
+            <properties><kiln.natives>macos-aarch64-metal</kiln.natives></properties>
+        </profile>
+        <profile>
+            <id>kiln-macos-x86_64</id>
+            <activation><os><family>mac</family><arch>x86_64</arch></os></activation>
+            <properties><kiln.natives>macos-x86_64-metal</kiln.natives></properties>
+        </profile>
+    </profiles>
+</project>

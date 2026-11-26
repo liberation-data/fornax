@@ -51,7 +51,12 @@ try (var vlm = new LlamaModel(LlamaModel.Weights.QWEN3_VL_4B)) {   // the GGUF p
 ## Getting started
 
 Kiln is on Maven Central as `org.kiln4j`. Add an engine module (`kiln-llama`, `kiln-tts`, `kiln-sd`, `kiln-acestep`
-or `kiln-yue2`) and the **natives jar** for your platform, which holds the engines' native libraries:
+or `kiln-yue2`) and the **natives jar** for your platform, which holds the engines' native libraries.
+
+The quickest start is [`samples/hello-kiln`](samples/hello-kiln): a standalone app for Gradle and Maven that streams
+a chat reply from Qwen3 4B. Copy it out and run `./gradlew run` or `mvn -q compile exec:java`.
+
+The natives jars:
 
 | Natives artifact | Platform | GPU backend |
 |---|---|---|

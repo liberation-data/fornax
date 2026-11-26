@@ -13,6 +13,12 @@ From the first release, Kiln is on Maven Central under the group **`org.kiln4j`*
 engine module, and the **natives jar** for your platform, which holds the engines' native libraries. Your app then
 needs no native build of its own.
 
+For a complete app to copy, see [`samples/hello-kiln`](https://github.com/liberation-data/kiln/tree/main/samples/hello-kiln):
+a standalone Gradle and Maven project that streams a chat reply from Qwen3 4B. Fetch the model, then run
+`./gradlew run` or `mvn -q compile exec:java`. To try it against a Kiln you built, `./gradlew publishToMavenLocal`
+in the Kiln repository and run the sample with `-PkilnLocal=true -PkilnVersion=0.1.0-SNAPSHOT` (Gradle) or
+`-Dkiln.version=0.1.0-SNAPSHOT` (Maven).
+
 ## The artifacts
 
 The Java modules, each with sources and javadoc jars:
