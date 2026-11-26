@@ -37,6 +37,8 @@ public record ModelSet(String id, Kind kind, String title, String engine, List<P
             if (revision == null || revision.isBlank()) revision = "main";
             if (!repo.matches("[\\w.-]+/[\\w.-]+")) throw new IllegalArgumentException("not an org/name repo: " + repo);
             if (file.startsWith("/") || file.contains("..")) throw new IllegalArgumentException("not a path in a repo: " + file);
+            if (revision.startsWith("/") || revision.contains("..") || revision.contains("\\"))   // it names refs/<revision>
+                throw new IllegalArgumentException("not a revision: " + revision);
         }
 
         public Source(String repo, String file) { this(repo, file, "main"); }

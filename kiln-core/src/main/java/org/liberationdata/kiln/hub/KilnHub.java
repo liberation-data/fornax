@@ -17,7 +17,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
-import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -38,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CancellationException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -317,31 +317,46 @@ public final class KilnHub {
 
     /**
      * The cross-process lock on one blob: a file lock on {@code .locks/<repo>/<etag>.lock}. Another JVM holding it, or
-     * another thread of this one ({@link OverlappingFileLockException}), means the blob is being downloaded: poll
-     * until it is free, then re-check the blob, which the other pull has usually finished by then.
+     * another thread of this one, means the blob is being downloaded: poll until it is free, then re-check the blob,
+     * which the other pull has usually finished by then.
+     *
+     * <p>Threads of this JVM are kept apart by {@link #HELD} before any channel is opened, because closing a channel
+     * on a file drops every lock the process holds on it (see {@link FileLock}): a thread that opened the file only to
+     * find it locked would, on closing, free the downloading thread's lock for other processes.
      */
-    private record BlobLock(FileChannel channel, FileLock lock) implements AutoCloseable {
+    private record BlobLock(Path key, FileChannel channel, FileLock lock) implements AutoCloseable {
+        private static final Set<Path> HELD = ConcurrentHashMap.newKeySet();
+
         static BlobLock acquire(Path path, Cancel cancel, Runnable waiting) throws IOException {
-            Files.createDirectories(path.getParent());
-            FileChannel ch = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            while (true) {
+                BlobLock l = tryAcquire(path);
+                if (l != null) return l;
+                waiting.run();
+                cancel.sleep(LOCK_POLL);
+            }
+        }
+
+        /** The lock, or null when another thread or process holds it. */
+        static BlobLock tryAcquire(Path path) throws IOException {
+            Path key = path.toAbsolutePath().normalize();
+            if (!HELD.add(key)) return null;   // another thread of this JVM has it
+            FileChannel ch = null;
             try {
-                while (true) {
-                    try {
-                        FileLock l = ch.tryLock();
-                        if (l != null) return new BlobLock(ch, l);
-                    } catch (OverlappingFileLockException held) {   // another thread of this JVM has it
-                    }
-                    waiting.run();
-                    cancel.sleep(LOCK_POLL);
-                }
+                Files.createDirectories(path.getParent());
+                ch = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                FileLock l = ch.tryLock();
+                if (l != null) return new BlobLock(key, ch, l);
+                ch.close();   // another process has it; no thread of this one does, so closing frees nothing
+                HELD.remove(key);
+                return null;
             } catch (IOException | RuntimeException | Error e) {
-                ch.close();
+                try { if (ch != null) ch.close(); } finally { HELD.remove(key); }
                 throw e;
             }
         }
 
         @Override public void close() throws IOException {
-            try { lock.release(); } finally { channel.close(); }
+            try { lock.release(); } finally { try { channel.close(); } finally { HELD.remove(key); } }
         }
     }
 
@@ -385,7 +400,7 @@ public final class KilnHub {
                 for (CacheLayout.Pending p : cache.pendings(repo)) {
                     if (!p.path().equals(s.file())) continue;
                     Path incomplete = cache.incomplete(repo, p.etag());
-                    try (BlobLock lock = tryLock(cache.lock(repo, p.etag()))) {
+                    try (BlobLock lock = BlobLock.tryAcquire(cache.lock(repo, p.etag()))) {
                         if (lock == null) continue;
                         long size = sizeOrZero(incomplete);
                         if (Files.deleteIfExists(incomplete)) { freed += size; removed.add(incomplete); }
@@ -403,7 +418,7 @@ public final class KilnHub {
             }
             for (Path blob : e.getValue()) {
                 if (stillUsed.contains(blob) || !Files.isRegularFile(blob)) continue;
-                try (BlobLock lock = tryLock(cache.lock(repo, blob.getFileName().toString()))) {
+                try (BlobLock lock = BlobLock.tryAcquire(cache.lock(repo, blob.getFileName().toString()))) {
                     if (lock == null) continue;
                     long size = sizeOrZero(blob);
                     if (Files.deleteIfExists(blob)) { freed += size; removed.add(blob); }
@@ -446,18 +461,6 @@ public final class KilnHub {
         if (isEmptyOrMissing(snaps) && isEmptyOrMissing(dir.resolve("blobs"))) {
             deleteTree(dir);
         }
-    }
-
-    private static BlobLock tryLock(Path path) throws IOException {
-        if (!Files.exists(path)) Files.createDirectories(path.getParent());
-        FileChannel ch = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-        try {
-            FileLock l = ch.tryLock();
-            if (l != null) return new BlobLock(ch, l);
-        } catch (OverlappingFileLockException ignored) {
-        }
-        ch.close();
-        return null;
     }
 
     // ---- small things ----

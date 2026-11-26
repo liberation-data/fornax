@@ -76,7 +76,8 @@ final class HubHttp {
                 String etag = h.firstValue("X-Linked-Etag").or(() -> h.firstValue("ETag")).map(HubHttp::unquote).orElse(null);
                 long size = h.firstValue("X-Linked-Size").or(() -> code < 300 ? h.firstValue("Content-Length") : Optional.empty())
                         .map(Long::parseLong).orElse(-1L);
-                if (commit.isEmpty() || etag == null || !etag.matches("[\\w.-]+"))
+                // both name paths in the cache (snapshots/<commit>, blobs/<etag>), so neither may be "..", say
+                if (commit.isEmpty() || !CacheLayout.isCommit(commit.get()) || etag == null || !etag.matches("\\w[\\w.-]*"))
                     throw new HubException(Reason.PROTOCOL, s.repo(), s.repo() + " " + s.file() + ": the Hub didn't give its commit and etag");
                 return new RemoteFile(s, commit.get(), etag, size);
             }

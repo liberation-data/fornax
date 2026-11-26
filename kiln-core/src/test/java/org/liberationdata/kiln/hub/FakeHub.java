@@ -53,6 +53,10 @@ final class FakeHub implements AutoCloseable {
     final AtomicLong dropNextAfter = new AtomicLong();
     /** A pause after each 16 KB sent, to make transfers slow enough to overlap or cancel. */
     volatile long pauseMillis;
+    /** The CDN answers a Range request with the whole file (200), as a server without range support does. */
+    volatile boolean ignoreRange;
+    /** Sent as X-Repo-Commit instead of the real commit, as a broken or hostile mirror might; null for the real one. */
+    volatile String commitHeader;
 
     FakeHub() throws IOException {
         InetSocketAddress any = new InetSocketAddress(InetAddress.getLoopbackAddress(), 0);
@@ -115,7 +119,7 @@ final class FakeHub implements AutoCloseable {
             File f = files.get(repo + "/" + path);
             if (f == null) { x.getResponseHeaders().set("X-Error-Code", "EntryNotFound"); send(x, 404, null); return; }
             var h = x.getResponseHeaders();
-            h.set("X-Repo-Commit", commit(repo));
+            h.set("X-Repo-Commit", commitHeader != null ? commitHeader : commit(repo));
             h.set("X-Linked-Etag", "\"" + f.etag() + "\"");
             h.set("X-Linked-Size", String.valueOf(f.content().length));
             h.set("Location", "http://127.0.0.1:" + cdn.getAddress().getPort() + "/" + (f.lfs() ? "cdn" : "raw") + "/" + f.etag());
@@ -135,15 +139,15 @@ final class FakeHub implements AutoCloseable {
             if (corrupt.contains(etag)) content[content.length / 2] ^= 0x5a;
             long from = 0;
             String range = x.getRequestHeaders().getFirst("Range");
-            if (range != null) {
-                ranges.add(etag + " " + range);
+            if (range != null) ranges.add(etag + " " + range);
+            if (range != null && !ignoreRange) {
                 from = Long.parseLong(range.replaceAll("bytes=(\\d+)-.*", "$1"));
                 if (from >= content.length) { send(x, 416, null); return; }
                 x.getResponseHeaders().set("Content-Range", "bytes " + from + "-" + (content.length - 1) + "/" + content.length);
             }
             x.getResponseHeaders().set("Accept-Ranges", "bytes");
             long length = content.length - from;
-            x.sendResponseHeaders(range != null ? 206 : 200, length);
+            x.sendResponseHeaders(range != null && !ignoreRange ? 206 : 200, length);
             long drop = dropNextAfter.getAndSet(0);
             OutputStream out = x.getResponseBody();
             int pos = (int) from;

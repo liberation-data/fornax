@@ -386,4 +386,68 @@ class KilnHubTest {
         assertTrue(e.bytesFreed() > 0);
         assertEquals(State.MISSING, hub().status(set).state());
     }
+
+    @Test void aServerThatIgnoresRangeRestartsTheFileFromZero() throws Exception {
+        var f = fake.add(REPO, "big.gguf", 500_000, true);
+        fake.dropNextAfter.set(200_000);
+        fake.ignoreRange = true;
+
+        Map<String, Path> files = hub().pull(set("one", Part.of("model", REPO, "big.gguf")), PullListener.NONE);
+
+        assertArrayEquals(f.content(), Files.readAllBytes(files.get("model")), "the 200 replaced the partial file, not appended to it");
+        assertEquals(1, fake.ranges.size(), fake.ranges.toString());
+        assertEquals(2, fake.gets(f));
+    }
+
+    @Test void aPinnedCommitIsItsOwnSnapshotAndWritesNoRef() throws Exception {
+        var f = fake.add(REPO, "model.gguf", 2_000, true);
+        String commit = FakeHub.commit(REPO);
+        var pinned = set("pinned", new Part("m", List.of(new ModelSet.Source(REPO, "model.gguf", commit))));
+
+        Path p = hub().pull(pinned, PullListener.NONE).get("m");
+
+        Path repoDir = cache.resolve("models--test-org--Model-GGUF");
+        assertEquals(repoDir.resolve("snapshots").resolve(commit).resolve("model.gguf"), p);
+        assertArrayEquals(f.content(), Files.readAllBytes(p));
+        assertFalse(Files.exists(repoDir.resolve("refs")), "a commit is not a branch: no refs/<commit>");
+        // A commit that isn't on disk is not satisfied by another snapshot.
+        var other = set("other", new Part("m", List.of(new ModelSet.Source(REPO, "model.gguf", "1".repeat(40)))));
+        assertEquals(State.MISSING, hub().status(other).state());
+    }
+
+    @Test void aRevisionOrHubCommitThatLeavesTheCacheIsRefused() {
+        assertThrows(IllegalArgumentException.class, () -> new ModelSet.Source(REPO, "m.gguf", "../../../outside"));
+        assertThrows(IllegalArgumentException.class, () -> new ModelSet.Source(REPO, "m.gguf", "/etc/x"));
+        assertDoesNotThrow(() -> new ModelSet.Source(REPO, "m.gguf", "refs/pr/1"));
+
+        fake.add(REPO, "model.gguf", 2_000, true);
+        fake.commitHeader = "../../../../outside";
+        var e = assertThrows(HubException.class, () -> hub().pull(set("one", Part.of("m", REPO, "model.gguf")), PullListener.NONE));
+        assertEquals(Reason.PROTOCOL, e.reason());
+        assertFalse(Files.exists(dir.resolve("outside")));
+        assertFalse(Files.exists(cache.resolve("outside")));
+    }
+
+    @Test void anotherThreadGivingUpOnALockDoesNotReleaseItForOtherProcesses() throws Exception {
+        var f = fake.add(REPO, "big.gguf", 1_000_000, true);
+        var set = set("one", Part.of("m", REPO, "big.gguf"));
+        fake.pauseMillis = 20;
+        CountDownLatch some = new CountDownLatch(1);
+        PullTask t = hub().pullAsync(set, p -> { if (p.bytesDone() > 50_000) some.countDown(); });
+        try {
+            assertTrue(some.await(30, TimeUnit.SECONDS));
+            // Evict, in this JVM, tries the downloading blob's lock and finds it held. Closing a channel on a file
+            // drops every lock this process has on it, so the evict must not have opened (and closed) one.
+            hub().evict(set);
+            Path lock = cache.resolve(".locks/models--test-org--Model-GGUF/" + f.etag() + ".lock");
+            Process probe = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                    "-cp", System.getProperty("java.class.path"), LockProbe.class.getName(), lock.toString())
+                    .redirectErrorStream(true).start();
+            assertTrue(probe.waitFor(60, TimeUnit.SECONDS));
+            assertEquals("held", new String(probe.getInputStream().readAllBytes()).trim());
+        } finally {
+            t.cancel();
+        }
+        assertThrows(CancellationException.class, () -> t.result().join());
+    }
 }
