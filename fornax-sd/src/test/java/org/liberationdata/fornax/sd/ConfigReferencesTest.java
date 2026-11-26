@@ -56,13 +56,13 @@ class ConfigReferencesTest {
 
     @Test void anLtxSetAlsoWidensItsBf16Tensors() throws Exception {
         Path model = cached("o/ltx", "ltx.safetensors"), audio = cached("o/ltx", "audio.safetensors");
-        cached("o/ltx", "up.safetensors");
+        Path up = cached("o/ltx", "up.safetensors");
         for (String name : List.of("ltx-2.5-tiny", "Video:LTX-2.5-tiny")) {   // by id or alias, in any case
             var o = DiffusionModel.Config.builder().model(name, hub(SETS)).build().options();
             assertEquals(model.toString(), o.get("diffusion_model_path"));
             assertEquals(audio.toString(), o.get("audio_vae_path"));
             assertEquals(DiffusionModel.Config.LTX_BF16_TO_F32, o.get("tensor_type_rules"), name);
-            assertFalse(o.containsValue(dir.resolve("up.safetensors").toString()));   // the upscaler is a request's hires.model_path
+            assertFalse(o.containsValue(up.toString()));   // the upscaler is a request's hires.model_path
             assertEquals(3, o.size());
         }
         for (String f : List.of("flux.safetensors", "vae.safetensors", "llm.safetensors")) cached("o/flux", f);
