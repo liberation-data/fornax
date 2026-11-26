@@ -54,6 +54,7 @@ def published = [
     'kiln-sd'     : 'Kiln SD: images and video through stable-diffusion.cpp, in-process via Java FFM',
     'kiln-acestep': 'Kiln ACE-Step: ACE-Step 1.5 songs through acestep.cpp, in-process via Java FFM',
     'kiln-yue2'   : 'Kiln YuE2: YuE2 songs through yue2.cpp, in-process via Java FFM',
+    'kiln-whisper': 'Kiln Whisper: speech to text with word timings through whisper.cpp, in-process via Java FFM',
 ]
 configure(subprojects.findAll { published.containsKey(it.name) || it.name.startsWith('kiln-natives-') }) { p ->
     apply plugin: 'com.vanniktech.maven.publish'
@@ -67,7 +68,7 @@ configure(subprojects.findAll { published.containsKey(it.name) || it.name.starts
         pom {
             name = p.name
             description = natives ? "Kiln's native engine libraries for ${p.name - 'kiln-natives-'}: llama.cpp, " +
-                    'stable-diffusion.cpp, acestep.cpp and yue2.cpp, each built into one self-contained library' : published[p.name]
+                    'stable-diffusion.cpp, acestep.cpp, yue2.cpp and whisper.cpp, each built into one self-contained library' : published[p.name]
             inceptionYear = '2026'
             url = 'https://kiln4j.org'
             licenses {
@@ -95,7 +96,7 @@ configure(subprojects.findAll { published.containsKey(it.name) || it.name.starts
 
 // A natives jar: build/native/<dir>/*.so or *.dylib under org/kiln4j/natives/<os>-<arch>-<backend>/, where
 // NativeLibrary finds them on the classpath (see BundledNatives). settings.gradle includes one per built platform.
-def engineLibraries = ['kiln_llama', 'kiln_tts', 'stable-diffusion', 'kiln_acestep', 'kiln_yue2']
+def engineLibraries = ['kiln_llama', 'kiln_tts', 'stable-diffusion', 'kiln_acestep', 'kiln_yue2', 'kiln_whisper']
 configure(subprojects.findAll { it.name.startsWith('kiln-natives-') }) { p ->
     def platform = p.name - 'kiln-natives-'
     def libs = gradle.nativesDirs[platform]  // from settings.gradle, which maps macos-aarch64 to build.sh's arm64 dir
@@ -118,11 +119,13 @@ project(':kiln-examples') {
         implementation project(':kiln-sd')
         implementation project(':kiln-acestep')
         implementation project(':kiln-yue2')
+        implementation project(':kiln-whisper')
     }
     // ./gradlew chat --args='"your prompt"'   image --args='klein out.png "a prompt"'   song   yue2
     // speak --args='out.wav "text" am_michael' -Pmodel=kokoro
     // see --args='image.png "question"' -Pmodel=qwen3-vl-4b -Pschema=schema.json   invoice   defects
-    [chat: 'Chat', image: 'Image', song: 'Song', yue2: 'Yue2Song', single: 'Single', video: 'VideoClip', speak: 'Speak', speakBatch: 'SpeakBatch', see: 'See', invoice: 'Invoice', defects: 'Defects'].each { task, cls ->
+    // transcribe --args='audio.wav'
+    [chat: 'Chat', image: 'Image', song: 'Song', yue2: 'Yue2Song', single: 'Single', video: 'VideoClip', speak: 'Speak', speakBatch: 'SpeakBatch', see: 'See', invoice: 'Invoice', defects: 'Defects', transcribe: 'Transcribe'].each { task, cls ->
         tasks.register(task, JavaExec) {
             group = 'kiln examples'
             description = "Runs org.liberationdata.kiln.examples.${cls}"
@@ -140,6 +143,11 @@ project(':kiln-examples') {
             }
         }
     }
+}
+
+project(':kiln-whisper') {
+    // the integration test speaks its own test audio with Kokoro
+    dependencies { testImplementation project(':kiln-tts') }
 }
 
 project(':kiln-bench') {

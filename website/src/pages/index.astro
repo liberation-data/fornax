@@ -112,7 +112,7 @@ String res = llm.chatJson("""
 }`
 };
 
-const build = `native/build.sh vulkan     # or hip | cuda | metal | cpu; optionally list engines: llama tts sd acestep yue2
+const build = `native/build.sh vulkan     # or hip | cuda | metal | cpu; optionally list engines: llama tts sd acestep yue2 whisper
 ./gradlew build`;
 
 const download = `hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
@@ -550,7 +550,7 @@ const theme = 'vitesse-dark';
                     <article class="card">
                         <p class="eyebrow">Same engines</p>
                         <h3>The native runners themselves</h3>
-                        <p>Kiln calls llama.cpp, stable-diffusion.cpp, acestep.cpp and yue2.cpp directly: the same C/C++ engines the CLIs and servers use, so you get their speed and their model support.</p>
+                        <p>Kiln calls llama.cpp, stable-diffusion.cpp, acestep.cpp, yue2.cpp and whisper.cpp directly: the same C/C++ engines the CLIs and servers use, so you get their speed and their model support.</p>
                     </article>
                     <article class="card">
                         <p class="eyebrow">Vulkan today</p>
@@ -639,6 +639,13 @@ const theme = 'vitesse-dark';
                             <p>Songs, from the engine’s own JSON request.</p>
                             <ul class="models"><li>YuE2</li></ul>
                         </article>
+                        <article class="card engine">
+                            <p class="eyebrow">Transcripts</p>
+                            <h3>kiln-whisper</h3>
+                            <p class="via">on <a href="https://github.com/ggml-org/whisper.cpp">whisper.cpp</a></p>
+                            <p>Speech to text, with a start and end for every word.</p>
+                            <ul class="models"><li>Whisper large-v3-turbo</li><li>base.en</li><li>…</li></ul>
+                        </article>
                     </div>
                     <p class="callout">Check each model’s license before you use what it makes. Some are non-commercial: YuE2’s weights are CC BY-NC 4.0, for example.</p>
                 </div>
@@ -676,6 +683,7 @@ const theme = 'vitesse-dark';
                                     <tr><td>YuE2 3B (Q8_0)</td><td class="num">60 s song in ~60 s</td></tr>
                                     <tr><td>FLUX.2 [klein] base 4B (fp8)</td><td class="num">768×768, 12 steps in ~130 s</td></tr>
                                     <tr><td>Qwen-Image 2512 (fp8)</td><td class="num">1024×1024, 20 steps in ~13 min</td></tr>
+                                    <tr><td>Whisper large-v3-turbo (q5_0)</td><td class="num">55 s of speech in 1.8 s, timed word by word</td></tr>
                                 </tbody>
                                 <caption>Qwen3’s tokens are streamed through a Java callback. One Strix Halo laptop, Vulkan.</caption>
                             </table>
@@ -867,7 +875,7 @@ const theme = 'vitesse-dark';
                                                 <li><span><code>kiln-embabel</code>: an Embabel Agent <code>LlmService</code> and <code>LocalModelSource</code>.</span></li>
                         <li><span>An optional OpenAI-compatible server.</span></li>
                         <li><span>An MLX module for Apple silicon, through <code>mlx-c</code>.</span></li>
-                        <li><span>Speech through whisper.cpp, and a Kotlin layer with coroutine <code>Flow</code> streaming.</span></li>
+                        <li><span>A Kotlin layer with coroutine <code>Flow</code> streaming.</span></li>
                     </ul>
                 </div>
             </section>
@@ -906,7 +914,7 @@ const theme = 'vitesse-dark';
                 </div>
                 <nav aria-label="Footer">
                     <div><span>Kiln</span><a href={REPO}>GitHub</a><a href={`${REPO}/blob/main/LICENSE`}>Apache 2.0</a></div>
-                    <div><span>Engines</span><a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a><a href="https://github.com/leejet/stable-diffusion.cpp">stable-diffusion.cpp</a><a href="https://github.com/ServeurpersoCom/acestep.cpp">acestep.cpp</a><a href="https://github.com/ServeurpersoCom/yue2.cpp">yue2.cpp</a></div>
+                    <div><span>Engines</span><a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a><a href="https://github.com/leejet/stable-diffusion.cpp">stable-diffusion.cpp</a><a href="https://github.com/ServeurpersoCom/acestep.cpp">acestep.cpp</a><a href="https://github.com/ServeurpersoCom/yue2.cpp">yue2.cpp</a><a href="https://github.com/ggml-org/whisper.cpp">whisper.cpp</a></div>
                     <div><span>Liberation Data</span><a href="https://github.com/liberation-data">GitHub</a><a href="https://drivine.org">Drivine</a></div>
                 </nav>
             </div>

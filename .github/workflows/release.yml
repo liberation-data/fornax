@@ -1,14 +1,15 @@
 # Publishes Kiln to Maven Central as org.kiln4j:*: the Java modules (kiln-core, kiln-llama, kiln-tts, kiln-sd,
-# kiln-acestep, kiln-yue2) and one natives jar per platform and backend (kiln-natives-<os>-<arch>-<backend>).
+# kiln-acestep, kiln-yue2, kiln-whisper) and one natives jar per platform and backend (kiln-natives-<os>-<arch>-<backend>).
 #
 # On a published GitHub Release tagged v<version> (v0.1.0 publishes 0.1.0). Run by hand for a dry run, which builds
 # and signs every jar exactly as a release does, and stops before the upload; the signed repository is left as an
 # artifact to look through. A run by hand that isn't a dry run must be on a v* tag.
 # After a release, verify-central waits for repo1.maven.org to serve it and builds samples/hello-kiln from there.
 #
-# NO SECRETS WHERE THIRD-PARTY CODE BUILDS. The natives job builds llama.cpp, stable-diffusion.cpp, acestep.cpp and
-# yue2.cpp (fetched by native/build.sh at the commits native/engines.properties pins), so it gets no secrets; only the
-# publish job, which runs Gradle on this repository's own code, sees the signing key and the Central credentials.
+# NO SECRETS WHERE THIRD-PARTY CODE BUILDS. The natives job builds llama.cpp, stable-diffusion.cpp, acestep.cpp,
+# yue2.cpp and whisper.cpp (fetched by native/build.sh at the commits native/engines.properties pins), so it gets no
+# secrets; only the publish job, which runs Gradle on this repository's own code, sees the signing key and the
+# Central credentials.
 name: Release
 
 on:
@@ -108,7 +109,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/native/${{ matrix.dir }}
-          key: natives-${{ matrix.platform }}-${{ env.VULKAN_SDK_VERSION }}-${{ hashFiles('native/**', 'kiln-llama/native/**', 'kiln-tts/native/**', 'kiln-acestep/native/**', 'kiln-yue2/native/**') }}
+          key: natives-${{ matrix.platform }}-${{ env.VULKAN_SDK_VERSION }}-${{ hashFiles('native/**', 'kiln-llama/native/**', 'kiln-tts/native/**', 'kiln-acestep/native/**', 'kiln-yue2/native/**', 'kiln-whisper/native/**') }}
 
       - name: Build the native libraries
         if: steps.cache.outputs.cache-hit != 'true'
@@ -123,7 +124,7 @@ jobs:
             # 1.4.x the loader is in lib/VulkanLoader/lib, not lib.
             export LIBRARY_PATH="$VULKAN_SDK/lib/VulkanLoader/lib:$VULKAN_SDK/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
           fi
-          native/build.sh ${{ matrix.backend }} llama tts sd acestep yue2
+          native/build.sh ${{ matrix.backend }} llama tts sd acestep yue2 whisper
 
       # What the libraries need of the system: on Linux the Vulkan loader, OpenMP and the C++ runtime; on macOS only
       # system frameworks. A library that needs anything else fails here.
@@ -133,7 +134,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -l "$DIR"
-          for lib in libkiln_llama libkiln_tts libstable-diffusion libkiln_acestep libkiln_yue2; do
+          for lib in libkiln_llama libkiln_tts libstable-diffusion libkiln_acestep libkiln_yue2 libkiln_whisper; do
             [ -f "$DIR/$lib.so" ] || [ -f "$DIR/$lib.dylib" ] || { echo "::error::no $lib in $DIR"; exit 1; }
           done
           # kiln-llama binds its vision functions when it loads, so a libkiln_llama built without mtmd fails every model.
@@ -209,7 +210,7 @@ jobs:
           set -euo pipefail
           ./gradlew --no-daemon publishToMavenLocal -Pversion="$VERSION" -Pkiln.natives.require=true -Dmaven.repo.local="$RUNNER_TEMP/m2"
           repo="$RUNNER_TEMP/m2/org/kiln4j"
-          for a in kiln-core kiln-llama kiln-tts kiln-sd kiln-acestep kiln-yue2 \
+          for a in kiln-core kiln-llama kiln-tts kiln-sd kiln-acestep kiln-yue2 kiln-whisper \
                    kiln-natives-linux-x86_64-vulkan kiln-natives-macos-aarch64-metal kiln-natives-macos-x86_64-metal; do
             for f in "$a-$VERSION.pom" "$a-$VERSION.jar" "$a-$VERSION-sources.jar" "$a-$VERSION-javadoc.jar"; do
               [ -f "$repo/$a/$VERSION/$f" ] || { echo "::error::$f was not built"; exit 1; }
@@ -280,7 +281,7 @@ jobs:
           set -euo pipefail
           base=https://repo1.maven.org/maven2/org/kiln4j
           files=()
-          for a in kiln-core kiln-llama kiln-tts kiln-sd kiln-acestep kiln-yue2 \
+          for a in kiln-core kiln-llama kiln-tts kiln-sd kiln-acestep kiln-yue2 kiln-whisper \
                    kiln-natives-linux-x86_64-vulkan kiln-natives-macos-aarch64-metal kiln-natives-macos-x86_64-metal; do
             files+=("$base/$a/$VERSION/$a-$VERSION.pom" "$base/$a/$VERSION/$a-$VERSION.jar")
           done

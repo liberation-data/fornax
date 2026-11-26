@@ -24,7 +24,7 @@ Package `org.liberationdata.kiln`. The engine modules depend on it.
 | `ModelPool` | keeps models loaded within a memory budget: `acquire(key, sizeBytes, loader)` returns a `Lease`; `unload`, `unloadAll`, `entries`, `loadedBytes`, `sizeOf(Path...)`. See [ModelPool and memory](/docs/guides/model-pool/) |
 | `ModelPool.Lease<M>` | a borrowed model: `model()`; `close()` gives it back |
 | `ModelPool.Entry` | a snapshot of one pooled model: `key`, `sizeBytes`, `loaded`, `inUse`, `lastUsed` |
-| `Audio` | stereo float PCM in [-1, 1]: `left`, `right`, `sampleRate`, `seconds()`, `writeWav(File)` (16-bit) |
+| `Audio` | stereo float PCM in [-1, 1]: `left`, `right`, `sampleRate`, `seconds()`, `writeWav(File)` (16-bit), `readWav(File)`, `ofMono`, `mono()`, `resample(rate)` |
 | `NativeLibrary` | finds and binds a native library, and sets the engines' tunables before the first one loads. You won't usually call it |
 | `ModelThread` | what each model uses to run its calls one at a time, on the caller's thread or its own, and to cancel and close them. You won't usually call it |
 | `Call` | one call into an engine: its stop flag and the first exception a callback threw. For engine bindings |
@@ -110,6 +110,22 @@ Package `org.liberationdata.kiln.yue2`. See [Songs](/docs/guides/songs/#yue2).
 | `generateAsync(requestJson)`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops it between LM tokens, diffusion steps and VAE tiles (it throws `CancellationException`) |
 | `Yue2Model.Result` | `audio` (48 kHz stereo), `resolvedRequestJson` and `abcScore` |
 
+## kiln-whisper
+
+Package `org.liberationdata.kiln.whisper`. See [Speech to text](/docs/guides/speech-to-text/).
+
+| Type | |
+|---|---|
+| `WhisperModel` | a Whisper model: `new WhisperModel(Weights)`, `(path)`, `(path, alignment)` or `(path, alignment, gpu)` |
+| `transcribe(audio[, options][, listener])` | a `Transcript` from `Audio` at any rate, or from 16 kHz mono `float[]` |
+| `multilingual()`, `type()`, `cancel()` | English-only or not, the model size, and stopping a call from another thread |
+| `WhisperModel.Weights` | the models Kiln knows by name: `LARGE_V3_TURBO`, `LARGE_V3_TURBO_Q8_0`, `BASE_EN`; `named(...)`, `path()`, `downloaded()`, `alignment` |
+| `WhisperModel.Alignment` | the DTW alignment heads for a model size (`LARGE_V3_TURBO`, `BASE_EN`, ...), or `NONE` |
+| `WhisperModel.Options` | `language`, `translate`, `initialPrompt`, `threads`, `beamSize`, `temperature`; `DEFAULT` and a `with...` for each |
+| `WhisperModel.Listener` | `progress(percent)` and `segment(segment)` as the transcription runs |
+| `Transcript` | `text`, `language`, `segments`; `words()`, `wordsTsv()`, `srt()`, `vtt()` |
+| `Transcript.Segment`, `Transcript.Word` | `start`, `end` (seconds), `text`; a segment's `words`, a word's `probability` |
+
 ## kiln-examples
 
 Package `org.liberationdata.kiln.examples`: runnable programs, each a Gradle task, and the best place to see the API
@@ -124,13 +140,14 @@ used end to end.
 | `video` | `VideoClip` | an LTX-2.5 clip with sound, one- or two-stage |
 | `song` | `Song` | an ACE-Step song |
 | `yue2` | `Yue2Song` | a YuE2 song and its score |
+| `transcribe` | `Transcribe` | speech to text: prints the text, writes `<name>.words.tsv` and `<name>.srt` |
 
 ## System properties and environment
 
 | Name | |
 |---|---|
 | `-Dkiln.library.path`, `KILN_LIBRARY_PATH` | where to look for the native libraries |
-| `-Dkiln.<name>.lib` | one library's exact file; the names are `kiln_llama`, `kiln_tts`, `stable-diffusion`, `kiln_acestep` and `kiln_yue2` |
+| `-Dkiln.<name>.lib` | one library's exact file; the names are `kiln_llama`, `kiln_tts`, `stable-diffusion`, `kiln_acestep`, `kiln_yue2` and `kiln_whisper` |
 | `-Dkiln.backend`, `KILN_BACKEND` | which natives jar's backend to load when several for this platform are on the classpath |
 | `-Dkiln.cache.dir`, `KILN_CACHE_DIR` | where natives jars' libraries are extracted to |
 | `-Dkiln.gpu.graphs` | ggml's CUDA and HIP graphs; `false` by default |
