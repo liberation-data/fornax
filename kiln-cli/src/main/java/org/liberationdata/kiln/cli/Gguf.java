@@ -41,6 +41,20 @@ final class Gguf {
     }
 
     /**
+     * Every file a model needs, given the parts of it {@link #models} found: a split model's
+     * {@code -00001-of-0000N} through {@code -0000N-of-0000N}, whichever of them are present.
+     */
+    static List<String> allParts(List<String> found) {
+        Matcher m = SPLIT.matcher(found.get(0));
+        if (!m.matches()) return found;
+        String ext = found.get(0).substring(found.get(0).length() - ".gguf".length());
+        int n = Integer.parseInt(m.group(3));
+        List<String> all = new ArrayList<>();
+        for (int i = 1; i <= n; i++) all.add(String.format(Locale.ROOT, "%s-%05d-of-%s%s", m.group(1), i, m.group(3), ext));
+        return all;
+    }
+
+    /**
      * The models (keys of {@link #models}) that {@code tag} selects: an exact path or file name, else every model
      * whose path contains the tag, ignoring case ({@code Q4_K_M}, {@code q8_0}, ...).
      */

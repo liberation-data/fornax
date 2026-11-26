@@ -68,6 +68,16 @@ class ModelsTest {
     }
 
     @Test
+    void aSplitModelMissingAPartIsIncomplete() throws Exception {
+        var hub = hub();
+        put(hub.cacheRoot(), "some/Split-GGUF", "s-Q4_K_M-00001-of-00002.gguf");   // part 2 never arrived
+        var e = assertThrows(Main.Failure.class, () -> Models.resolve("some/Split-GGUF:Q4_K_M", hub));
+        assertTrue(e.getMessage().contains("incomplete") && e.getMessage().contains("s-Q4_K_M-00002-of-00002.gguf"), e.getMessage());
+        assertEquals(java.util.List.of(), Listing.otherLlms(hub.cacheRoot()).stream()
+                .filter(x -> x.repo().equals("some/Split-GGUF")).toList());
+    }
+
+    @Test
     void listShowsTheCatalogueAndOtherModels() throws Exception {
         var out = new ByteArrayOutputStream();
         assertEquals(0, Listing.run(hub(), new PrintStream(out, true, StandardCharsets.UTF_8)));

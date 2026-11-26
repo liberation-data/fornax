@@ -50,7 +50,8 @@ and the time left.
 
 A gated repo (`ltx-2.5-distilled`, for one) needs its terms accepted on its huggingface.co page and a token in
 `HF_TOKEN` (or from `hf auth login`). Without them, the pull stops with a message that names the repo and what to do.
-With `HF_HUB_OFFLINE=1`, `kiln pull` touches no network: it stops at the first file not already on disk.
+With `HF_HUB_OFFLINE=1`, `kiln pull` touches no network: an alias stops at the first file not already on disk, and
+a repo (`org/name`) stops at once, as listing its files needs the Hub.
 
 ```sh
 kiln list            # each alias: downloaded, partly downloaded or not; sizes; other GGUF models in the cache

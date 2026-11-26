@@ -70,7 +70,7 @@ final class Models {
         String want = repo + (tag == null ? "" : ":" + tag);
         if (hits.size() == 1) {
             List<String> parts = models.get(hits.get(0));
-            List<String> missing = parts.stream().filter(x -> !byPath.containsKey(x)).toList();
+            List<String> missing = Gguf.allParts(parts).stream().filter(x -> !byPath.containsKey(x)).toList();
             if (!missing.isEmpty()) throw new Main.Failure(want + " is incomplete in the cache (missing " + missing
                     + "). Fetch it with: kiln pull " + repo + ":" + hits.get(0));
             return byPath.get(hits.get(0));

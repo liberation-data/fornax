@@ -39,7 +39,7 @@ final class Listing {
             if (isEngineRepo(repo)) continue;
             Map<String, Path> files = HfCache.files(cacheRoot, repo);
             for (var e : Gguf.models(files.keySet()).entrySet()) {
-                if (!files.keySet().containsAll(e.getValue())) continue;   // an incomplete split model
+                if (!files.keySet().containsAll(Gguf.allParts(e.getValue()))) continue;   // an incomplete split model
                 if (inCatalogue(repo, e.getKey())) continue;
                 long size = e.getValue().stream().mapToLong(p -> size(files.get(p))).sum();
                 out.add(new LlmEntry(repo, e.getKey(), size, e.getValue().size()));
