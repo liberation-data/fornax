@@ -196,6 +196,8 @@ const theme = 'vitesse-dark';
             .fire::before { background: linear-gradient(rgba(23, 10, 4, 0.42), rgba(23, 10, 4, 0.62)), var(--photo) center 45% / cover; }
             .fire::after { background: var(--lines); opacity: 0.3; }
             .fire > * { position: relative; z-index: 1; }
+            /* The nav above the splash that follows it, so its GitHub menu, which drops over the splash, takes the clicks. */
+            .fire > .nav { z-index: 2; }
             @media (max-width: 800px) { .fire::before { background-image: linear-gradient(rgba(23, 10, 4, 0.5), rgba(23, 10, 4, 0.68)), var(--photo-small); } }
 
             .hero { min-height: 760px; display: flex; flex-direction: column; }
