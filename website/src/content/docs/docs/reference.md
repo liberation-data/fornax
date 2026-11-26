@@ -42,7 +42,7 @@ Package `org.liberationdata.kiln.llama`. See [Language models](/docs/guides/lang
 | `chatJson(requestJson, images, onContent)`, `complete(prompt, images, options, onPiece)` | `chatJson` and `complete` with images; `mediaMarker()` |
 | `LlamaModel.Message` | `role`, `content` and `images`; `system(...)`, `user(...)`, `user(text, images...)`, `assistant(...)` |
 | `LlamaModel.Image` | packed RGB: `of(BufferedImage)`, `read(Path)`, `decode(bytes)` |
-| `LlamaModel.Weights` | the models Kiln knows by name: `QWEN3_4B`, `QWEN3_VL_4B`, `PADDLEOCR_VL`, `MEDGEMMA_4B`; `named(...)`, `model()`, `mmproj()`, `downloaded()` |
+| `LlamaModel.Weights` | the models Kiln knows by name: `QWEN3_4B`, `QWEN3_VL_4B`, `PADDLEOCR_VL`, `MEDGEMMA_4B`; `named(...)`, `vision()`, `model()`, `mmproj()`, `downloaded()`, `downloadCommand()` |
 | `Json` | just enough JSON to read `chatJson` replies: `parse`, `get(doc, path...)`, `quote` |
 | `LlamaModel.Options` | `maxTokens`, `temperature`, `topP`, `minP`, `seed`; `DEFAULT`, `withSeed`, `withMaxTokens`, `withTemperature` |
 | `LlamaModel.Result` | `text`, `promptTokens`, `generatedTokens` |
@@ -56,7 +56,7 @@ Package `org.liberationdata.kiln.tts`. See [Speech](/docs/guides/speech/).
 | `TtsModel` | a TTS model: `new TtsModel(Weights)`, `(model, mmproj)` or `(model, mmproj, gpuLayers, contextSize)` |
 | `speak(text, voice)`, `(text, voice, onChunk)`, `(text, voice, options, onChunk)` | speech as `Audio`, optionally streamed in chunks; a voice of `@clip.wav` speaks like that clip |
 | `voices()`, `sampleRate()`, `cancel()` | the built-in voices (the default first), the output rate, and stopping a streaming call |
-| `TtsModel.Weights` | the models Kiln knows by name: `KOKORO`, `ZONOS3`, `LFM3_AUDIO`, `TINY_VOCA`, `CHATTERBOX_TURBO`, `SOPRANO`, `VOXCPM2`, `QWEN3_TTS`; `named(...)`, `model()`, `mmproj()`, `downloaded()` |
+| `TtsModel.Weights` | the models Kiln knows by name: `KOKORO`, `ZONOS3`, `LFM3_AUDIO`, `TINY_VOCA`, `CHATTERBOX_TURBO`, `SOPRANO`, `VOXCPM2`, `QWEN3_TTS`; `named(...)`, `vision()`, `model()`, `mmproj()`, `downloaded()`, `downloadCommand()` |
 | `TtsModel.Options` | `lang`, `temperature`, `seed`, `speed`, `maxFrames`; `DEFAULT` and a `with...` for each |
 
 ## kiln-sd

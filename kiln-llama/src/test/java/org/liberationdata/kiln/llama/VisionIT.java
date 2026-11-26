@@ -119,6 +119,28 @@ class VisionIT {
         assertTrue(e.getMessage().contains("image markers"), e.getMessage());
     }
 
+    /** A conversation with text-only turns between image turns: each image goes with its own message, in order. */
+    @Test
+    void chatKeepsImagesWithTheirMessages() {
+        var blue = new BufferedImage(256, 256, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = blue.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 256, 256);
+        g.setColor(Color.BLUE);
+        g.fillRect(64, 64, 128, 128);
+        g.dispose();
+        var r = model.chat(List.of(Message.system("Answer in one word."),
+                Message.user("What colour is the square?", Image.of(redSquare())), Message.assistant("Red."),
+                Message.user("And the square in this picture?", Image.of(blue))), GREEDY);
+        assertTrue(r.text().toLowerCase().contains("blue"), r.text());
+    }
+
+    @Test
+    void aMissingMmprojIsAnError() {
+        var e = assertThrows(IllegalStateException.class, () -> new LlamaModel(W.model(), "no-such-mmproj.gguf", 0, 512));
+        assertTrue(e.getMessage().contains("kiln_llama_create_mm: unable to load mmproj: no-such-mmproj.gguf"), e.getMessage());
+    }
+
     /** The same GGUF without its mmproj, on the CPU (its weights are mmapped, so this costs little): no images. */
     @Test
     void withoutItsMmprojAModelRejectsImages() throws Exception {
