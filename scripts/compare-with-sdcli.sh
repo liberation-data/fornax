@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Compare the program stable-diffusion.cpp compiles for a Kiln request with the one sd-cli compiles for the
-# same settings. A difference here is a Kiln bug (or an option Kiln forgot) found in seconds, without
+# Compare the program stable-diffusion.cpp compiles for a Fornax request with the one sd-cli compiles for the
+# same settings. A difference here is a Fornax bug (or an option Fornax forgot) found in seconds, without
 # rendering: sd.cpp logs the whole compiled DGL program at debug level before it runs anything, and both
 # runs are stopped as soon as that program has been printed.
 #
-#   scripts/compare-with-sdcli.sh <kiln-gradle-task> "<kiln --args>" "<sd-cli args>" [-P... kiln properties]
+#   scripts/compare-with-sdcli.sh <fornax-gradle-task> "<fornax --args>" "<sd-cli args>" [-P... fornax properties]
 #
 # Example (Endless Country's two-stage LTX recipe at a small size):
 #   scripts/compare-with-sdcli.sh video \
@@ -17,7 +17,7 @@
 #     -DCMAKE_BUILD_TYPE=Release -DSD_VULKAN=ON -DSD_BUILD_EXAMPLES=ON && cmake --build ... --target sd-cli
 set -euo pipefail
 
-TASK=$1 KILN_ARGS=$2 CLI_ARGS=$3; shift 3
+TASK=$1 FORNAX_ARGS=$2 CLI_ARGS=$3; shift 3
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CLI=${SD_CLI:-$ROOT/engines-src/stable-diffusion.cpp/build-cli/bin/sd-cli}
 OUT=$(mktemp -d)
@@ -40,21 +40,21 @@ until_program() {  # until_program <log> <command...>
     wait "$pid" 2>/dev/null || true
 }
 
-echo "kiln: capturing its program..." >&2
-until_program "$OUT/kiln.log" env KILN_VERBOSE=debug "$ROOT/gradlew" -q -p "$ROOT" "$TASK" --args="$KILN_ARGS" "$@"
+echo "fornax: capturing its program..." >&2
+until_program "$OUT/fornax.log" env FORNAX_VERBOSE=debug "$ROOT/gradlew" -q -p "$ROOT" "$TASK" --args="$FORNAX_ARGS" "$@"
 echo "sd-cli: capturing its program..." >&2
 eval "set -- $CLI_ARGS"
 until_program "$OUT/cli.log" "$CLI" --log-level debug "$@"
 
-program "$OUT/kiln.log" > "$OUT/kiln.dgl"
+program "$OUT/fornax.log" > "$OUT/fornax.dgl"
 program "$OUT/cli.log" > "$OUT/cli.dgl"
-for side in kiln cli; do
+for side in fornax cli; do
     [ -s "$OUT/$side.dgl" ] || { echo "no program captured from $side; see $OUT/$side.log" >&2; exit 2; }
 done
-if diff -u "$OUT/cli.dgl" "$OUT/kiln.dgl" > "$OUT/program.diff"; then
+if diff -u "$OUT/cli.dgl" "$OUT/fornax.dgl" > "$OUT/program.diff"; then
     echo "same program ($OUT)"
 else
-    echo "programs differ (- sd-cli, + kiln): $OUT/program.diff"
+    echo "programs differ (- sd-cli, + fornax): $OUT/program.diff"
     cat "$OUT/program.diff"
     exit 1
 fi

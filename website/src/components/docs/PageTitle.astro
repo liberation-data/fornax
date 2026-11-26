@@ -7,12 +7,12 @@
 import Default from '@astrojs/starlight/components/PageTitle.astro';
 import Share from '../Share.astro';
 
-const url = new URL(Astro.url.pathname, Astro.site ?? 'https://kiln4j.org').href;
+const url = new URL(Astro.url.pathname, Astro.site ?? 'https://fornax4j.org').href;
 const title = Astro.locals.starlightRoute.entry.data.title;
 ---
 <div class="titled">
     <Default />
-    <Share icons tone="docs" url={url} text={`${title} · kiln4j`} />
+    <Share icons tone="docs" url={url} text={`${title} · fornax4j`} />
 </div>
 
 <style>

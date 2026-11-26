@@ -1,4 +1,4 @@
 {
-  global: kiln_*;
+  global: fornax_*;
   local: *;
 };

@@ -1,4 +1,4 @@
-Kiln
+Fornax
 Copyright 2026 Liberation Data
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
@@ -15,4 +15,4 @@ at build time and not stored in this repository:
   (https://github.com/betweentwomidnights/stems.cpp), with its fork of ggml, Copyright (c) 2023-2026 The ggml authors
   (https://github.com/betweentwomidnights/ggml)
 
-Model weights are not part of Kiln and carry their own licenses.
+Model weights are not part of Fornax and carry their own licenses.

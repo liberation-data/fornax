@@ -1,6 +1,6 @@
-# Text to speech: what runs, and why kiln-tts looks the way it does
+# Text to speech: what runs, and why fornax-tts looks the way it does
 
-Research for [issue #12](https://github.com/liberation-data/kiln/issues/12), against llama.cpp at the commit pinned in
+Research for [issue #12](https://github.com/liberation-data/fornax/issues/12), against llama.cpp at the commit pinned in
 `native/engines.properties` (22b99122, 2026-11-24).
 
 ## The short version
@@ -12,7 +12,7 @@ backbone GGUF, like vision models. The same API runs Kokoro, ZONOS3, LFM3-Audio,
 VoxCPM2, Qwen3-TTS, Fish S2 Pro, Drama 3 and (for songs) YuE2 and MiniMax Music 3. Predefined voices ship inside the
 mmproj and are listed with `mtmd_gen_audio_voice_name()`.
 
-So `kiln-tts` is one shim (`kiln-tts/native/kiln_tts.cpp`) over that API, and every model above comes for free. It
+So `fornax-tts` is one shim (`fornax-tts/native/fornax_tts.cpp`) over that API, and every model above comes for free. It
 follows `tools/tts/tts.cpp` step for step. At the same seed its output matches `llama-tts` to within 16-bit rounding
 (RMS difference about 9e-6) for Kokoro, ZONOS3 and LFM3-Audio.
 
@@ -27,7 +27,7 @@ follows `tools/tts/tts.cpp` step for step. At the same seed its output matches `
 | **Soprano-1.1-80M** | yes, `ggml-org/Soprano-1.1-80M-GGUF` | 1, fixed (US female) | Apache-2.0 | Very fast, 32 kHz |
 | **tiny-voca** (4.5M) | yes, `ggml-org/tiny-voca-GGUF` | 2: `M2`, `F2` | Apache-2.0 | A toy for its size; robotic |
 | **VoxCPM2** (OpenBMB, 2B) | yes, `ggml-org/VoxCPM2-GGUF` | none; *voice design*: a description in parentheses before the text, e.g. `(A calm male narrator)` | Apache-2.0 | 48 kHz. The only way to ask for an **Australian** accent without cloning a real voice. Slow here: about 0.8x real time on the 8060S |
-| Qwen3-TTS (Base) | yes, `ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF` | none in llama.cpp: it needs a speaker reference clip (cloning), and the CustomVoice checkpoints with named speakers aren't supported | Apache-2.0 | Not for built-in voices, but Kiln knows it (`QWEN3_TTS`) for cloning a reference clip. ggml-org's mmproj has no reference encoder, so it clones from the speaker embedding only; `scripts/convert-qwen3-tts.sh` converts one that has it (see Reference clips below) |
+| Qwen3-TTS (Base) | yes, `ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF` | none in llama.cpp: it needs a speaker reference clip (cloning), and the CustomVoice checkpoints with named speakers aren't supported | Apache-2.0 | Not for built-in voices, but Fornax knows it (`QWEN3_TTS`) for cloning a reference clip. ggml-org's mmproj has no reference encoder, so it clones from the speaker embedding only; `scripts/convert-qwen3-tts.sh` converts one that has it (see Reference clips below) |
 | Fish S2 Pro, Drama 3 | yes | speaker *tags* (`<\|speaker:0\|>`...) give arbitrary voices that aren't fixed between runs; cloning otherwise | S2 Pro: Fish Audio Research License (non-commercial); Drama 3: Fish Audio Community License | Excluded: no stable built-in voice, non-commercial, and Drama 3 is 35B |
 | Pocket TTS (Kyutai) | the mtmd pipeline exists, but no llama.cpp-format GGUF with voices is published (Serveurperso's GGUFs are for pockettts.cpp) | 27 (alba, marius, javert, ...; some named after real readers) | CC-BY-4.0 | Would need converting with llama.cpp's Python converter. Skipped |
 | OuteTTS 0.2/0.3 | **no longer**. libllama still has the WavTokenizer decoder architecture, but no pipeline drives OuteTTS: the old prompt building, speaker JSON and codes-to-audio loop were removed from `tools/tts` | speaker JSON profiles (en_male_1, en_female_1, ...) | 0.2-500M CC-BY-NC-4.0, 0.3-500M CC-BY-SA-4.0, 0.3-1B and 1.0-1B CC-BY-NC-SA-4.0 | Bringing it back would mean porting the removed loop, for a model that is a generation behind Kokoro and ZONOS3 |
@@ -41,7 +41,7 @@ has to be checked by ear.
 ## Choice
 
 The engine is **llama.cpp's mtmd TTS**, through one shim, so the choice of model stays open. It reuses the llama.cpp
-checkout that `kiln-llama` already pins, adds no new engine to fetch, and supports streaming (`inp.stream`, as
+checkout that `fornax-llama` already pins, adds no new engine to fetch, and supports streaming (`inp.stream`, as
 llama-server does).
 
 For narration, **Kokoro** and **ZONOS3** are the strongest candidates with built-in voices: Kokoro for its graded
@@ -68,14 +68,14 @@ auditions in `videos/explainer/voices/`.
   `mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf` doesn't have it: llama.cpp warns "no reference codes ... cloning from
   the speaker embedding only" and ignores the transcript (output with and without it is byte-identical). The pinned
   `convert_hf_to_gguf.py` (`conversion/qwen3tts.py`) does write it, so no newer llama.cpp is needed:
-  `scripts/convert-qwen3-tts.sh` converts the backbone and an mmproj with the encoder's 129 extra tensors, and Kiln
+  `scripts/convert-qwen3-tts.sh` converts the backbone and an mmproj with the encoder's 129 extra tensors, and Fornax
   loads them by path (`-Pmodel=... -Pmmproj=...`, or `new TtsModel(model, mmproj)`). With it, the warning is gone and
   the transcript changes the output.
 - **Streaming.** With `inp.stream`, `get_output()` returns only the audio since the last call, after each
   `step_gen()`, and `flush()` is called once at the end. Without a callback, the shim runs non-streaming, exactly as
   `llama-tts` does.
-- **The build** shares `engines-src/llama.cpp/build-<backend>` with `kiln-llama` and adds the `mtmd` target
-  (`-DLLAMA_BUILD_MTMD=ON`). `libkiln_tts.so` is self-contained like the others: ggml, llama and mtmd are static,
-  and only `kiln_*` is exported.
+- **The build** shares `engines-src/llama.cpp/build-<backend>` with `fornax-llama` and adds the `mtmd` target
+  (`-DLLAMA_BUILD_MTMD=ON`). `libfornax_tts.so` is self-contained like the others: ggml, llama and mtmd are static,
+  and only `fornax_*` is exported.
 - **Checking intelligibility without listening.** `llama-mtmd-cli` with `ggml-org/Qwen3-ASR-1.7B-GGUF` transcribes
   a WAV; this is how the auditions were checked for word errors.

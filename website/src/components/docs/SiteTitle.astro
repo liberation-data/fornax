@@ -1,6 +1,6 @@
 ---
 /**
- * Starlight's site title (astro.config.mjs overrides SiteTitle with this): the logo and the kiln4j wordmark, as the
+ * Starlight's site title (astro.config.mjs overrides SiteTitle with this): the logo and the fornax4j wordmark, as the
  * landing page's nav has them, linking home, then "docs", linking to the docs' first page.
  */
 import { getImage } from 'astro:assets';
@@ -9,21 +9,21 @@ import logo from '../../assets/logo.png';
 // The same 144 px PNG the landing page's nav uses, so the browser has it already.
 const mark = await getImage({ src: logo, width: 144, format: 'png' });
 ---
-<span class="kiln-title">
-    <a href="/" class="kiln-home" aria-label="kiln4j home">
+<span class="fornax-title">
+    <a href="/" class="fornax-home" aria-label="fornax4j home">
         <img src={mark.src} alt="" width="34" height="34" />
-        <span class="wordmark" translate="no">kiln<span class="j">4j</span></span>
+        <span class="wordmark" translate="no">fornax<span class="j">4j</span></span>
     </a>
-    <a href="/docs/" class="kiln-docs">Docs</a>
+    <a href="/docs/" class="fornax-docs">Docs</a>
 </span>
 
 <style>
-    .kiln-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
-    .kiln-home { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--sl-color-white); }
-    .kiln-home:hover { color: var(--sl-color-white); }
-    .kiln-home img { width: 34px; height: 34px; }
+    .fornax-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .fornax-home { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--sl-color-white); }
+    .fornax-home:hover { color: var(--sl-color-white); }
+    .fornax-home img { width: 34px; height: 34px; }
     .wordmark { font-weight: 700; font-size: 1.25rem; letter-spacing: 0.03em; white-space: nowrap; }
-    .wordmark .j { color: var(--kiln-accent); }
-    .kiln-docs { padding: 1px 10px; border: 1px solid var(--sl-color-gray-5); border-radius: 999px; font-size: 0.75rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sl-color-gray-3); text-decoration: none; }
-    .kiln-docs:hover { color: var(--sl-color-text-accent); border-color: var(--sl-color-text-accent); }
+    .wordmark .j { color: var(--fornax-accent); }
+    .fornax-docs { padding: 1px 10px; border: 1px solid var(--sl-color-gray-5); border-radius: 999px; font-size: 0.75rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sl-color-gray-3); text-decoration: none; }
+    .fornax-docs:hover { color: var(--sl-color-text-accent); border-color: var(--sl-color-text-accent); }
 </style>

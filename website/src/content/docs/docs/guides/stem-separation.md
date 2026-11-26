@@ -3,7 +3,7 @@ title: Stem separation
 description: Split a song into vocals and backing, or drums, bass, other and vocals, from Java with Meta's HTDemucs through stems.cpp, on the GPU.
 ---
 
-`kiln-demucs` splits music into its stems through [stems.cpp](https://github.com/betweentwomidnights/stems.cpp), a
+`fornax-demucs` splits music into its stems through [stems.cpp](https://github.com/betweentwomidnights/stems.cpp), a
 ggml port of Meta's [HTDemucs](https://github.com/facebookresearch/demucs) v4. A vocal stem drives lip-sync and word
 timing; the backing is a karaoke track or a bed for a new vocal. The class is `DemucsModel`.
 
@@ -14,9 +14,9 @@ hf download thepatch/htdemucs-GGUF htdemucs-42M-v1.0-F32.gguf
 ```
 
 ```java
-import org.liberationdata.kiln.Audio;
-import org.liberationdata.kiln.demucs.DemucsModel;
-import org.liberationdata.kiln.demucs.Stems;
+import org.liberationdata.fornax.Audio;
+import org.liberationdata.fornax.demucs.DemucsModel;
+import org.liberationdata.fornax.demucs.Stems;
 
 import java.io.File;
 
@@ -28,7 +28,7 @@ try (var demucs = new DemucsModel(DemucsModel.Weights.HTDEMUCS)) {
 }
 ```
 
-Any `Audio` works. The model runs at 44.1 kHz stereo; Kiln resamples to it and back, so every stem has the input's
+Any `Audio` works. The model runs at 44.1 kHz stereo; Fornax resamples to it and back, so every stem has the input's
 sample rate and length. `Audio.readWav` reads 8, 16, 24 and 32-bit PCM and float WAV files. For MP3 and other formats,
 convert first (`ffmpeg -i song.mp3 song.wav`).
 
@@ -44,7 +44,7 @@ stems.cpp runs demucs' own separate path, not just the network: it normalises th
 deviation, separates overlapping 7.8 s segments, cross-fades them back together and scales the stems back. Its
 published weights match PyTorch demucs sample for sample.
 
-## The models Kiln knows by name
+## The models Fornax knows by name
 
 `DemucsModel.Weights` names stems.cpp's conversions of Meta's checkpoints, in `thepatch/htdemucs-GGUF` on Hugging
 Face. `new DemucsModel(Weights)` finds the file in the Hugging Face cache; if it isn't there, it fails with the
@@ -69,8 +69,8 @@ var options = DemucsModel.Options.DEFAULT
 ```
 
 `new DemucsModel(path, false, 0)` runs on the CPU (the last argument is its threads, 0 for one per physical core).
-On a machine with no GPU, that also needs `-Dkiln.allowCpu=true` (or `KILN_ALLOW_CPU=true`): otherwise Kiln refuses
-to load its GPU build there ([Kiln says it found no GPU](/docs/gpu-drivers/#kiln-says-it-found-no-gpu)).
+On a machine with no GPU, that also needs `-Dfornax.allowCpu=true` (or `FORNAX_ALLOW_CPU=true`): otherwise Fornax refuses
+to load its GPU build there ([Fornax says it found no GPU](/docs/gpu-drivers/#fornax-says-it-found-no-gpu)).
 
 ## Progress, cancel and async
 
@@ -91,7 +91,7 @@ runs on the model's own thread and returns a `CompletableFuture`; cancelling the
 On the Radeon 8060S with Vulkan, `HTDEMUCS` splits a 3 min 9 s song into its four stems in 26 s: 7.3 s of audio per
 second. On the same machine's CPU it managed about 2.9 s of audio per second.
 
-On Endless Country's episode 2 song, Kiln's vocals measured 13.5 dB SDR against torchaudio's Hybrid Demucs
+On Endless Country's episode 2 song, Fornax's vocals measured 13.5 dB SDR against torchaudio's Hybrid Demucs
 (`HDEMUCS_HIGH_MUSDB_PLUS`, the v3 model the episode was made with), and its backing 14.8 dB. The two are different
 models, so they don't agree exactly.
 

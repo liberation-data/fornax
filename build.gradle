@@ -1,4 +1,4 @@
-// Kiln: in-process generative models for the JVM via Java's Foreign Function & Memory API.
+// Fornax: in-process generative models for the JVM via Java's Foreign Function & Memory API.
 
 import com.vanniktech.maven.publish.JavaLibrary
 import com.vanniktech.maven.publish.JavadocJar
@@ -11,7 +11,7 @@ plugins {
 
 def os = System.getProperty('os.name').toLowerCase().contains('mac') ? 'macos' : 'linux'
 def arch = System.getProperty('os.arch').replace('amd64', 'x86_64').replace('aarch64', 'arm64')
-def nativeDir = file("build/native/${os}-${arch}-${findProperty('kiln.backend')}")
+def nativeDir = file("build/native/${os}-${arch}-${findProperty('fornax.backend')}")
 
 subprojects {
     apply plugin: 'java-library'
@@ -21,11 +21,11 @@ subprojects {
     java {
         toolchain { languageVersion = JavaLanguageVersion.of(25) }
     }
-    // Built with JDK 25, for Java 22 and newer: the FFM API is final since 22. -Pkiln.testJdk=22 runs the tests there.
+    // Built with JDK 25, for Java 22 and newer: the FFM API is final since 22. -Pfornax.testJdk=22 runs the tests there.
     tasks.withType(JavaCompile).configureEach { options.release = 22 }
-    if (findProperty('kiln.testJdk')) {
+    if (findProperty('fornax.testJdk')) {
         tasks.withType(Test).configureEach {
-            javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(findProperty('kiln.testJdk') as int) }
+            javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(findProperty('fornax.testJdk') as int) }
         }
     }
 
@@ -41,11 +41,11 @@ subprojects {
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
         jvmArgs '--enable-native-access=ALL-UNNAMED'
-        systemProperty 'kiln.library.path', nativeDir.absolutePath
+        systemProperty 'fornax.library.path', nativeDir.absolutePath
         testLogging { events 'passed', 'skipped', 'failed'; showStandardStreams = true }
     }
 
-    if (name != 'kiln-core' && !name.startsWith('kiln-natives-')) dependencies { api project(':kiln-core') }
+    if (name != 'fornax-core' && !name.startsWith('fornax-natives-')) dependencies { api project(':fornax-core') }
 
     tasks.withType(Jar).configureEach {
         manifest { attributes 'Implementation-Title': project.name, 'Implementation-Version': project.version }
@@ -53,32 +53,32 @@ subprojects {
     }
 }
 
-// What goes to Maven Central, as org.kiln4j:<project name>. The version is gradle.properties' unless -Pversion=...
+// What goes to Maven Central, as org.fornax4j:<project name>. The version is gradle.properties' unless -Pversion=...
 def published = [
-    'kiln-core'   : 'Kiln core: native library loading, model download and Hugging Face cache lookup, audio, the model pool and vector search',
-    'kiln-llama'  : 'Kiln llama: GGUF language, vision language, embedding and reranker models through llama.cpp, in-process via Java FFM',
-    'kiln-tts'    : 'Kiln TTS: text to speech through llama.cpp (mtmd), in-process via Java FFM',
-    'kiln-sd'     : 'Kiln SD: images and video through stable-diffusion.cpp, in-process via Java FFM',
-    'kiln-acestep': 'Kiln ACE-Step: ACE-Step 1.5 songs through acestep.cpp, in-process via Java FFM',
-    'kiln-yue2'   : 'Kiln YuE2: YuE2 songs through yue2.cpp, in-process via Java FFM',
-    'kiln-whisper': 'Kiln Whisper: speech to text with word timings through whisper.cpp, in-process via Java FFM',
-    'kiln-demucs' : 'Kiln Demucs: stem separation (vocals, drums, bass, ...) with HTDemucs through stems.cpp, in-process via Java FFM',
+    'fornax-core'   : 'Fornax core: native library loading, model download and Hugging Face cache lookup, audio, the model pool and vector search',
+    'fornax-llama'  : 'Fornax llama: GGUF language, vision language, embedding and reranker models through llama.cpp, in-process via Java FFM',
+    'fornax-tts'    : 'Fornax TTS: text to speech through llama.cpp (mtmd), in-process via Java FFM',
+    'fornax-sd'     : 'Fornax SD: images and video through stable-diffusion.cpp, in-process via Java FFM',
+    'fornax-acestep': 'Fornax ACE-Step: ACE-Step 1.5 songs through acestep.cpp, in-process via Java FFM',
+    'fornax-yue2'   : 'Fornax YuE2: YuE2 songs through yue2.cpp, in-process via Java FFM',
+    'fornax-whisper': 'Fornax Whisper: speech to text with word timings through whisper.cpp, in-process via Java FFM',
+    'fornax-demucs' : 'Fornax Demucs: stem separation (vocals, drums, bass, ...) with HTDemucs through stems.cpp, in-process via Java FFM',
 ]
-configure(subprojects.findAll { published.containsKey(it.name) || it.name.startsWith('kiln-natives-') }) { p ->
+configure(subprojects.findAll { published.containsKey(it.name) || it.name.startsWith('fornax-natives-') }) { p ->
     apply plugin: 'com.vanniktech.maven.publish'
-    def natives = p.name.startsWith('kiln-natives-')
+    def natives = p.name.startsWith('fornax-natives-')
     mavenPublishing {
         configure(natives ? new JavaLibrary(new JavadocJar.Empty(), new SourcesJar.Empty())
                           : new JavaLibrary(new JavadocJar.Javadoc(), new SourcesJar.Sources()))
         publishToMavenCentral()
         signAllPublications()
-        coordinates('org.kiln4j', p.name, p.version.toString())
+        coordinates('org.fornax4j', p.name, p.version.toString())
         pom {
             name = p.name
-            description = natives ? "Kiln's native engine libraries for ${p.name - 'kiln-natives-'}: llama.cpp, " +
+            description = natives ? "Fornax's native engine libraries for ${p.name - 'fornax-natives-'}: llama.cpp, " +
                     'stable-diffusion.cpp, acestep.cpp, yue2.cpp, whisper.cpp and stems.cpp, each built into one self-contained library' : published[p.name]
             inceptionYear = '2026'
-            url = 'https://kiln4j.org'
+            url = 'https://fornax4j.org'
             licenses {
                 license {
                     name = 'The Apache License, Version 2.0'
@@ -94,25 +94,25 @@ configure(subprojects.findAll { published.containsKey(it.name) || it.name.starts
                 }
             }
             scm {
-                url = 'https://github.com/liberation-data/kiln'
-                connection = 'scm:git:https://github.com/liberation-data/kiln.git'
-                developerConnection = 'scm:git:ssh://git@github.com/liberation-data/kiln.git'
+                url = 'https://github.com/liberation-data/fornax'
+                connection = 'scm:git:https://github.com/liberation-data/fornax.git'
+                developerConnection = 'scm:git:ssh://git@github.com/liberation-data/fornax.git'
             }
         }
     }
 }
 
-// A natives jar: build/native/<dir>/*.so or *.dylib under org/kiln4j/natives/<os>-<arch>-<backend>/, where
+// A natives jar: build/native/<dir>/*.so or *.dylib under org/fornax4j/natives/<os>-<arch>-<backend>/, where
 // NativeLibrary finds them on the classpath (see BundledNatives). settings.gradle includes one per built platform.
-def engineLibraries = ['kiln_llama', 'kiln_tts', 'stable-diffusion', 'kiln_acestep', 'kiln_yue2', 'kiln_whisper', 'kiln_demucs']
-configure(subprojects.findAll { it.name.startsWith('kiln-natives-') }) { p ->
-    def platform = p.name - 'kiln-natives-'
+def engineLibraries = ['fornax_llama', 'fornax_tts', 'stable-diffusion', 'fornax_acestep', 'fornax_yue2', 'fornax_whisper', 'fornax_demucs']
+configure(subprojects.findAll { it.name.startsWith('fornax-natives-') }) { p ->
+    def platform = p.name - 'fornax-natives-'
     def libs = gradle.nativesDirs[platform]  // from settings.gradle, which maps macos-aarch64 to build.sh's arm64 dir
     def ext = platform.startsWith('macos-') ? 'dylib' : 'so'
     tasks.named('jar', Jar) {
-        from(libs) { include "*.$ext"; into "org/kiln4j/natives/$platform" }
+        from(libs) { include "*.$ext"; into "org/fornax4j/natives/$platform" }
         // A release ships every engine; a local build may have only some of them.
-        def required = providers.gradleProperty('kiln.natives.require').map { it.toBoolean() }.getOrElse(false)
+        def required = providers.gradleProperty('fornax.natives.require').map { it.toBoolean() }.getOrElse(false)
         if (required) doFirst {
             def missing = engineLibraries.collect { "lib${it}.$ext" }.findAll { !new File(libs, it).isFile() }
             if (missing) throw new GradleException("$platform natives are missing $missing in $libs")
@@ -120,15 +120,15 @@ configure(subprojects.findAll { it.name.startsWith('kiln-natives-') }) { p ->
     }
 }
 
-project(':kiln-examples') {
+project(':fornax-examples') {
     dependencies {
-        implementation project(':kiln-llama')
-        implementation project(':kiln-tts')
-        implementation project(':kiln-sd')
-        implementation project(':kiln-acestep')
-        implementation project(':kiln-yue2')
-        implementation project(':kiln-whisper')
-        implementation project(':kiln-demucs')
+        implementation project(':fornax-llama')
+        implementation project(':fornax-tts')
+        implementation project(':fornax-sd')
+        implementation project(':fornax-acestep')
+        implementation project(':fornax-yue2')
+        implementation project(':fornax-whisper')
+        implementation project(':fornax-demucs')
     }
     // ./gradlew chat --args='"your prompt"'   image --args='klein out.png "a prompt"'   song   yue2
     // speak --args='out.wav "text" am_michael' -Pmodel=kokoro
@@ -137,18 +137,18 @@ project(':kiln-examples') {
     // transcribe --args='audio.wav'   search --args='docs "how do I cancel a call?"' -Pk=5 -Prerank=false   separate --args='song.wav'
     [chat: 'Chat', image: 'Image', edit: 'Edit', upscale: 'Upscale', song: 'Song', yue2: 'Yue2Song', single: 'Single', video: 'VideoClip', speak: 'Speak', speakBatch: 'SpeakBatch', see: 'See', invoice: 'Invoice', defects: 'Defects', transcribe: 'Transcribe', search: 'Search', separate: 'Separate'].each { task, cls ->
         tasks.register(task, JavaExec) {
-            group = 'kiln examples'
-            description = "Runs org.liberationdata.kiln.examples.${cls}"
+            group = 'fornax examples'
+            description = "Runs org.liberationdata.fornax.examples.${cls}"
             classpath = sourceSets.main.runtimeClasspath
-            mainClass = "org.liberationdata.kiln.examples.${cls}"
+            mainClass = "org.liberationdata.fornax.examples.${cls}"
             javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
             jvmArgs '--enable-native-access=ALL-UNNAMED'
-            systemProperty 'kiln.library.path', nativeDir.absolutePath
+            systemProperty 'fornax.library.path', nativeDir.absolutePath
             workingDir = rootProject.projectDir
             // -Pmodel=... -Psteps=... etc. become system properties (only ones given on the command line), and so do
             // NativeLibrary's tunables, which the forked JVM would not see as -D on gradlew
             def cli = gradle.startParameter.projectProperties
-            ['kiln.gpu.graphs', 'kiln.vulkan.maxNodesPerSubmit', 'kiln.allowCpu', 'model', 'mmproj', 'llm', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio', 'preprocess', 'hires', 'upscaler', 'refine', 'strength', 'schema',
+            ['fornax.gpu.graphs', 'fornax.vulkan.maxNodesPerSubmit', 'fornax.allowCpu', 'model', 'mmproj', 'llm', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio', 'preprocess', 'hires', 'upscaler', 'refine', 'strength', 'schema',
              'mask', 'lora', 'ref', 'shift', 'sampler', 'scheduler', 'factor', 'tile', 'control', 'controlnet', 'controlStrength', 'k', 'rerank', 'song', 'song.start'].each { p ->
                 if (cli.containsKey(p)) systemProperty p, cli[p]
             }
@@ -156,145 +156,145 @@ project(':kiln-examples') {
     }
 }
 
-project(':kiln-core') {
-    // ./gradlew :kiln-core:workerBench: per-call overhead of an isolated worker vs in-process, with a trivial service
+project(':fornax-core') {
+    // ./gradlew :fornax-core:workerBench: per-call overhead of an isolated worker vs in-process, with a trivial service
     tasks.register('workerBench', JavaExec) {
-        group = 'kiln examples'
+        group = 'fornax examples'
         description = 'Isolation overhead: a trivial echo service in-process vs in a worker process'
         classpath = sourceSets.test.runtimeClasspath
-        mainClass = 'org.liberationdata.kiln.WorkerBenchmark'
+        mainClass = 'org.liberationdata.fornax.WorkerBenchmark'
         javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
         jvmArgs '--enable-native-access=ALL-UNNAMED'
     }
 }
 
-project(':kiln-llama') {
-    // ./gradlew :kiln-llama:isolationBench --args=model.gguf: tokens/s in-process vs isolated, one model at a time
+project(':fornax-llama') {
+    // ./gradlew :fornax-llama:isolationBench --args=model.gguf: tokens/s in-process vs isolated, one model at a time
     tasks.register('isolationBench', JavaExec) {
-        group = 'kiln examples'
+        group = 'fornax examples'
         description = 'Isolation overhead with a real model: tokens/s and short-call latency, in-process vs isolated'
         classpath = sourceSets.test.runtimeClasspath
-        mainClass = 'org.liberationdata.kiln.llama.IsolationBenchmark'
+        mainClass = 'org.liberationdata.fornax.llama.IsolationBenchmark'
         javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
         jvmArgs '--enable-native-access=ALL-UNNAMED'
-        systemProperty 'kiln.library.path', nativeDir.absolutePath
+        systemProperty 'fornax.library.path', nativeDir.absolutePath
     }
 }
 
-project(':kiln-whisper') {
+project(':fornax-whisper') {
     // the integration test speaks its own test audio with Kokoro
-    dependencies { testImplementation project(':kiln-tts') }
+    dependencies { testImplementation project(':fornax-tts') }
 }
 
-project(':kiln-demucs') {
+project(':fornax-demucs') {
     // The episode test reads a private song and its reference stems from these paths (-P or the environment), and
-    // skips without them: KILN_DEMUCS_SONG, KILN_DEMUCS_VOCALS, KILN_DEMUCS_OUT.
+    // skips without them: FORNAX_DEMUCS_SONG, FORNAX_DEMUCS_VOCALS, FORNAX_DEMUCS_OUT.
     tasks.withType(Test).configureEach {
         maxHeapSize = '2g'  // a whole song and its stems as float arrays
         def cli = gradle.startParameter.projectProperties
-        ['kiln.demucs.song', 'kiln.demucs.vocals', 'kiln.demucs.out'].each { p -> if (cli.containsKey(p)) systemProperty p, cli[p] }
+        ['fornax.demucs.song', 'fornax.demucs.vocals', 'fornax.demucs.out'].each { p -> if (cli.containsKey(p)) systemProperty p, cli[p] }
     }
 }
 
-project(':kiln-cli') {
+project(':fornax-cli') {
     apply plugin: 'application'
-    // The natives, as the samples take them: a kiln-natives jar, here every one this build has (settings.gradle
-    // includes a platform when native/build.sh has built it). -Pkiln.cli.nativesVersion=0.1.0 takes this platform's
+    // The natives, as the samples take them: a fornax-natives jar, here every one this build has (settings.gradle
+    // includes a platform when native/build.sh has built it). -Pfornax.cli.nativesVersion=0.1.0 takes this platform's
     // from Maven Central instead, for a build without natives of its own.
-    def publishedNatives = findProperty('kiln.cli.nativesVersion')
+    def publishedNatives = findProperty('fornax.cli.nativesVersion')
     def hostPlatform = os != 'macos' ? 'linux-x86_64-vulkan' : (arch == 'arm64' ? 'macos-aarch64-metal' : 'macos-x86_64-metal')
-    def natives = publishedNatives ? ["org.kiln4j:kiln-natives-${hostPlatform}:${publishedNatives}".toString()]
-                                   : gradle.nativesDirs.keySet().collect { project(":kiln-natives-${it}") }
+    def natives = publishedNatives ? ["org.fornax4j:fornax-natives-${hostPlatform}:${publishedNatives}".toString()]
+                                   : gradle.nativesDirs.keySet().collect { project(":fornax-natives-${it}") }
     dependencies {
-        implementation project(':kiln-llama')
-        implementation project(':kiln-sd')
-        implementation project(':kiln-acestep')
-        implementation project(':kiln-yue2')
+        implementation project(':fornax-llama')
+        implementation project(':fornax-sd')
+        implementation project(':fornax-acestep')
+        implementation project(':fornax-yue2')
         // 0.1.0's natives jar says Java 25 in its metadata (it holds no classes), so ask for it as 25
         natives.each { n -> runtimeOnly(n) { attributes { attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25) } } }
     }
-    // ./gradlew :kiln-cli:installDist  ->  kiln-cli/build/install/kiln-cli/bin/kiln, with its jars in lib/.
-    // The launchers are src/dist/bin/kiln and kiln.cmd, not Gradle's: their inputs (the java, the jars folder, the
-    // natives folder) are environment variables or placeholders an installer such as Kiln Studio fills in.
+    // ./gradlew :fornax-cli:installDist  ->  fornax-cli/build/install/fornax-cli/bin/fornax, with its jars in lib/.
+    // The launchers are src/dist/bin/fornax and fornax.cmd, not Gradle's: their inputs (the java, the jars folder, the
+    // natives folder) are environment variables or placeholders an installer such as Fornax Studio fills in.
     application {
-        mainClass = 'org.liberationdata.kiln.cli.Main'
-        applicationName = 'kiln'
+        mainClass = 'org.liberationdata.fornax.cli.Main'
+        applicationName = 'fornax'
         applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
     }
     tasks.named('startScripts') { enabled = false }
     distributions {
         main {
-            distributionBaseName = 'kiln-cli'
-            contents { filesMatching('bin/kiln') { filePermissions { unix('rwxr-xr-x') } } }
+            distributionBaseName = 'fornax-cli'
+            contents { filesMatching('bin/fornax') { filePermissions { unix('rwxr-xr-x') } } }
         }
     }
-    // ./gradlew :kiln-cli:run --args='info'
+    // ./gradlew :fornax-cli:run --args='info'
     tasks.named('run', JavaExec) {
         javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
-        systemProperty 'kiln.library.path', nativeDir.absolutePath
+        systemProperty 'fornax.library.path', nativeDir.absolutePath
         standardInput = System.in
     }
     // The launcher as an installer renders it, run against the installed distribution (see LauncherTest)
     tasks.named('test') {
         dependsOn 'installDist'
-        systemProperty 'kiln.cli.install', layout.buildDirectory.dir('install/kiln-cli').get().asFile.absolutePath
+        systemProperty 'fornax.cli.install', layout.buildDirectory.dir('install/fornax-cli').get().asFile.absolutePath
     }
 }
 
-project(':kiln-bench') {
+project(':fornax-bench') {
     dependencies {
-        implementation project(':kiln-acestep')
-        implementation project(':kiln-sd')
-        implementation project(':kiln-yue2')
+        implementation project(':fornax-acestep')
+        implementation project(':fornax-sd')
+        implementation project(':fornax-yue2')
         implementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0'
     }
     // ./gradlew bench --args='out/bench acestep yue2 qwen-image'
     tasks.register('bench', JavaExec) {
-        group = 'kiln examples'
-        description = 'A/B: the same jobs through ComfyUI and through Kiln'
+        group = 'fornax examples'
+        description = 'A/B: the same jobs through ComfyUI and through Fornax'
         classpath = sourceSets.main.runtimeClasspath
-        mainClass = 'org.liberationdata.kiln.bench.Bench'
+        mainClass = 'org.liberationdata.fornax.bench.Bench'
         javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
         jvmArgs '--enable-native-access=ALL-UNNAMED'
-        systemProperty 'kiln.library.path', nativeDir.absolutePath
+        systemProperty 'fornax.library.path', nativeDir.absolutePath
         workingDir = rootProject.projectDir
         def cli = gradle.startParameter.projectProperties
         ['size', 'steps'].each { p -> if (cli.containsKey(p)) systemProperty p, cli[p] }
     }
 }
 
-project(':kiln-studio-server') {
+project(':fornax-studio-server') {
     apply plugin: 'application'
     dependencies {
-        implementation project(':kiln-llama')
-        implementation project(':kiln-sd')
-        implementation project(':kiln-acestep')
-        implementation project(':kiln-yue2')
+        implementation project(':fornax-llama')
+        implementation project(':fornax-sd')
+        implementation project(':fornax-acestep')
+        implementation project(':fornax-yue2')
     }
     application {
-        mainClass = 'org.liberationdata.kiln.studio.StudioServer'
+        mainClass = 'org.liberationdata.fornax.studio.StudioServer'
         applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
     }
     // ./gradlew studioServer: the backend on its own, for the studio's dev server to talk to (-Pport=7860, -Pstub=image,song,video)
     tasks.register('studioServer', JavaExec) {
-        group = 'kiln examples'
-        description = 'Runs the Kiln Studio backend'
+        group = 'fornax examples'
+        description = 'Runs the Fornax Studio backend'
         classpath = sourceSets.main.runtimeClasspath
-        mainClass = 'org.liberationdata.kiln.studio.StudioServer'
+        mainClass = 'org.liberationdata.fornax.studio.StudioServer'
         javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
         jvmArgs '--enable-native-access=ALL-UNNAMED'
-        systemProperty 'kiln.library.path', nativeDir.absolutePath
+        systemProperty 'fornax.library.path', nativeDir.absolutePath
         // ggml-vulkan's default of 100 nodes a submission lets one LTX decode outlast amdgpu's compute timeout (docs/engine-notes.md).
         environment 'GGML_VK_MAX_NODES_PER_SUBMIT', System.getenv('GGML_VK_MAX_NODES_PER_SUBMIT') ?: '8'
         def cli = gradle.startParameter.projectProperties
-        ['port', 'stub', 'budget', 'ffmpeg'].each { p -> if (cli.containsKey(p)) systemProperty "kiln.studio.${p}", cli[p] }
+        ['port', 'stub', 'budget', 'ffmpeg'].each { p -> if (cli.containsKey(p)) systemProperty "fornax.studio.${p}", cli[p] }
     }
-    // One jar holding the server and the Kiln modules it uses: what the desktop app ships and starts with `java -jar`.
+    // One jar holding the server and the Fornax modules it uses: what the desktop app ships and starts with `java -jar`.
     tasks.register('studioJar', Jar) {
         group = 'build'
-        description = 'The Kiln Studio backend as one runnable jar'
-        archiveFileName = 'kiln-studio-server.jar'
-        manifest { attributes 'Main-Class': 'org.liberationdata.kiln.studio.StudioServer', 'Enable-Native-Access': 'ALL-UNNAMED' }
+        description = 'The Fornax Studio backend as one runnable jar'
+        archiveFileName = 'fornax-studio-server.jar'
+        manifest { attributes 'Main-Class': 'org.liberationdata.fornax.studio.StudioServer', 'Enable-Native-Access': 'ALL-UNNAMED' }
         from sourceSets.main.output
         dependsOn configurations.runtimeClasspath
         from { configurations.runtimeClasspath.findAll { it.name.endsWith('.jar') }.collect { zipTree(it) } }

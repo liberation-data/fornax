@@ -1,9 +1,9 @@
 ---
 title: Choosing a GPU backend
-description: Build Kiln's engines for Vulkan, HIP (ROCm), CUDA, Metal or the CPU, and the settings that matter on each.
+description: Build Fornax's engines for Vulkan, HIP (ROCm), CUDA, Metal or the CPU, and the settings that matter on each.
 ---
 
-Kiln's Java code is the same for every GPU. The backend is chosen when you build the native libraries: each build
+Fornax's Java code is the same for every GPU. The backend is chosen when you build the native libraries: each build
 goes to its own folder, `build/native/<os>-<arch>-<backend>/`, and your app loads whichever folder you point it at.
 
 ```sh
@@ -22,14 +22,14 @@ Every backend needs JDK 25, CMake, Ninja and a C++17 compiler. The build script 
 | `CMAKE_EXTRA` | | extra CMake arguments for every engine |
 
 The Gradle build runs the examples and tests against `build/native/<os>-<arch>-vulkan/` unless you say otherwise:
-add `-Pkiln.backend=hip` (or `cuda`, `metal`, `cpu`) to a Gradle command, or change `kiln.backend` in
+add `-Pfornax.backend=hip` (or `cuda`, `metal`, `cpu`) to a Gradle command, or change `fornax.backend` in
 `gradle.properties`.
 
 ## Which one?
 
 | Backend | GPUs | State |
 |---|---|---|
-| [Vulkan](#vulkan) | AMD, Intel, NVIDIA | the backend Kiln is developed and tested on |
+| [Vulkan](#vulkan) | AMD, Intel, NVIDIA | the backend Fornax is developed and tested on |
 | [HIP (ROCm)](#hip-rocm) | AMD | builds; has run LTX video on the Radeon 8060S, faster than Vulkan |
 | [CUDA](#cuda) | NVIDIA | builds from the same script; not tested yet |
 | [Metal](#metal) | Macs | builds from the same script; not tested yet |
@@ -50,7 +50,7 @@ native/build.sh vulkan
 Everything on the [Introduction](/docs/#status)'s results table ran on Vulkan, on an AMD Radeon 8060S.
 
 **Running it** needs your GPU's Vulkan driver and the Vulkan loader. Desktop Linux usually has both; see
-[Installing GPU drivers](/docs/gpu-drivers/) if not. Kiln won't quietly fall back to the CPU: with no GPU it stops and
+[Installing GPU drivers](/docs/gpu-drivers/) if not. Fornax won't quietly fall back to the CPU: with no GPU it stops and
 says what to install.
 
 **The driver's compute timeout.** A GPU driver resets a GPU that runs one piece of work for too long. ggml's Vulkan
@@ -58,7 +58,7 @@ backend puts up to 100 graph nodes in each submission to the GPU, and a big deco
 lose the device. Lower it:
 
 ```sh
-java -Dkiln.vulkan.maxNodesPerSubmit=8 ...        # sets GGML_VK_MAX_NODES_PER_SUBMIT for the engines
+java -Dfornax.vulkan.maxNodesPerSubmit=8 ...        # sets GGML_VK_MAX_NODES_PER_SUBMIT for the engines
 ```
 
 This is most likely on a power-limited GPU, such as a laptop on battery, and for video. A single very long dispatch
@@ -74,10 +74,10 @@ target (`gfx1151` is the Radeon 8060S in Strix Halo; `rocminfo` names yours):
 
 ```sh
 HIP_ARCH=gfx1100 native/build.sh hip
-./gradlew video -Pkiln.backend=hip --args='clip.mp4 "a potter at a wheel"'
+./gradlew video -Pfornax.backend=hip --args='clip.mp4 "a potter at a wheel"'
 ```
 
-What Kiln has learned on HIP so far, with LTX-2.5 video on the 8060S:
+What Fornax has learned on HIP so far, with LTX-2.5 video on the 8060S:
 
 - **No compute timeout.** ROCm work goes through user queues that the driver's compute timeout doesn't cover, so the
   long clips that lose the device on Vulkan finish on HIP.
@@ -85,8 +85,8 @@ What Kiln has learned on HIP so far, with LTX-2.5 video on the 8060S:
   first step).
 - **GPU graphs are off.** ggml can capture its work as a HIP graph, and ROCm schedules one recursively, a stack frame
   per node. On a JVM thread, whose stack is smaller than a command-line tool's 8 MB main thread, that overflowed and
-  crashed during LTX's text encoding. So Kiln sets `GGML_CUDA_DISABLE_GRAPHS=1` before the first engine loads. Turn
-  graphs back on with `-Dkiln.gpu.graphs=true`.
+  crashed during LTX's text encoding. So Fornax sets `GGML_CUDA_DISABLE_GRAPHS=1` before the first engine loads. Turn
+  graphs back on with `-Dfornax.gpu.graphs=true`.
 
 ## CUDA
 
@@ -96,8 +96,8 @@ For NVIDIA GPUs. Building needs the CUDA toolkit (with cuBLAS) at `CUDA_PATH`:
 native/build.sh cuda
 ```
 
-`-Dkiln.gpu.graphs` applies to CUDA too: Kiln turns ggml's CUDA graphs off by default, as on HIP. Whether CUDA
-needs that hasn't been tested; `-Dkiln.gpu.graphs=true` turns them back on.
+`-Dfornax.gpu.graphs` applies to CUDA too: Fornax turns ggml's CUDA graphs off by default, as on HIP. Whether CUDA
+needs that hasn't been tested; `-Dfornax.gpu.graphs=true` turns them back on.
 
 ## Metal
 
@@ -120,22 +120,22 @@ native/build.sh cpu
 
 ## Settings, at a glance
 
-Kiln passes these to the engines as environment variables before the first engine loads. A variable you set
+Fornax passes these to the engines as environment variables before the first engine loads. A variable you set
 yourself always wins.
 
 | Setting | Default | Effect |
 |---|---|---|
-| `-Dkiln.gpu.graphs` | `false` | ggml's CUDA and HIP graph capture; `false` sets `GGML_CUDA_DISABLE_GRAPHS=1` |
-| `-Dkiln.vulkan.maxNodesPerSubmit` | ggml's (100) | graph nodes per Vulkan submission; sets `GGML_VK_MAX_NODES_PER_SUBMIT` |
+| `-Dfornax.gpu.graphs` | `false` | ggml's CUDA and HIP graph capture; `false` sets `GGML_CUDA_DISABLE_GRAPHS=1` |
+| `-Dfornax.vulkan.maxNodesPerSubmit` | ggml's (100) | graph nodes per Vulkan submission; sets `GGML_VK_MAX_NODES_PER_SUBMIT` |
 
 And these the engines read themselves:
 
 | Variable | Default | Effect |
 |---|---|---|
-| `KILN_VERBOSE` | unset | `1` shows the engines' own logs; `debug` (for stable-diffusion.cpp) shows everything |
-| `KILN_ACESTEP_VAE_CHUNK` | `512` | frames per ACE-Step VAE decode tile; smaller means shorter GPU dispatches |
-| `GGML_VK_MAX_NODES_PER_SUBMIT` | 100 | as `-Dkiln.vulkan.maxNodesPerSubmit` |
-| `GGML_CUDA_DISABLE_GRAPHS` | `1` (set by Kiln) | as `-Dkiln.gpu.graphs` |
+| `FORNAX_VERBOSE` | unset | `1` shows the engines' own logs; `debug` (for stable-diffusion.cpp) shows everything |
+| `FORNAX_ACESTEP_VAE_CHUNK` | `512` | frames per ACE-Step VAE decode tile; smaller means shorter GPU dispatches |
+| `GGML_VK_MAX_NODES_PER_SUBMIT` | 100 | as `-Dfornax.vulkan.maxNodesPerSubmit` |
+| `GGML_CUDA_DISABLE_GRAPHS` | `1` (set by Fornax) | as `-Dfornax.gpu.graphs` |
 
-Where your app finds the libraries (`-Dkiln.library.path` and the rest) is on
+Where your app finds the libraries (`-Dfornax.library.path` and the rest) is on
 [Getting started](/docs/getting-started/#in-your-own-application).

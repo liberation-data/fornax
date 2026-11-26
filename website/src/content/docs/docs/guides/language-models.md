@@ -3,7 +3,7 @@ title: Language models
 description: Chat with a GGUF model through llama.cpp from Java, stream the reply, constrain it to a JSON schema, and let the model call your tools.
 ---
 
-`kiln-llama` runs any GGUF language model through [llama.cpp](https://github.com/ggml-org/llama.cpp): Qwen, Llama,
+`fornax-llama` runs any GGUF language model through [llama.cpp](https://github.com/ggml-org/llama.cpp): Qwen, Llama,
 Gemma, Mistral and the rest. The class is `LlamaModel`. The same class embeds text and reranks documents: see
 [Embeddings and reranking](/docs/guides/embeddings/).
 
@@ -14,8 +14,8 @@ hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gg
 ```
 
 ```java
-import org.liberationdata.kiln.HfCache;
-import org.liberationdata.kiln.llama.LlamaModel;
+import org.liberationdata.fornax.HfCache;
+import org.liberationdata.fornax.llama.LlamaModel;
 
 String gguf = HfCache.require("unsloth/Qwen3-4B-Instruct-2507-GGUF", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf").toString();
 
@@ -38,9 +38,9 @@ use `chatAsync`, `chatJsonAsync` and `extractAsync`, which return a `Completable
 ## Chat
 
 ```java
-import org.liberationdata.kiln.llama.LlamaModel.Message;
-import org.liberationdata.kiln.llama.LlamaModel.Options;
-import org.liberationdata.kiln.llama.LlamaModel.Result;
+import org.liberationdata.fornax.llama.LlamaModel.Message;
+import org.liberationdata.fornax.llama.LlamaModel.Options;
+import org.liberationdata.fornax.llama.LlamaModel.Result;
 
 import java.util.List;
 
@@ -80,7 +80,7 @@ Pass a `Consumer<String>` and each piece of text arrives as soon as it is genera
 `Result` at the end.
 
 ```java
-llm.chat(List.of(Message.user("Write a haiku about a kiln.")), Options.DEFAULT, System.out::print);
+llm.chat(List.of(Message.user("Write a haiku about a fornax.")), Options.DEFAULT, System.out::print);
 ```
 
 The callback runs on the calling thread, between tokens, so keep it quick: append to a buffer, push to a queue or
@@ -148,7 +148,7 @@ token limit).
 The second argument streams the message's `content` as it is generated (not its reasoning, and not tool calls), or
 pass `null`. `cancel()` works here as it does for `chat`, including while the model reasons or writes a tool call.
 
-Kiln has no JSON library of its own on `main`; the examples below use Jackson, but any JSON library works.
+Fornax has no JSON library of its own on `main`; the examples below use Jackson, but any JSON library works.
 
 ### A reply that follows a JSON schema
 
@@ -220,7 +220,7 @@ while ("tool_calls".equals(reply.get("finish_reason").asText())) {
 System.out.println(reply.at("/message/content").asText());
 ```
 
-Every tool call has an `id` (Kiln numbers them `call_0`, `call_1`, ... when the model doesn't give one), which your
+Every tool call has an `id` (Fornax numbers them `call_0`, `call_1`, ... when the model doesn't give one), which your
 `tool` message refers back to. How well a model picks tools and fills in arguments is up to the model; small models
 do best with few tools and clear descriptions.
 
@@ -236,7 +236,7 @@ Result r = llm.complete("The three most common glazes for stoneware are", Option
 ## Try it
 
 ```sh
-./gradlew chat --args='"Write a haiku about a kiln"'
+./gradlew chat --args='"Write a haiku about a fornax"'
 ./gradlew chat --args='"Hello"' -Pmodel=/path/to/another-model.gguf
 ```
 

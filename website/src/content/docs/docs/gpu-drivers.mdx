@@ -1,19 +1,19 @@
 ---
 title: Installing GPU drivers
-description: What to install so Kiln runs on your GPU, step by step for Fedora, Ubuntu, Debian, Arch and openSUSE, and in containers. Macs need nothing.
+description: What to install so Fornax runs on your GPU, step by step for Fedora, Ubuntu, Debian, Arch and openSUSE, and in containers. Macs need nothing.
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
-Kiln runs its models on your GPU. On Linux, that needs your GPU's **Vulkan driver** and the **Vulkan loader**. Most
+Fornax runs its models on your GPU. On Linux, that needs your GPU's **Vulkan driver** and the **Vulkan loader**. Most
 desktop installs already have both. Minimal installs, servers and containers often don't.
 
 <Aside type="tip" title="On a Mac?">
-There's nothing to install. Kiln uses Metal, which is built into macOS, on Apple silicon and on Intel Macs.
+There's nothing to install. Fornax uses Metal, which is built into macOS, on Apple silicon and on Intel Macs.
 </Aside>
 
-Kiln checks for a GPU when an engine loads. If it finds none, it stops with an error that points here, rather than
-quietly running on the CPU, which is many times slower. See [Kiln says it found no GPU](#kiln-says-it-found-no-gpu).
+Fornax checks for a GPU when an engine loads. If it finds none, it stops with an error that points here, rather than
+quietly running on the CPU, which is many times slower. See [Fornax says it found no GPU](#fornax-says-it-found-no-gpu).
 
 ## 1. Find your GPU
 
@@ -124,7 +124,7 @@ If the only device is `llvmpipe`, that's Mesa's software renderer running on the
 or your user can't reach the GPU (below). If `vulkaninfo` itself fails with `ERROR_INCOMPATIBLE_DRIVER`, no driver is
 installed at all.
 
-That's it: Kiln will use the GPU that `vulkaninfo` lists.
+That's it: Fornax will use the GPU that `vulkaninfo` lists.
 
 ## If the GPU still isn't found
 
@@ -150,7 +150,7 @@ Pass the GPU's device nodes in, and install Mesa's Vulkan driver in the image (f
 `libvulkan1` in a Debian or Ubuntu image):
 
 ```sh
-docker run --device /dev/dri --group-add "$(getent group render | cut -d: -f3)" my-kiln-app
+docker run --device /dev/dri --group-add "$(getent group render | cut -d: -f3)" my-fornax-app
 ```
 </TabItem>
 <TabItem label="NVIDIA">
@@ -158,17 +158,17 @@ Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-
 on the host, then ask for the GPU, including the graphics capability that Vulkan needs:
 
 ```sh
-docker run --gpus all -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics my-kiln-app
+docker run --gpus all -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics my-fornax-app
 ```
 </TabItem>
 </Tabs>
 
-## Kiln says it found no GPU
+## Fornax says it found no GPU
 
-When an engine built for a GPU loads and the GPU runtime reports no usable GPU, Kiln stops with an error like this:
+When an engine built for a GPU loads and the GPU runtime reports no usable GPU, Fornax stops with an error like this:
 
 ```
-Kiln found no GPU for libkiln_llama.so, which is built for Vulkan. Without one, it would run on the CPU,
+Fornax found no GPU for libfornax_llama.so, which is built for Vulkan. Without one, it would run on the CPU,
 many times slower, so it won't start.
 ```
 
@@ -178,21 +178,21 @@ again.
 To run on the CPU anyway (on a CI machine, for example), allow it:
 
 ```sh
-java -Dkiln.allowCpu=true ...      # or: export KILN_ALLOW_CPU=true
+java -Dfornax.allowCpu=true ...      # or: export FORNAX_ALLOW_CPU=true
 ```
 
-Kiln then runs, and logs a large warning that it is running on the CPU.
+Fornax then runs, and logs a large warning that it is running on the CPU.
 
-If the error says Kiln **has no Vulkan loader** (`libvulkan.so.1`), install the loader package from
+If the error says Fornax **has no Vulkan loader** (`libvulkan.so.1`), install the loader package from
 [step 2](#2-amd-or-intel-install-mesas-vulkan-driver) (`vulkan-loader`, `libvulkan1` or `vulkan-icd-loader`).
 
 ## HIP (ROCm) and CUDA
 
-Kiln's published natives use Vulkan, which needs only the drivers above. The HIP and CUDA backends are for building
-Kiln's engines yourself, and need ROCm or the CUDA toolkit; see [Choosing a GPU backend](/docs/guides/gpu-backends/).
-Kiln checks those for a GPU the same way, and its error tells you how to check: `rocminfo` for ROCm, `nvidia-smi`
+Fornax's published natives use Vulkan, which needs only the drivers above. The HIP and CUDA backends are for building
+Fornax's engines yourself, and need ROCm or the CUDA toolkit; see [Choosing a GPU backend](/docs/guides/gpu-backends/).
+Fornax checks those for a GPU the same way, and its error tells you how to check: `rocminfo` for ROCm, `nvidia-smi`
 for NVIDIA. For ROCm, your user also needs to be in the `render` and `video` groups.
 
 ## Windows
 
-Kiln doesn't run on Windows yet.
+Fornax doesn't run on Windows yet.

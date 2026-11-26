@@ -3,8 +3,8 @@ title: Songs
 description: Generate songs with vocals and lyrics from Java with ACE-Step 1.5 (acestep.cpp) and YuE2 (yue2.cpp).
 ---
 
-Kiln has two song models, each through its own engine: **ACE-Step 1.5** (`kiln-acestep`, through acestep.cpp) and
-**YuE2** (`kiln-yue2`, through yue2.cpp). Both take the engine's own JSON request and return 48 kHz stereo `Audio`.
+Fornax has two song models, each through its own engine: **ACE-Step 1.5** (`fornax-acestep`, through acestep.cpp) and
+**YuE2** (`fornax-yue2`, through yue2.cpp). Both take the engine's own JSON request and return 48 kHz stereo `Audio`.
 
 The request formats are the engines' own, so their READMEs are the full reference:
 [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) and [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp).
@@ -20,8 +20,8 @@ hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Emb
 ```
 
 ```java
-import org.liberationdata.kiln.HfCache;
-import org.liberationdata.kiln.acestep.AceStepModel;
+import org.liberationdata.fornax.HfCache;
+import org.liberationdata.fornax.acestep.AceStepModel;
 
 import java.io.File;
 
@@ -61,7 +61,7 @@ On the Radeon 8060S with Vulkan, the turbo DiT made a 60 s song in about 15 s, a
 57 s.
 
 If decoding hangs or loses the GPU on a power-limited machine (a laptop on battery, say), see
-[`KILN_ACESTEP_VAE_CHUNK`](/docs/troubleshooting/#ace-step-on-a-power-limited-gpu).
+[`FORNAX_ACESTEP_VAE_CHUNK`](/docs/troubleshooting/#ace-step-on-a-power-limited-gpu).
 
 ## YuE2
 
@@ -77,7 +77,7 @@ hf download Serveurperso/YuE2-GGUF YuE2-3B-Q8_0.gguf YuE2-Vae-F32.gguf
 ```
 
 ```java
-import org.liberationdata.kiln.yue2.Yue2Model;
+import org.liberationdata.fornax.yue2.Yue2Model;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -110,5 +110,5 @@ The last two constructor arguments are `keepLoaded`, as for ACE-Step, and `maxSe
 ./gradlew single                                      # an LLM writes the lyrics, ACE-Step sings them
 ```
 
-The examples' requests are in `kiln-examples/src/main/resources/requests/`. Each writes the resolved request next to
+The examples' requests are in `fornax-examples/src/main/resources/requests/`. Each writes the resolved request next to
 the `.wav`, and the YuE2 example writes the score too.

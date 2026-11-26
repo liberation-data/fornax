@@ -9,7 +9,7 @@ vectors, and more accurate. Together they are the retrieval half of RAG: embed y
 question, take the nearest few dozen passages, and rerank those.
 
 Both are a `LlamaModel` loaded in another `Mode`. They run through llama.cpp's pooled embeddings output, the way
-`llama-embedding` and `llama-server --embedding` / `--reranking` run them, and Kiln's embeddings match
+`llama-embedding` and `llama-server --embedding` / `--reranking` run them, and Fornax's embeddings match
 `llama-embedding`'s for the same model and text.
 
 ## Embed
@@ -19,22 +19,22 @@ hf download Qwen/Qwen3-Embedding-0.6B-GGUF Qwen3-Embedding-0.6B-Q8_0.gguf
 ```
 
 ```java
-import org.liberationdata.kiln.Vectors;
-import org.liberationdata.kiln.llama.LlamaModel;
-import org.liberationdata.kiln.llama.LlamaModel.EmbedOptions;
-import org.liberationdata.kiln.llama.LlamaModel.Mode;
-import org.liberationdata.kiln.llama.LlamaModel.Weights;
+import org.liberationdata.fornax.Vectors;
+import org.liberationdata.fornax.llama.LlamaModel;
+import org.liberationdata.fornax.llama.LlamaModel.EmbedOptions;
+import org.liberationdata.fornax.llama.LlamaModel.Mode;
+import org.liberationdata.fornax.llama.LlamaModel.Weights;
 
 import java.util.List;
 
 try (var emb = new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)) {
     List<String> docs = List.of(
-            "A pottery kiln fires stoneware at around 1200 to 1300 degrees Celsius.",
+            "A pottery fornax fires stoneware at around 1200 to 1300 degrees Celsius.",
             "Nashville is the capital of Tennessee and the home of country music.");
     float[][] d = emb.embed(docs);                                    // one 1024-float vector each, length 1
 
     String task = "Given a web search query, retrieve relevant passages that answer the query";
-    float[] q = emb.embed(List.of("How hot does a kiln get?"), EmbedOptions.query(task))[0];
+    float[] q = emb.embed(List.of("How hot does a fornax get?"), EmbedOptions.query(task))[0];
 
     var best = Vectors.topK(q, d, 1).get(0);                         // Scored[index=0, score=0.69]
     System.out.println(docs.get(best.index()));
@@ -66,18 +66,18 @@ hf download ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF qwen3-reranker-0.6b-q8_0.gguf
 ```
 
 ```java
-import org.liberationdata.kiln.Scored;
+import org.liberationdata.fornax.Scored;
 
 try (var rr = new LlamaModel(Weights.QWEN3_RERANKER_0_6B, Mode.RERANK)) {
-    List<Scored> ranked = rr.rerank("How hot does a kiln get?", List.of(
-            "A pottery kiln fires stoneware at around 1200 to 1300 degrees Celsius.",
+    List<Scored> ranked = rr.rerank("How hot does a fornax get?", List.of(
+            "A pottery fornax fires stoneware at around 1200 to 1300 degrees Celsius.",
             "Nashville is the capital of Tennessee and the home of country music.",
-            "A kiln is a thermally insulated chamber."));
+            "A fornax is a thermally insulated chamber."));
     // best first: [Scored[index=0, score=0.997], Scored[index=2, score=0.564], Scored[index=1, score=0.00002]]
 }
 ```
 
-`rerank` returns every document's score, best first; `index` is the document's position in the list you passed. Kiln
+`rerank` returns every document's score, best first; `index` is the document's position in the list you passed. Fornax
 builds each pair's prompt as `llama-server`'s `/rerank` does, from the reranker GGUF's own `rerank` template, and for
 Qwen3-Reranker a score is the probability, 0 to 1, that the document answers the query (a near-even one moves by a few
 hundredths depending on what else is in the batch). As in `llama-server`, the filled-in prompt is parsed for special
@@ -86,7 +86,7 @@ documents)` runs it on the model's thread, and `cancel()` stops it between batch
 
 ## Search a folder
 
-`Vectors` (in `kiln-core`) is all the search there is: `topK(query, vectors, k)` scans the vectors for the k most
+`Vectors` (in `fornax-core`) is all the search there is: `topK(query, vectors, k)` scans the vectors for the k most
 similar by cosine. A scan over 200,000 1024-float vectors takes about 0.2 s on one core, so many applications
 don't need a vector database: keep the vectors in memory, or save them next to the documents.
 `Vectors` also has `cosine`, `dot`, `normalize`, and `rank(scores)` (indexes sorted by score).
