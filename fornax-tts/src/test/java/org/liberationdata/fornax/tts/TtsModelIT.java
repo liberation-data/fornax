@@ -60,6 +60,37 @@ class TtsModelIT {
         assertTrue(rms(a.left()) > 0.01);
     }
 
+    /** The alias brings its mmproj; a reference to the model needs a reference (or path) to the mmproj too. */
+    @Test
+    void loadsByAliasOrReference() {
+        try (var byAlias = new TtsModel("kokoro")) {
+            assertEquals(model.voices(), byAlias.voices());
+        }
+        try (var mmprojByAlias = new TtsModel("kokoro", "kokoro")) {   // the alias's mmproj, not its model
+            assertEquals(model.voices(), mmprojByAlias.voices());
+        }
+        String repo = TtsModel.Weights.KOKORO.repo;
+        try (var byRef = new TtsModel(repo + ":F32", repo + ":mmproj-Kokoro-82M-F16.gguf")) {
+            assertTrue(byRef.speak("Hello.", "af_heart").seconds() > 0.3);
+        }
+        var e = assertThrows(NullPointerException.class, () -> new TtsModel(repo + ":F32", null));
+        assertTrue(e.getMessage().contains("needs its mmproj"), e.getMessage());
+        // refused before the model is fetched: a repo that isn't in the cache (or on the Hub) fails the same way
+        e = assertThrows(NullPointerException.class, () -> new TtsModel("fornax-test/not-a-tts-GGUF:F32", null));
+        assertTrue(e.getMessage().contains("needs its mmproj"), e.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> new TtsModel("whisper-base.en"));
+    }
+
+    /** A wrong mmproj is refused before the model is fetched: this model isn't in the cache (or on the Hub). */
+    @Test
+    void refusesAWrongMmprojBeforeFetchingTheModel() {
+        var e = assertThrows(IllegalArgumentException.class, () -> new TtsModel("fornax-test/not-a-tts-GGUF:F32", "qwen3-0.6b"));
+        assertEquals("qwen3-0.6b is a chat model (llama.cpp); TtsModel loads text-to-speech models", e.getMessage());
+        e = assertThrows(IllegalArgumentException.class, () -> new TtsModel("fornax-test/not-a-tts-GGUF:F32",
+                "https://huggingface.co/ggml-org/Kokoro-82M-GGUF/blob/main/mmproj-Kokoro-82M-F16.gguf"));
+        assertTrue(e.getMessage().contains("ggml-org/Kokoro-82M-GGUF:mmproj-Kokoro-82M-F16.gguf"), e.getMessage());
+    }
+
     @Test
     void rejectsAnUnknownVoice() {
         var e = assertThrows(IllegalStateException.class, () -> model.speak(TEXT, "nobody"));

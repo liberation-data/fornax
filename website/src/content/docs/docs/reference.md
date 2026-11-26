@@ -21,7 +21,9 @@ Package `org.liberationdata.fornax`. The engine modules depend on it.
 | Type | |
 |---|---|
 | `HfCache` | finds files in the Hugging Face cache: `root()`, `home()`, `find(repo, path)`, `require(repo, path)`, `requireAny(repo, path, ...)`, and the cache's contents: `repos(root)`, `files(root, repo)` |
-| `hub.FornaxHub` | pulls, finds, reports and evicts model sets: `standard()`, `builder()`, `pull(set, listener)`, `pullAsync`, `plan`, `status`, `find`, `require`, `evict`. See [Downloading models](/docs/guides/models/) |
+| `hub.FornaxHub` | pulls, finds, reports and evicts model sets: `standard()`, `builder()`, `pull(set, listener)`, `pullAsync`, `plan`, `status`, `find`, `require`, `evict`, `fetch(reference, listener)`, `isReference`. See [Downloading models](/docs/guides/models/) |
+| `hub.ModelRef` | a model reference, `owner/repo[@revision][:tag]`: `parse`, `tryParse`, `pick`. See [By reference](/docs/guides/models/#by-reference) |
+| `hub.ModelReferences` | what an engine's constructor does with a path or reference: `locate(model, engine)`, `check(model, engine)` (its refusals, before any request), `isPath`, `file` |
 | `hub.ModelSet` | a model as a set of files by role: `id`, `kind`, `title`, `engine`, `parts`, `license`, `gated`, `aliases`; `Part` (role and sources), `Source` (repo, file, revision) |
 | `hub.ModelCatalog` | the models Fornax's examples, CLI and Studio use: `all()`, `of(kind)`, `byName`, `require` |
 | `hub.ModelFolders` | folders searched after the cache (a ComfyUI `models/`): `configured()`, `find(part)` |
@@ -71,7 +73,7 @@ Package `org.liberationdata.fornax.tts`. See [Speech](/docs/guides/speech/).
 
 | Type | |
 |---|---|
-| `TtsModel` | a TTS model: `new TtsModel(Weights)`, `(model, mmproj)` or `(model, mmproj, gpuLayers, contextSize)` |
+| `TtsModel` | a TTS model: `new TtsModel(Weights)`, `(alias)`, `(model, mmproj)` or `(model, mmproj, gpuLayers, contextSize)`; paths or model references |
 | `speak(text, voice)`, `(text, voice, onChunk)`, `(text, voice, options, onChunk)` | speech as `Audio`, optionally streamed in chunks; a voice of `@clip.wav` speaks like that clip |
 | `voices()`, `sampleRate()`, `cancel()` | the built-in voices (the default first), the output rate, and stopping a streaming call |
 | `speakAsync(text, voice, options[, subscriber])`, `speakStream(text, voice, options)` | `speak` on the model's own thread, optionally streaming chunks to a `Flow.Subscriber`; `streamOn(executor, bufferSize)` |
@@ -129,7 +131,7 @@ Package `org.liberationdata.fornax.whisper`. See [Speech to text](/docs/guides/s
 
 | Type | |
 |---|---|
-| `WhisperModel` | a Whisper model: `new WhisperModel(Weights)`, `(path)`, `(path, alignment)` or `(path, alignment, gpu)` |
+| `WhisperModel` | a Whisper model: `new WhisperModel(Weights)`, `(path)`, `(path, alignment)` or `(path, alignment, gpu)`; a path or model reference |
 | `transcribe(audio[, options][, listener])` | a `Transcript` from `Audio` at any rate, or from 16 kHz mono `float[]` |
 | `multilingual()`, `type()`, `cancel()` | English-only or not, the model size, and stopping a call from another thread |
 | `WhisperModel.Weights` | the models Fornax knows by name: `LARGE_V3_TURBO`, `LARGE_V3_TURBO_Q8_0`, `BASE_EN`; `named(...)`, `path()`, `downloaded()`, `alignment` |
@@ -147,7 +149,7 @@ Package `org.liberationdata.fornax.demucs`. See [Stem separation](/docs/guides/s
 
 | Type | |
 |---|---|
-| `DemucsModel` | an HTDemucs model: `new DemucsModel(Weights)`, `(path)` or `(path, gpu, cpuThreads)` |
+| `DemucsModel` | an HTDemucs model: `new DemucsModel(Weights)`, `(path)` or `(path, gpu, cpuThreads)`; a path or model reference |
 | `separate(audio[, options][, progress])` | `Stems` from `Audio` at any rate, at its rate and length |
 | `separateAsync(audio[, options, progress])`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops it between segments (it throws `CancellationException`) |
 | `name()`, `backend()`, `sources()`, `sampleRate()` | the checkpoint, the ggml backend, the stem names in order, and the model's own rate (44100) |

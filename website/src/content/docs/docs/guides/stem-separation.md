@@ -57,7 +57,9 @@ Face. `new DemucsModel(Weights)` finds the file in the Hugging Face cache; if it
 | `HTDEMUCS_6S` | `htdemucs_6s-27M-v1.0-F32.gguf` | 104 MB | drums, bass, other, vocals, guitar, piano |
 | `HTDEMUCS_FT` | `htdemucs_ft-4x42M-v1.0-F32.gguf` | 640 MB | four fine-tuned models, one per stem: the best of these, at four times the time |
 
-The demucs code and weights are MIT licensed. Any other stems.cpp GGUF loads by path: `new DemucsModel(path)`.
+The demucs code and weights are MIT licensed. Any other stems.cpp GGUF loads by path, `new DemucsModel(path)`, or by
+[model reference](/docs/guides/models/#by-reference), downloaded on first use:
+`new DemucsModel("thepatch/htdemucs-GGUF:htdemucs_6s-27M-v1.0-F32.gguf")`.
 
 ## Options
 
