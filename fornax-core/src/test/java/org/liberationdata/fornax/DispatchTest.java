@@ -325,7 +325,10 @@ class DispatchTest {
         var f = a.submit(QoS.INTERACTIVE, i -> { started.countDown(); return inner; });
         assertTrue(started.await(30, TimeUnit.SECONDS));
         f.cancel(true);
-        assertTrue(inner.isCancelled(), "the cancel reached the body's future (a Fornax model stops its generation)");
+        // The body counts down before it returns inner, so the cancel can land before Dispatch has inner; it then
+        // cancels inner itself once the body returns. Waited for, not checked at once.
+        assertThrows(java.util.concurrent.CancellationException.class, () -> inner.get(30, TimeUnit.SECONDS),
+                "the cancel reached the body's future (a Fornax model stops its generation)");
         assertEquals(3L, (long) a.call(QoS.BATCH, i -> 3L));
     }
 
