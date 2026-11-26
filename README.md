@@ -274,7 +274,8 @@ downloaded; `scripts/test-models.sh` fetches the ones they use (about 16 GB, sma
 
 From Linux, `./gradlew testOnMac -Pfornax.macHost=<host>` (or `scripts/test-on-mac.sh <host>`) runs the tests on a Mac
 over SSH against Metal: it copies the working tree there, builds the Metal libraries, runs `./gradlew test` and brings
-the reports back to `build/mac-test/`. The Mac needs Xcode's command-line tools, JDK 25, CMake and Ninja.
+the reports back to `build/mac-test/` (Gradle arguments go after the host, or in
+`-Pfornax.macTestArgs='--tests *LlamaModelIT'`). The Mac needs Xcode's command-line tools, JDK 25, CMake and Ninja.
 
 To use your own build in an application, put the libraries on `-Dfornax.library.path=<dir>` (or `FORNAX_LIBRARY_PATH`,
 or the platform loader path) and run with `--enable-native-access=ALL-UNNAMED`; an explicit path wins over a

@@ -3,7 +3,8 @@
 # builds the Metal libraries with native/build.sh, runs ./gradlew test, and brings the test reports back.
 #
 #   scripts/test-on-mac.sh <host> [gradle args...]     e.g. scripts/test-on-mac.sh my-mac.local --tests '*LlamaModelIT'
-#   ./gradlew testOnMac -Pfornax.macHost=<host>           the same, from Gradle (or set fornax.macHost in ~/.gradle/gradle.properties)
+#   ./gradlew testOnMac -Pfornax.macHost=<host>           the same, from Gradle (or set fornax.macHost in ~/.gradle/gradle.properties);
+#                                                         -Pfornax.macTestArgs='--tests *LlamaModelIT' passes Gradle args
 #
 # The Mac needs Xcode (or its command line tools), JDK 25 (SDKMAN's is found), CMake and Ninja on its PATH or in
 # ~/.local/bin. The integration tests skip any model that isn't in its Hugging Face cache; scripts/test-models.sh, run
@@ -13,8 +14,11 @@
 # stay there between runs, so only the first run builds everything.
 set -euo pipefail
 
-HOST=${1:?usage: scripts/test-on-mac.sh <host> [gradle args...]}; shift
+usage='usage: scripts/test-on-mac.sh <host> [gradle args...]'
+HOST=${1:?$usage}; shift
+case $HOST in -*) echo "$usage" >&2; exit 1;; esac  # -h, --help, or an ssh option where the host should be
 DIR=${FORNAX_MAC_DIR:-fornax-test/src}
+RDIR=$(printf '%q' "${DIR#\~/}")  # for the remote shell: a path with spaces works; ~/x is taken from the home folder
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 REPORTS=$ROOT/build/mac-test
 
@@ -23,13 +27,13 @@ REPORTS=$ROOT/build/mac-test
 # too, except build/, engines-src/ and .gradle/, so a run reuses their engine checkouts, libraries and Gradle caches.
 echo "==> copying the working tree to $HOST:$DIR"
 (cd "$ROOT" && git ls-files -co --exclude-standard -z | tar -cf - --null --no-recursion --ignore-failed-read -T - 2> /dev/null) |
-    ssh "$HOST" "mkdir -p $DIR && cd $DIR && find . -mindepth 1 -maxdepth 1 ! -name build ! -name engines-src ! -name .gradle -exec rm -rf {} + && tar -xf -"
+    ssh "$HOST" "mkdir -p $RDIR && cd $RDIR && find . -mindepth 1 -maxdepth 1 ! -name build ! -name engines-src ! -name .gradle -exec rm -rf {} + && tar -xf -"
 
 # A login shell's PATH isn't there over SSH: SDKMAN's java and ~/.local/bin are put on it by hand. Gradle's own test
 # exit status is kept, so the reports come back even when a test fails.
 status=0
 args=$( (( $# )) && printf '%q ' "$@" || true )  # quoted for the remote shell; none at all when there are none
-ssh "$HOST" "cd $DIR && bash -s -- $args" <<'REMOTE' || status=$?
+ssh "$HOST" "cd $RDIR && bash -s -- $args" <<'REMOTE' || status=$?
 set -uo pipefail
 [ -s "$HOME/.sdkman/bin/sdkman-init.sh" ] && { set +u; source "$HOME/.sdkman/bin/sdkman-init.sh"; set -u; }
 export PATH="$HOME/.local/bin:$PATH"
@@ -43,5 +47,5 @@ REMOTE
 
 echo "==> test reports to $REPORTS"
 rm -rf "$REPORTS" && mkdir -p "$REPORTS"
-ssh "$HOST" "cd $DIR && find . -path '*/build/reports/tests' -o -path '*/build/test-results' | COPYFILE_DISABLE=1 tar -cf - -T -" | tar -xf - -C "$REPORTS" || true
+ssh "$HOST" "cd $RDIR && find . -path '*/build/reports/tests' -o -path '*/build/test-results' | COPYFILE_DISABLE=1 tar -cf - -T -" | tar -xf - -C "$REPORTS" || true
 exit $status
