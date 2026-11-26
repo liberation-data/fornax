@@ -99,9 +99,10 @@ final class HubHttp {
     void download(RemoteFile f, Path part, LongConsumer progress, Cancel cancel) throws IOException {
         URI uri = URI.create(endpoint + "/" + f.source().repo() + "/resolve/" + f.commit() + "/" + encodePath(f.source().file()));
         Digest digest = Digest.of(f);
-        // a dropped connection resumes from what we have; it gives up after ATTEMPTS drops in a row that added nothing
+        // a dropped connection resumes from what we have; it gives up after ATTEMPTS drops in a row that got no further
+        // than the furthest any try reached (not just the last: a server ignoring Range restarts from zero each time)
+        long furthest = Files.exists(part) ? Files.size(part) : 0;
         for (int stalled = 0; ; ) {
-            long before = Files.exists(part) ? Files.size(part) : 0;
             try {
                 fetch(uri, f, part, digest, progress, cancel);
                 break;
@@ -109,7 +110,9 @@ final class HubHttp {
                 throw e;
             } catch (IOException e) {
                 cancel.check();   // a cancel closes the stream, which lands here
-                stalled = (Files.exists(part) ? Files.size(part) : 0) > before ? 0 : stalled + 1;
+                long now = Files.exists(part) ? Files.size(part) : 0;
+                stalled = now > furthest ? 0 : stalled + 1;
+                furthest = Math.max(furthest, now);
                 if (stalled == ATTEMPTS) throw e;
                 cancel.sleep(retryDelay.multipliedBy(stalled + 1));
             }

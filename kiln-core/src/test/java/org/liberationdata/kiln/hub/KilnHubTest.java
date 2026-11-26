@@ -573,6 +573,17 @@ class KilnHubTest {
         assertEquals(2, fake.gets(f));
     }
 
+    @Test void aServerThatIgnoresRangeAndKeepsDroppingGivesUpOnceNoTryGetsFurther() {
+        var f = fake.add(REPO, "big.gguf", 300_000, true);
+        fake.ignoreRange = true;
+        fake.chunked = true;
+        fake.dropCycle = new long[] {20_000, 10_000};   // each restart from zero ends short, some shorter than the last
+        var set = set("one", Part.of("model", REPO, "big.gguf"));
+
+        assertTimeoutPreemptively(Duration.ofSeconds(20), () -> assertThrows(IOException.class, () -> hub().pull(set, PullListener.NONE)));
+        assertEquals(6, fake.gets(f), "one try reaches 20 000 bytes, five more get no further, then it gives up");
+    }
+
     @Test void aPinnedCommitIsItsOwnSnapshotAndWritesNoRef() throws Exception {
         var f = fake.add(REPO, "model.gguf", 2_000, true);
         String commit = FakeHub.commit(REPO);
