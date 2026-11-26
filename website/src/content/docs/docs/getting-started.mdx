@@ -15,7 +15,8 @@ Then it shows what your own application needs.
 
 ## What you need
 
-- **JDK 25.** Kiln uses the Foreign Function & Memory API, final since Java 22; it is built and tested on 25.
+- **JDK 25**, to build Kiln. Apps that use Kiln need Java 22 or newer, where the Foreign Function & Memory API is
+  final (Kiln 0.1.0 itself needs 25).
 - **CMake, Ninja and a C++17 compiler**, to build the engines.
 - **The SDK for your GPU backend.** For Vulkan, the Vulkan headers, `glslc` and SPIRV-Headers. On Fedora:
 
