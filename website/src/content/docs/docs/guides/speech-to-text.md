@@ -76,6 +76,9 @@ new WhisperModel("/models/ggml-custom.bin");                 // no DTW
 new WhisperModel("/models/ggml-small.bin", WhisperModel.Alignment.SMALL, false);   // on the CPU
 ```
 
+On a machine with no GPU, running on the CPU also needs `-Dkiln.allowCpu=true` (or `KILN_ALLOW_CPU=true`): otherwise
+Kiln refuses to load its GPU build there ([Kiln says it found no GPU](/docs/gpu-drivers/#kiln-says-it-found-no-gpu)).
+
 DTW needs whisper.cpp's flash attention off, so Kiln turns it off for a model with alignment heads. That costs some
 speed: about 50% longer than without DTW in the test above.
 

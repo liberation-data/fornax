@@ -141,6 +141,20 @@ class GpuCheckTest {
         assertDoesNotThrow(() -> GpuCheck.requireGpu(cpu));
     }
 
+    @Test
+    void nativeLibraryExplainsOrRethrowsALoadFailure() throws IOException {
+        assumeTrue(System.getProperty("os.name").toLowerCase().startsWith("linux"));
+        Path broken = lib("libkiln_broken.so", ascii("not an ELF file, but it names libvulkan.so.1"));
+        String property = "kiln.kiln_broken_test.lib";
+        System.setProperty(property, broken.toString());
+        try {
+            Class<? extends Throwable> expected = loads("libvulkan.so.1") ? IllegalArgumentException.class : UnsatisfiedLinkError.class;
+            assertThrows(expected, () -> NativeLibrary.load("kiln_broken_test"));
+        } finally {
+            System.clearProperty(property);
+        }
+    }
+
     private static boolean loads(String name) {
         try {
             java.lang.foreign.SymbolLookup.libraryLookup(name, java.lang.foreign.Arena.global());

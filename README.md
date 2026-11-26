@@ -65,7 +65,9 @@ The natives jars:
 | `kiln-natives-macos-aarch64-metal` | macOS 13.3+ on Apple silicon | Metal |
 | `kiln-natives-macos-x86_64-metal` | macOS 13.3+ on Intel | Metal |
 
-On Linux, the GPU's Vulkan driver must be installed (it usually is).
+On Linux, the GPU's Vulkan driver must be installed (it usually is; if not, see
+[Installing GPU drivers](https://kiln4j.org/docs/gpu-drivers/)). With no GPU, Kiln stops rather than run on the CPU,
+unless `-Dkiln.allowCpu=true` (or `KILN_ALLOW_CPU=true`).
 
 Gradle (`build.gradle.kts`), choosing the natives jar for the machine that builds:
 
