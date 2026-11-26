@@ -5,12 +5,12 @@
 #
 #   native/build.sh [vulkan|hip|cuda|metal|cpu] [engine...]
 #
-# Engines: llama tts sd acestep yue2 whisper (default: all). Output: build/native/<os>-<arch>-<backend>/.
+# Engines: llama tts sd acestep yue2 whisper demucs (default: all). Output: build/native/<os>-<arch>-<backend>/.
 # Env: JOBS, HIP_ARCH (default gfx1151), CMAKE_EXTRA (extra cmake args for every engine).
 set -euo pipefail
 
 BACKEND=${1:-vulkan}; shift || true
-ENGINES=${*:-llama tts sd acestep yue2 whisper}
+ENGINES=${*:-llama tts sd acestep yue2 whisper demucs}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=$ROOT/engines-src
 OS=$(uname -s | tr A-Z a-z); ARCH=$(uname -m)
@@ -140,6 +140,17 @@ build_whisper() {
     $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_whisper.$EXT" "$ROOT/kiln-whisper/native/kiln_whisper.cpp" \
         -I"$s/include" -I"$s/ggml/include" \
         "$(find "$b" -name libwhisper.a)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS -lpthread
+}
+
+build_demucs() {  # stems.cpp's HTDemucs, through its libstems C ABI (src/libstems.cpp), compiled into the shim
+    fetch stems.cpp
+    local s=$SRC/stems.cpp b=$SRC/stems.cpp/build-$BACKEND
+    mkdir -p "$b"
+    cmake_build "$s" "$b" stems $GGML -DSTEMS_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libkiln_demucs.$EXT" "$ROOT/kiln-demucs/native/kiln_demucs.cpp" \
+        "$s/src/libstems.cpp" -DSTEMS_VERSION_STRING="\"$(sed -n 's/^project(stems_cpp VERSION \([^ ]*\).*/\1/p' "$s/CMakeLists.txt")\"" \
+        -I"$s/src" -I"$s/ggml/include" \
+        "$(find "$b" -name libstems_core.a)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS -ldl -lpthread
 }
 
 for e in $ENGINES; do
