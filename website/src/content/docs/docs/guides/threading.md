@@ -124,8 +124,10 @@ The blocking methods' callbacks (`Consumer<String> onPiece`, `Consumer<Audio> on
 and progress sinks) run on the thread that made the call, between tokens or steps. Keep them quick: append to a buffer,
 push to a queue, write to a socket.
 
-A callback may call `cancel()`, but not the same model's other methods, and not `close()`. Both throw an
-`IllegalStateException`, because the engine is in the middle of the call that's running the callback.
+A callback may call `cancel()`, but not the same model's other blocking methods, and not `close()`. Both throw an
+`IllegalStateException`, because the engine is in the middle of the call that's running the callback. An `...Async`
+method called there is queued behind the running call, so don't wait for its future inside the callback: that waits
+for itself.
 
 `DiffusionModel.onProgress` and `onLog` are process-wide, so they see every `DiffusionModel`'s runs. stable-diffusion.cpp
 also reports loading the weights through the progress sink, on the first run after a model loads, with a different

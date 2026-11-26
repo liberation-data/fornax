@@ -428,6 +428,40 @@ class ModelThreadTest {
         assertThrows(CancellationException.class, () -> waiting.get(10, TimeUnit.SECONDS));
     }
 
+    /** A future cancelled once its job has left the queue, while it waits for the engine, never runs its body. */
+    @Test
+    void aCallCancelledWhileWaitingForTheEngineNeverRuns() throws Exception {
+        List<String> log = Collections.synchronizedList(new ArrayList<>());
+        try (var t = new ModelThread("waiting", () -> {}, null, () -> log.add("reset"))) {
+            var started = new CountDownLatch(1);
+            var release = new CountDownLatch(1);
+            var blocking = Thread.ofPlatform().start(() -> t.run(call -> { started.countDown(); awaitQuietly(release); return 0; }));
+            assertTrue(started.await(5, TimeUnit.SECONDS));
+            var waiting = t.submit(call -> { log.add("ran"); return 1; });
+            workerWaitingForTheEngine("waiting");
+            assertTrue(waiting.cancel(true));
+            release.countDown();
+            blocking.join();
+            assertEquals(2, t.submit(call -> 2).get(10, TimeUnit.SECONDS));
+            assertEquals(List.of("reset", "reset"), log, "the cancelled call neither ran nor reset the engine");
+        }
+    }
+
+    /** From inside a call, an async call is queued rather than refused: it runs once the outer call returns. */
+    @Test
+    void anAsyncCallFromInsideACallRunsAfterIt() throws Exception {
+        try (var t = new ModelThread("fake", () -> {})) {
+            List<String> order = Collections.synchronizedList(new ArrayList<>());
+            var inner = t.run(call -> {
+                var f = t.submit(c -> { order.add("inner"); return 1; });
+                order.add("outer");
+                return f;
+            });
+            assertEquals(1, inner.get(10, TimeUnit.SECONDS));
+            assertEquals(List.of("outer", "inner"), order);
+        }
+    }
+
     @Test
     void futuresStillCompleteWhenTheStreamExecutorRejects() throws Exception {
         try (var t = new ModelThread("fake", () -> {})) {

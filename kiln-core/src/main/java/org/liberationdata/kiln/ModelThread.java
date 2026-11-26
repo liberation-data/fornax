@@ -92,7 +92,11 @@ public final class ModelThread implements AutoCloseable {
         this.streamBuffer = bufferSize;
     }
 
-    /** Runs a call on the calling thread, after any call in progress. Blocks (and pins a virtual thread) meanwhile. */
+    /**
+     * Runs a call on the calling thread, after any call in progress. Blocks (and pins a virtual thread) meanwhile.
+     * @throws IllegalStateException if this model is closed, or if called from inside one of its own calls (a
+     *         callback), which would wait for itself. An async call made there is queued instead: it runs after.
+     */
     public <T> T run(Function<Call, T> body) {
         if (engine.isHeldByCurrentThread())
             throw new IllegalStateException("a call to " + name + " was made from inside one of its own callbacks");
