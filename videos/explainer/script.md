@@ -15,7 +15,7 @@ outro: stinger/out/stinger-1344x768-dub.mp4 | stinger/out/stinger-1344x768-hold.
 
 Cards: title 4s, one-line
 
-> Introducing Kiln. [pause 0.6] It runs open models in your JVM. [pause 0.4] For business, industrial, medical and creative work, or anywhere a
+> Kiln runs open models in your JVM. [pause 0.4] For business, industrial, medical and creative work, or anywhere a
 > specialized model earns its keep.
 > [pause 0.5] Plain Java calls, on your GPU.
 

@@ -25,8 +25,10 @@ mv "$OUT/explainer.mp4.part.mp4" "$OUT/explainer.mp4"
 echo "HLS segments"
 rm -rf "$OUT/hls.part"
 mkdir -p "$OUT/hls.part"
+# Segment names carry the web copy's hash: a new cut is new files, never a browser's cached segment of the old one.
+V=$(sha256sum "$OUT/explainer.mp4" | cut -c1-10)
 ffmpeg -v error -i "$OUT/explainer.mp4" -c copy -f hls -hls_time 4 -hls_playlist_type vod -hls_segment_type fmp4 \
-    -hls_fmp4_init_filename init.mp4 -hls_segment_filename "$OUT/hls.part/%03d.m4s" "$OUT/hls.part/index.m3u8"
+    -hls_fmp4_init_filename "$V-init.mp4" -hls_segment_filename "$OUT/hls.part/$V-%03d.m4s" "$OUT/hls.part/index.m3u8"
 rm -rf "$OUT/hls"
 mv "$OUT/hls.part" "$OUT/hls"
 

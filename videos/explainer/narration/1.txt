@@ -1,2 +1,2 @@
 aura-2-hyperion-en
-Introducing Kiln. [pause 0.6] It runs open models in your JVM. [pause 0.4] For business, industrial, medical and creative work, or anywhere a specialized model earns its keep. [pause 0.5] Plain Java calls, on your GPU.
+Kiln runs open models in your JVM. [pause 0.4] For business, industrial, medical and creative work, or anywhere a specialized model earns its keep. [pause 0.5] Plain Java calls, on your GPU.

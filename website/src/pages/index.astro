@@ -18,6 +18,7 @@ import lines from '../assets/lines-light.png';
 import logo from '../assets/logo.png';
 import studioDesktop from '../assets/studio-desktop.png';
 import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { STUDIO, studioRelease, studioRepoPublic, studioUrl } from '../lib/github';
 import Share from '../components/Share.astro';
 
@@ -48,6 +49,10 @@ const [photoLarge, photoSmall] = await Promise.all([photo(1920), photo(960)]);
 // are each used where they are there. Its length is the playlist's (the sum of its segments), so it follows the video
 // when it is cut again; without one, it is what video.sh last printed.
 const hasExplainer = existsSync('public/video/explainer.mp4');
+/* Every video URL carries the web copy's hash, so a new cut is never played from a browser's cached old one (GitHub
+   Pages lets browsers keep files for 10 minutes, and the file names stay the same). */
+const VIDEO_V = hasExplainer ? createHash('sha256').update(readFileSync('public/video/explainer.mp4')).digest('hex').slice(0, 10) : '';
+const v = (path: string) => `${path}?v=${VIDEO_V}`;
 const PLAYLIST = 'public/video/hls/index.m3u8';
 const seconds = existsSync(PLAYLIST)
     ? Math.round([...readFileSync(PLAYLIST, 'utf8').matchAll(/#EXTINF:([\d.]+)/g)].reduce((sum, [, it]) => sum + Number(it), 0))
@@ -56,9 +61,9 @@ const VIDEO = {
     title: 'Kiln in two minutes',
     length: `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`,
     spoken: `${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds`,
-    hls: existsSync(PLAYLIST) ? '/video/hls/index.m3u8' : undefined,
-    end: existsSync('public/video/explainer-end.jpg') ? '/video/explainer-end.jpg' : undefined,
-    captions: existsSync('public/video/explainer.vtt') ? '/video/explainer.vtt' : undefined,
+    hls: existsSync(PLAYLIST) ? v('/video/hls/index.m3u8') : undefined,
+    end: existsSync('public/video/explainer-end.jpg') ? v('/video/explainer-end.jpg') : undefined,
+    captions: existsSync('public/video/explainer.vtt') ? v('/video/explainer.vtt') : undefined,
     share: 'https://kiln4j.org/#video',
     shareText: 'Kiln: open generative models inside your JVM.',
 };
@@ -477,8 +482,8 @@ const theme = 'vitesse-dark';
             {hasExplainer && (
                 <section class="explainer" id="video">
                     <div class="wrap">
-                        <div class="player" data-video="/video/explainer.mp4" data-hls={VIDEO.hls} data-captions={VIDEO.captions} data-title={VIDEO.title}>
-                            <img src="/video/explainer-poster.jpg" alt="" width="1920" height="1080" decoding="async" />
+                        <div class="player" data-video={v('/video/explainer.mp4')} data-hls={VIDEO.hls} data-captions={VIDEO.captions} data-title={VIDEO.title}>
+                            <img src={v('/video/explainer-poster.jpg')} alt="" width="1920" height="1080" decoding="async" />
                             <button type="button" class="play" aria-label={`Watch · ${VIDEO.length}, the video: ${VIDEO.title} (${VIDEO.spoken})`}>
                                 <span><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>Watch · {VIDEO.length}</span>
                             </button>
