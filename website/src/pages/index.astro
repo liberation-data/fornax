@@ -32,6 +32,13 @@ const [fornaxStars, studioStars] = await Promise.all([repoStars('liberation-data
 const stars = (n?: number) => (!n ? '' : `★ ${n.toLocaleString('en')}`);
 // Download Fornax Studio (the hero, the closing call) goes to the buttons, or to the section that says they are coming.
 const studioHref = studio ? '#get-studio' : '#studio';
+/* Copy-and-paste installs for Linux: dnf installs straight from a URL; apt needs the file first. */
+const linuxInstalls = (studio?.linux ?? []).flatMap((d) => {
+    const file = d.url.split('/').pop() ?? '';
+    if (file.endsWith('.rpm')) return [{ distro: 'Fedora / RHEL', command: `sudo dnf install ${d.url}` }];
+    if (file.endsWith('.deb')) return [{ distro: 'Debian / Ubuntu', command: `curl -LO ${d.url} && sudo apt install ./${file}` }];
+    return [];
+});
 const DESCRIPTION = 'Open models as plain Java calls: chat, vision, documents, images, songs, video and speech, running on your GPU, inside your JVM.';
 
 // The link preview: the video's title card (logo, fornax4j, tagline), 1200×630, at an absolute URL on the site's domain.
@@ -47,36 +54,46 @@ const photo = async (width: number) => {
     return { avif: avif.src, css: `image-set(url('${avif.src}') type('image/avif'), url('${webp.src}') type('image/webp'), url('${jpeg.src}') type('image/jpeg'))` };
 };
 const [photoLarge, photoSmall] = await Promise.all([photo(1920), photo(960)]);
-// The explainer, from scripts/video.sh. public/video/ is gitignored (the video isn't cleared to publish yet), so the
-// section and the hero's pill to it show only where the video has been made. Its HLS segments, end frame and captions
+// The explainer, from scripts/video.sh (public/video/ is committed). The section and the hero's pill to it show only
+// where the video is there. Its HLS segments, end frame and captions
 // are each used where they are there. Its length is the playlist's (the sum of its segments), so it follows the video
 // when it is cut again; without one, it is what video.sh last printed.
-/* Copy-and-paste installs for Linux: dnf installs straight from a URL; apt needs the file first. */
-const linuxInstalls = (studio?.linux ?? []).flatMap((d) => {
-    const file = d.url.split('/').pop() ?? '';
-    if (file.endsWith('.rpm')) return [{ distro: 'Fedora / RHEL', command: `sudo dnf install ${d.url}` }];
-    if (file.endsWith('.deb')) return [{ distro: 'Debian / Ubuntu', command: `curl -LO ${d.url} && sudo apt install ./${file}` }];
-    return [];
-});
 const hasExplainer = existsSync('public/video/explainer.mp4');
 /* Every video URL carries the web copy's hash, so a new cut is never played from a browser's cached old one (GitHub
    Pages lets browsers keep files for 10 minutes, and the file names stay the same). */
 const VIDEO_V = hasExplainer ? createHash('sha256').update(readFileSync('public/video/explainer.mp4')).digest('hex').slice(0, 10) : '';
 const v = (path: string) => `${path}?v=${VIDEO_V}`;
 const PLAYLIST = 'public/video/hls/index.m3u8';
-const seconds = existsSync(PLAYLIST)
-    ? Math.round([...readFileSync(PLAYLIST, 'utf8').matchAll(/#EXTINF:([\d.]+)/g)].reduce((sum, [, it]) => sum + Number(it), 0))
-    : 128;
+const playlist = existsSync(PLAYLIST) ? readFileSync(PLAYLIST, 'utf8') : undefined;
+const seconds = playlist ? Math.round([...playlist.matchAll(/#EXTINF:([\d.]+)/g)].reduce((sum, [, it]) => sum + Number(it), 0)) : 128;
 const VIDEO = {
     title: 'Fornax in two minutes',
     length: `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`,
     spoken: `${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds`,
-    hls: existsSync(PLAYLIST) ? v('/video/hls/index.m3u8') : undefined,
+    hls: playlist ? v('/video/hls/index.m3u8') : undefined,
+    // The playlist's header segment, for the player to fetch ahead: video.sh names it after the cut's hash.
+    hlsInit: playlist?.match(/#EXT-X-MAP:URI="([^"]+)"/)?.[1],
     end: existsSync('public/video/explainer-end.jpg') ? v('/video/explainer-end.jpg') : undefined,
     captions: existsSync('public/video/explainer.vtt') ? v('/video/explainer.vtt') : undefined,
     share: 'https://fornax4j.org/#video',
     shareText: 'Fornax: open generative models inside your JVM.',
 };
+// The poster, from video.sh's JPEG (1920x1080, ~650 KB), as AVIF, WebP and JPEG at the player's widths, as the splash
+// is: the browser takes the smallest that fills the player, and, the player being below the fold, only when it nears.
+// A glob, so a checkout without the video still builds.
+const posterJpeg = Object.values(import.meta.glob<ImageMetadata>('../../public/video/explainer-poster.jpg', { eager: true, import: 'default' }))[0];
+// The player is the page's width less its gutters, up to 960 px.
+const POSTER_SIZES = '(max-width: 1024px) 100vw, 960px';
+const poster = posterJpeg
+    ? Object.fromEntries(
+          await Promise.all(
+              (['avif', 'webp', 'jpeg'] as const).map(async (format) => {
+                  const it = await getImage({ src: posterJpeg, format, widths: [960, 1280, 1920], quality: format === 'avif' ? 55 : 72 });
+                  return [format, it.srcSet.attribute];
+              })
+          )
+      )
+    : undefined;
 const photoVars = `--photo: ${photoLarge.css}; --photo-small: ${photoSmall.css}; --lines: url('${lines.src}');`;
 const logoSmall = await getImage({ src: logo, width: 144, format: 'png' });
 
@@ -222,6 +239,9 @@ const theme = 'vitesse-dark';
             .repo-menu .count { color: var(--glow); font-size: 14px; font-weight: 700; white-space: nowrap; }
             .repo-menu .hint { margin: 4px 12px 6px; font-size: 13px; color: #b39c8c; }
             @media (max-width: 760px) { .nav { padding: 20px 16px; } .nav-links { gap: 18px; font-size: 15px; } .nav-links .wide { display: none; } }
+            /* On a narrow phone the links wrap and GitHub can start a line, where a menu hung from its right edge would run
+               off the left of the screen: there it hangs from the nav instead, across it between the gutters. */
+            @media (max-width: 480px) { .repo-menu { position: static; } .repo-menu .menu { top: calc(100% - 10px); left: 16px; right: 16px; min-width: 0; } }
 
             .splash { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px 16px 96px; }
             .emblem { width: 132px; height: 132px; border: 3px solid #fff; border-radius: 50%; display: grid; place-items: center; background: rgba(20, 8, 3, 0.35); }
@@ -288,6 +308,9 @@ const theme = 'vitesse-dark';
             .dark .flames { position: absolute; inset: 0; z-index: -2; pointer-events: none; }
             .dark .flames img { position: absolute; left: 0; top: -12%; width: 100%; height: 124%; object-fit: cover; object-position: center 60%; opacity: 0; transition: opacity 0.16s linear; will-change: opacity, transform; }
             .dark .flames img.on { opacity: 1; }
+            /* Still (the script's own query): only the first frame shows, so the rest, out of the layout, are never fetched;
+               lazy, they would be, being in view under it. */
+            @media (prefers-reduced-motion: reduce), (max-width: 800px) { .dark .flames img:not(:first-child) { display: none; } }
             .dark::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(rgba(23, 13, 8, 0.9) 0%, rgba(23, 13, 8, 0.8) 40%, rgba(23, 13, 8, 0.58) 100%); }
             .dark .eyebrow { color: var(--accent); }
             .dark h2 { color: #fff; }
@@ -530,8 +553,12 @@ const theme = 'vitesse-dark';
             {hasExplainer && (
                 <section class="explainer" id="video">
                     <div class="wrap">
-                        <div class="player" data-video={v('/video/explainer.mp4')} data-hls={VIDEO.hls} data-captions={VIDEO.captions} data-title={VIDEO.title}>
-                            <img src={v('/video/explainer-poster.jpg')} alt="" width="1920" height="1080" decoding="async" />
+                        <div class="player" data-video={v('/video/explainer.mp4')} data-hls={VIDEO.hls} data-hls-init={VIDEO.hlsInit} data-captions={VIDEO.captions} data-title={VIDEO.title}>
+                            <picture>
+                                {poster && <source type="image/avif" srcset={poster.avif} sizes={POSTER_SIZES} />}
+                                {poster && <source type="image/webp" srcset={poster.webp} sizes={POSTER_SIZES} />}
+                                <img src={v('/video/explainer-poster.jpg')} srcset={poster?.jpeg} sizes={POSTER_SIZES} alt="" width="1920" height="1080" loading="lazy" decoding="async" />
+                            </picture>
                             <button type="button" class="play" aria-label={`Watch · ${VIDEO.length}, the video: ${VIDEO.title} (${VIDEO.spoken})`}>
                                 <span><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>Watch · {VIDEO.length}</span>
                             </button>
@@ -673,13 +700,14 @@ const theme = 'vitesse-dark';
                             <p>Backends:</p>
                             <div class="backends">
                                 <span class="ok">Vulkan <small>tested</small></span>
-                                <span>ROCm (HIP) <small>untested</small></span>
+                                <span>ROCm (HIP) <small>builds</small></span>
                                 <span>CUDA <small>untested</small></span>
                                 <span>Metal <small>untested</small></span>
                             </div>
                             <p style="font-size: 16px">
-                                The build script knows the ROCm, CUDA and Metal backends of the underlying engines, but those Fornax builds
-                                haven’t been tested yet. Reports and fixes welcome.
+                                The build script knows the ROCm, CUDA and Metal backends of the underlying engines. HIP has run LTX video
+                                on the same machine, faster than Vulkan; the CUDA and Metal builds haven’t been tested yet. Reports and
+                                fixes welcome.
                             </p>
                         </div>
                         <div class="table-card">
@@ -837,7 +865,7 @@ const theme = 'vitesse-dark';
                         <a href="https://github.com/embabel/embabel-agent">Embabel Agent</a> plans with goals and actions on the JVM. Fornax
                         runs local models in the same process: chat and tool calls, vision, embeddings, speech, images, songs and video. A
                         <code>fornax-embabel</code> module, to give Embabel's agents those models, is
-                        <a href="https://github.com/liberation-data/fornax/issues/9">in progress</a>.
+                        <a href={`${REPO}/issues/9`}>in progress</a>.
                     </p>
                     <p class="embabel-links"><a href="https://embabel.com">embabel.com</a> · <a href="https://github.com/embabel/embabel-agent">Embabel Agent on GitHub</a></p>
                 </div>
@@ -863,7 +891,7 @@ const theme = 'vitesse-dark';
                             <div class="shell"><Code code={download} lang="sh" theme={theme} /></div>
                         </div>
                         <div>
-                            <div><h3>3. Run it</h3><p>A chat reply, streamed token by token from your GPU, inside your JVM. <a href="https://github.com/liberation-data/fornax/tree/main/samples/hello-fornax"><code>samples/hello-fornax</code></a> is this as a project to copy, for Gradle and Maven.</p></div>
+                            <div><h3>3. Run it</h3><p>A chat reply, streamed token by token from your GPU, inside your JVM. <a href={`${REPO}/tree/main/samples/hello-fornax`}><code>samples/hello-fornax</code></a> is this as a project to copy, for Gradle and Maven.</p></div>
                             <div class="shell"><Code code={hello} lang="java" theme={theme} /></div>
                         </div>
                         <div>
@@ -960,8 +988,12 @@ const theme = 'vitesse-dark';
                     const queue = () => { if (!queued) { queued = true; requestAnimationFrame(update); } };
                     addEventListener('scroll', queue, { passive: true });
                     addEventListener('resize', queue);
-                    still.addEventListener('change', () => { if (!still.matches) for (const f of frames) f.loading = 'eager'; queue(); });
-                    if (!still.matches) for (const f of frames) f.loading = 'eager';
+                    // All six frames load once the section is within a screen of view, so it crackles from the first
+                    // scroll there; a visitor who never gets that far (or sees the still frame) never fetches them.
+                    let near = false;
+                    const warm = () => { if (near && !still.matches) for (const f of frames) f.loading = 'eager'; };
+                    new IntersectionObserver((entries) => { near = entries.some((it) => it.isIntersecting); warm(); }, { rootMargin: '100% 0px' }).observe(flames);
+                    still.addEventListener('change', () => { warm(); queue(); });
                     update();
                 }
             }
@@ -1134,9 +1166,11 @@ const theme = 'vitesse-dark';
             // Once the page has loaded: the playlist and its header (a few hundred bytes each), and hls.js where it will
             // play, so a press doesn't wait for them. The segments are left until then.
             addEventListener('load', () => {
-                const hls = document.querySelector<HTMLElement>('.explainer .player')?.dataset.hls;
+                const { hls, hlsInit } = document.querySelector<HTMLElement>('.explainer .player')?.dataset ?? {};
                 if (!hls) return;
-                for (const file of ['index.m3u8', 'init.mp4']) void fetch(new URL(file, new URL(hls, location.href))).catch(() => {});
+                // The playlist at its own address, ?v= and all, and the header beside it, as the player will ask for them.
+                const playlist = new URL(hls, location.href);
+                for (const url of [playlist, ...(hlsInit ? [new URL(hlsInit, playlist)] : [])]) void fetch(url).catch(() => {});
                 if (!nativeHls(document.createElement('video'))) void loadHls();
             });
         </script>
