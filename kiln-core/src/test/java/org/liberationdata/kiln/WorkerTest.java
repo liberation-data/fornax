@@ -278,7 +278,10 @@ class WorkerTest {
         assertThrows(WorkerCrashedException.class, () -> svc.invoke("abort", null));
         svc.invoke("echo", null);                                                     // a success reset it: 400 ms
         long afterSuccess = (System.nanoTime() - start) / 1_000_000;
-        assertTrue(afterSuccess < 780 + 2000, "a success resets the backoff, " + afterSuccess + " ms");
+        // Against the first restart, which has the same parts (a worker crashing, a 400 ms wait, a worker starting),
+        // rather than a fixed bound that a slow machine misses. Without a reset this would wait 1600 ms, not 400.
+        assertTrue(afterSuccess < firstRestart + 600, "a success resets the backoff: " + afterSuccess
+                + " ms, against " + firstRestart + " ms for the first 400 ms restart");
     }
 
     @Test
