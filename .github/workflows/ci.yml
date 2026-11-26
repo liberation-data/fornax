@@ -18,7 +18,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # A newer push to a pull request replaces its run; every merge to main gets its own.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   VERSION: 0.0.0-ci
