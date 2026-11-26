@@ -43,6 +43,7 @@ class PullsTest {
     private HttpServer hub;
     private Studio studio;
     private StudioServer server;
+    private Pulls pulls;
     private final HttpClient client = HttpClient.newHttpClient();
     private final Map<String, byte[]> files = new java.util.concurrent.ConcurrentHashMap<>();
     private final List<String> gets = new CopyOnWriteArrayList<>();
@@ -95,9 +96,9 @@ class PullsTest {
         hub.start();
         URI endpoint = URI.create("http://127.0.0.1:" + hub.getAddress().getPort());
         Path cache = dir.resolve("hub");
-        Pulls pulls = new Pulls(SETS, token -> FornaxHub.builder().cacheRoot(cache).modelFolders(ModelFolders.none())
+        pulls = new Pulls(SETS, token -> FornaxHub.builder().cacheRoot(cache).modelFolders(ModelFolders.none())
                 .endpoint(endpoint).token(token).offline(false).reserveBytes(reserveBytes).retryDelay(Duration.ofMillis(10))
-                .catalogue(SETS).build(), endpoint, cache);
+                .catalogue(SETS).build(), endpoint);
         studio = new Studio(new Catalog(cache), 1L << 30, null, EnumSet.allOf(Catalog.Kind.class), dir.resolve("outputs"));
         server = new StudioServer(studio, 0, null, pulls);
         server.start();
@@ -185,6 +186,21 @@ class PullsTest {
         assertTrue(gets.isEmpty());
     }
 
+    @Test void aPlanForAGatedModelWithoutATokenSaysWhereToAcceptItsTerms() throws Exception {
+        var denied = call("POST", "/api/models/plan", "{\"id\": \"locked\"}");
+        assertEquals(403, denied.statusCode(), denied.body());
+        var error = Json.object(denied.body());
+        assertEquals("ACCESS_DENIED", error.get("reason"));
+        assertTrue(((String) error.get("termsUrl")).endsWith("/gated/locked"), error.toString());
+        assertNotNull(error.get("error"));
+
+        var ok = call("POST", "/api/models/plan", "{\"id\": \"locked\", \"token\": \"" + TOKEN + "\"}");
+        assertEquals(200, ok.statusCode(), ok.body());
+        assertEquals(50_000.0, ((Number) Json.object(ok.body()).get("bytesToDownload")).doubleValue());
+        assertFalse(ok.body().contains(TOKEN), "the token is never sent back");
+        assertTrue(gets.isEmpty());
+    }
+
     @Test void aPullStreamsProgressThenItsFilesAndTheModelIsOnDisk() throws Exception {
         chunk = 20_000;
         String stream = call("POST", "/api/models/pull", "{\"id\": \"song:tiny\"}").body();
@@ -227,7 +243,9 @@ class PullsTest {
         List<String> events = new CopyOnWriteArrayList<>();
         var done = pullStreaming("{\"id\": \"tiny\"}", events);
         await(() -> events.stream().anyMatch(e -> e.startsWith("progress ") && e.contains("DOWNLOADING")));
-        assertEquals(true, entry("tiny").get("downloading"));
+        var downloading = entry("tiny");
+        assertEquals(true, downloading.get("downloading"));
+        assertNotNull(downloading.get("progress"), downloading.toString());
         assertEquals(true, Json.object(call("POST", "/api/models/pull/cancel", "{\"id\": \"tiny\"}").body()).get("cancelled"));
         done.get(20, TimeUnit.SECONDS);
         assertTrue(events.stream().anyMatch(e -> e.startsWith("cancelled ")), events.toString());
@@ -249,7 +267,8 @@ class PullsTest {
         var b = pullStreaming("{\"id\": \"song:tiny\"}", second);
         a.get(30, TimeUnit.SECONDS);
         b.get(30, TimeUnit.SECONDS);
-        assertTrue(second.stream().anyMatch(e -> e.startsWith("start ") && e.contains("\"attached\":true")), second.toString());
+        assertTrue(first.getFirst().startsWith("start "), first.toString());
+        assertTrue(second.getFirst().startsWith("start ") && second.getFirst().contains("\"attached\":true"), second.toString());
         assertTrue(first.stream().anyMatch(e -> e.startsWith("done ")));
         assertTrue(second.stream().anyMatch(e -> e.startsWith("done ")));
         assertEquals(2, gets.size(), "one download: " + gets);
@@ -266,6 +285,19 @@ class PullsTest {
         await(() -> {
             try { return "PRESENT".equals(entry("tiny").get("state")); } catch (Exception e) { return false; }
         });
+    }
+
+    @Test void stoppingTheServerStopsItsDownloads() throws Exception {
+        chunk = 10_000;
+        pauseMillis = 50;
+        List<String> events = new CopyOnWriteArrayList<>();
+        pullStreaming("{\"id\": \"tiny\"}", events);
+        await(() -> events.stream().anyMatch(e -> e.startsWith("progress ") && e.contains("DOWNLOADING")));
+        server.stop();
+        @SuppressWarnings("unchecked") java.util.function.Supplier<Map<String, Object>> tiny = () -> pulls.catalogue().stream()
+                .map(m -> (Map<String, Object>) m).filter(m -> m.get("id").equals("tiny")).findFirst().orElseThrow();
+        await(() -> tiny.get().get("downloading").equals(false));
+        assertEquals("PARTIAL", tiny.get().get("state"), "cancelled, not finished");
     }
 
     @Test void anUnknownModelIsRefused() throws Exception {

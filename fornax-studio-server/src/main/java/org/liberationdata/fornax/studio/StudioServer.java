@@ -2,6 +2,7 @@ package org.liberationdata.fornax.studio;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.liberationdata.fornax.hub.HubException;
 import org.liberationdata.fornax.llama.LlamaModel;
 import org.liberationdata.fornax.sd.DiffusionModel;
 
@@ -43,7 +44,7 @@ import java.util.regex.Pattern;
  * POST /api/inspect                asks a vision model about an image, free text or to a JSON schema (status, token, done | error)
  * GET  /api/outputs/{file}         an image, song or video made, from the studio's home
  * GET  /api/catalogue              Fornax's model sets: what of each is on disk, licence, gated, downloading
- * POST /api/models/plan  {id, token?}   what getting one would download, and the free disk ({@link Pulls#plan})
+ * POST /api/models/plan  {id, token?}   what getting one would download, and the free disk ({@link Pulls#plan}); 403 (reason, termsUrl) for a gated repo
  * POST /api/models/pull  {id, token?}   downloads it (start, progress, done | cancelled | error), or watches its download
  * POST /api/models/pull/cancel {id}     stops its download; what has arrived stays, for the next pull to resume
  * </pre>
@@ -102,7 +103,13 @@ public final class StudioServer {
         route("/api/catalogue", "GET", ex -> json(ex, 200, Json.obj("models", pulls.catalogue())));
         route("/api/models/plan", "POST", ex -> {
             var b = body(ex);
-            json(ex, 200, pulls.plan(Json.str(b, "id", null), Json.str(b, "token", null)));
+            String id = Json.str(b, "id", null);
+            try { json(ex, 200, pulls.plan(id, Json.str(b, "token", null))); }
+            catch (HubException e) {   // the Hub's answer (a gated repo, say) is the page's to show, not the server's failure
+                var f = pulls.failure(pulls.set(id).id(), e);
+                f.put("error", f.get("message"));
+                json(ex, e.reason() == HubException.Reason.ACCESS_DENIED ? 403 : 502, f);
+            }
         });
         route("/api/models/pull", "POST", this::pull);
         route("/api/models/pull/cancel", "POST", ex -> json(ex, 200, Json.obj("cancelled", pulls.cancel(Json.str(body(ex), "id", null)))));
@@ -112,7 +119,10 @@ public final class StudioServer {
 
     void start() { http.start(); }
 
-    void stop() { http.stop(0); }
+    void stop() {
+        http.stop(0);
+        pulls.cancelAll();   // what has arrived stays, for the next pull to resume
+    }
 
     public static void main(String[] args) throws Exception {
         int port = Integer.parseInt(setting("fornax.studio.port", "FORNAX_STUDIO_PORT", "5191"));

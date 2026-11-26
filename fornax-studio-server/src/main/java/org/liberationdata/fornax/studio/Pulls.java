@@ -38,7 +38,6 @@ final class Pulls {
     /** A hub for a token (null: the hub's own, from HF_TOKEN or the token file). */
     private final Function<String, FornaxHub> hubs;
     private final URI endpoint;
-    private final Path cacheRoot;
     private final Map<String, Pull> active = new ConcurrentHashMap<>();
 
     /** One download, and the streams watching it. */
@@ -48,11 +47,10 @@ final class Pulls {
         volatile PullProgress last;
     }
 
-    Pulls(List<ModelSet> sets, Function<String, FornaxHub> hubs, URI endpoint, Path cacheRoot) {
+    Pulls(List<ModelSet> sets, Function<String, FornaxHub> hubs, URI endpoint) {
         this.sets = List.copyOf(sets);
         this.hubs = hubs;
         this.endpoint = URI.create(endpoint.toString().replaceAll("/+$", ""));
-        this.cacheRoot = cacheRoot;
     }
 
     /** Fornax's catalogue, into the catalog's cache and model folders, from HF_ENDPOINT (or huggingface.co). */
@@ -63,7 +61,7 @@ final class Pulls {
             var b = FornaxHub.builder().cacheRoot(catalog.root()).modelFolders(new ModelFolders(catalog.folders())).endpoint(endpoint);
             if (token != null && !token.isBlank()) b.token(token);
             return b.build();
-        }, endpoint, catalog.root());
+        }, endpoint);
     }
 
     /** The set with this id or alias ("flux2-klein" or the studio's "image:flux2-klein"). */
@@ -99,7 +97,9 @@ final class Pulls {
      */
     Map<String, Object> plan(String name, String token) throws IOException {
         ModelSet s = set(name);
-        PullPlan plan = hubs.apply(token).plan(s);
+        FornaxHub hub = hubs.apply(token);
+        PullPlan plan = hub.plan(s);
+        Path cacheRoot = hub.cacheRoot();
         Files.createDirectories(cacheRoot);
         return Json.obj("id", s.id(), "complete", plan.complete(), "bytesToDownload", plan.bytesToDownload(),
                 "bytesTotal", plan.bytesTotal(), "freeBytes", Files.getFileStore(cacheRoot).getUsableSpace(),
@@ -129,11 +129,12 @@ final class Pulls {
                 active.put(s.id(), p);
                 p.task.result().whenComplete((files, error) -> active.remove(s.id(), p));
             }
-            pull.watchers.add(sse);
         }
+        // start first, then the latest progress, then each as it comes (progress missed meanwhile is soon superseded)
         sse.send("start", Json.obj("id", s.id(), "title", s.title(), "license", s.license(), "gated", s.gated(), "attached", attached));
         PullProgress last = pull.last;
-        if (attached && last != null) sse.send("progress", progress(last));
+        if (last != null) sse.send("progress", progress(last));
+        pull.watchers.add(sse);
         try {
             Map<String, Path> files = pull.task.result().join();
             Map<String, Object> byRole = new LinkedHashMap<>();
@@ -144,11 +145,7 @@ final class Pulls {
         } catch (CompletionException e) {
             Throwable t = e.getCause();
             if (t instanceof CancellationException) { sse.send("cancelled", Json.obj("id", s.id())); return; }
-            var data = Json.obj("id", s.id(), "message", t.getMessage() != null ? t.getMessage() : t.toString(), "reason",
-                    t instanceof HubException h ? h.reason().name() : "IO");
-            if (t instanceof HubException h && h.reason() == HubException.Reason.ACCESS_DENIED && h.repo() != null)
-                data.put("termsUrl", termsUrl(h.repo()));
-            sse.send("error", data);
+            sse.send("error", failure(s.id(), t));
         } finally {
             pull.watchers.remove(sse);
         }
@@ -160,6 +157,23 @@ final class Pulls {
         if (p == null) return false;
         p.task.cancel();
         return true;
+    }
+
+    /** Stops every download under way, as the server stops; what each has downloaded stays. */
+    void cancelAll() {
+        for (Pull p : active.values()) p.task.cancel();
+    }
+
+    /**
+     * A failure, in words: its {@code message}, {@code reason} (a {@link HubException.Reason}, or {@code IO}) and, for
+     * {@code ACCESS_DENIED}, the {@code termsUrl} to accept.
+     */
+    Map<String, Object> failure(String id, Throwable t) {
+        var data = Json.obj("id", id, "message", t.getMessage() != null ? t.getMessage() : t.toString(), "reason",
+                t instanceof HubException h ? h.reason().name() : "IO");
+        if (t instanceof HubException h && h.reason() == HubException.Reason.ACCESS_DENIED && h.repo() != null)
+            data.put("termsUrl", termsUrl(h.repo()));
+        return data;
     }
 
     private String termsUrl(String repo) { return endpoint + "/" + repo; }
