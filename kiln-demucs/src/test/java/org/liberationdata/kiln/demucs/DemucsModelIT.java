@@ -226,6 +226,23 @@ class DemucsModelIT {
         assertThrows(IllegalStateException.class, () -> m.separate(slice(mix, 0, 1)));
     }
 
+    /** close() cancels the running separation through the native flag, fails the queued one, and only then frees. */
+    @Test
+    void closeDuringAnAsyncCallCancelsItAndQueuedCalls() throws Exception {
+        var m = new DemucsModel(DemucsModel.Weights.HTDEMUCS);
+        var started = new java.util.concurrent.CountDownLatch(1);
+        var running = m.separateAsync(syntheticMix(44100, 60), DemucsModel.Options.DEFAULT, (done, total) -> started.countDown());
+        var queued = m.separateAsync(slice(mix, 0, 1));
+        assertTrue(started.await(60, java.util.concurrent.TimeUnit.SECONDS));
+        long t0 = System.nanoTime();
+        m.close();
+        long closeMs = (System.nanoTime() - t0) / 1_000_000;
+        assertThrows(CancellationException.class, running::join);
+        assertThrows(CancellationException.class, queued::join);
+        assertTrue(closeMs < 3000, "close waited " + closeMs + " ms: the separation wasn't cancelled");
+        assertThrows(IllegalStateException.class, () -> m.separate(slice(mix, 0, 1)));
+    }
+
     // ---- the episode's song against torchaudio's Hybrid Demucs ----
 
     static String setting(String property, String env) {
