@@ -50,7 +50,7 @@ try (var vlm = new LlamaModel(LlamaModel.Weights.QWEN3_VL_4B)) {   // the GGUF p
 
 `DiffusionModel` also edits: a `Request` can carry reference images (Qwen-Image-Edit, FLUX.2), an init image and
 strength (img2img), a mask (inpainting), a ControlNet hint and LoRAs. `Upscaler` runs ESRGAN models. See the
-[images guide](website/src/content/docs/docs/guides/images.md).
+[images guide](https://kiln4j.org/docs/guides/images/).
 
 ## Getting started
 

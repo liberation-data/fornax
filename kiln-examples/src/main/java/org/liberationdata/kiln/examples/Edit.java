@@ -15,11 +15,13 @@ import java.util.Map;
  * Edit an image with stable-diffusion.cpp: img2img, inpainting, or an instruction edit, optionally with LoRAs.
  * Usage: Edit <in.png> <out.png> "<prompt>"
  *   [-Dmodel=klein|qwen-edit] [-Dmask=mask.png] [-Dstrength=0.75] [-Dlora=path[:weight][,path[:weight]...]]
- *   [-Dref=true|false] [-Dsteps=N -Dcfg=C -Dwidth=W -Dheight=H -Dseed=S -Dshift=F -Dsampler=M -Dscheduler=S]
+ *   [-Dref=true|false] [-Dcontrol=hint.png -Dcontrolnet=cn.safetensors -DcontrolStrength=0.9]
+ *   [-Dsteps=N -Dcfg=C -Dwidth=W -Dheight=H -Dseed=S -Dshift=F -Dsampler=M -Dscheduler=S]
  *
  * With klein (the default) in.png is the init image: img2img at -Dstrength, or inpainting where -Dmask is white.
  * With qwen-edit it is a reference image for an instruction ("make the sign say KILN"), and it is the init image as
  * well only when -Dmask or -Dstrength is given. -Dref=true also passes it to klein as a reference.
+ * -Dcontrol adds a ControlNet hint (edges, depth, pose) for the -Dcontrolnet model; -Dmodel=sd15 suits most ControlNets.
  * The output size defaults to the input's, rounded down to a multiple of 16.
  */
 public class Edit {
@@ -53,6 +55,12 @@ public class Edit {
         if (ref) req = req.withRefImages(List.of(in));
         if (init) req = strength == null ? req.withInitImage(in) : req.withInitImage(in, Double.parseDouble(strength));
         if (mask != null) req = req.withMaskImage(ImageIO.read(new File(mask)));
+        String control = System.getProperty("control"), controlStrength = System.getProperty("controlStrength");
+        if (control != null) {
+            BufferedImage hint = ImageIO.read(new File(control));
+            req = controlStrength == null ? req.withControlImage(hint) : req.withControlImage(hint, Double.parseDouble(controlStrength));
+        }
+        if (System.getProperty("controlnet") != null) preset.config().controlNet(System.getProperty("controlnet"));
 
         DiffusionModel.onProgress((s, n, t) -> System.out.printf("  step %d/%d (%.2fs/it)%n", s, n, t));
         long t0 = System.nanoTime();

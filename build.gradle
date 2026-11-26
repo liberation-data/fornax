@@ -137,7 +137,7 @@ project(':kiln-examples') {
             // NativeLibrary's tunables, which the forked JVM would not see as -D on gradlew
             def cli = gradle.startParameter.projectProperties
             ['kiln.gpu.graphs', 'kiln.vulkan.maxNodesPerSubmit', 'model', 'mmproj', 'llm', 'steps', 'width', 'height', 'seed', 'repeat', 'dit', 'lm', 'quant', 'frames', 'fps', 'cfg', 'ltx.dir', 'recipe', 'audio', 'preprocess', 'hires', 'upscaler', 'refine', 'strength', 'schema',
-             'mask', 'lora', 'ref', 'shift', 'sampler', 'scheduler', 'factor', 'tile'].each { p ->
+             'mask', 'lora', 'ref', 'shift', 'sampler', 'scheduler', 'factor', 'tile', 'control', 'controlnet', 'controlStrength'].each { p ->
                 if (cli.containsKey(p)) systemProperty p, cli[p]
             }
         }

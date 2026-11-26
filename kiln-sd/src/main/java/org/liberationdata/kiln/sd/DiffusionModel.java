@@ -48,8 +48,8 @@ public final class DiffusionModel implements AutoCloseable {
      * <p>stable-diffusion.cpp reads LoRAs in the common formats (kohya / sd-scripts, diffusers / PEFT, ai-toolkit) and
      * maps their tensor names onto the loaded model's family, so a LoRA works with the family it was trained for: SD
      * 1.x/2.x/XL/3, FLUX.1, FLUX.2 (klein included), Qwen-Image and Qwen-Image-Edit, Z-Image, Wan and others. Kiln
-     * has run one on FLUX.2 [klein] base 4B and one on Qwen-Image-Edit 2511. A LoRA for another family fails or has
-     * no effect, so check what it was trained on.
+     * has rendered with one on FLUX.2 [klein] base 4B, and compiled the Qwen-Image-Edit Lightning recipe. A LoRA
+     * for another family fails or has no effect, so check what it was trained on.
      *
      * <p>The engine applies a LoRA to the diffusion model, the text encoder or both, whichever it has tensors for.
      * How it is applied (merged into the weights, or at run time) is the context option {@code lora_apply_mode}:

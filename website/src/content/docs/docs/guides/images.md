@@ -160,10 +160,13 @@ var request = new DiffusionModel.Request("a glass teapot", 1024, 1024, 25, 6.0, 
 The ControlNet has to match the base model family. FLUX.1 Controls and Flex.2 take the control image directly and
 need no ControlNet file.
 
-:::caution[Not yet tested in Kiln]
-Kiln passes the ControlNet path and control image straight to stable-diffusion.cpp, which supports ControlNet. Kiln
-hasn't run a ControlNet model yet, so if you try one, a report of how it went is welcome.
-:::
+Kiln has run SD 1.5 with the canny ControlNet (`comfyanonymous/ControlNet-v1-1_fp16_safetensors`); the example
+below does the same:
+
+```sh
+./gradlew edit --args='shop.png out.png "a pottery shop, watercolour painting"' -Pmodel=sd15 -Pstrength=1.0 \
+    -Pcontrol=canny.png -Pcontrolnet=control_v11p_sd15_canny_fp16.safetensors
+```
 
 ### Settings that would be ignored are refused
 
@@ -204,7 +207,11 @@ chooses for you.
 
 ### Qwen-Image-Edit with the Lightning LoRA
 
-The Lightning LoRAs cut Qwen-Image and Qwen-Image-Edit from 20 or more steps to 4, at CFG 1. These are the
+The Lightning LoRAs cut Qwen-Image and Qwen-Image-Edit from 20 or more steps to 4, at CFG 1. Kiln compiles the same
+program as sd-cli for this recipe, but hasn't rendered it on the Radeon 8060S: the bf16 Qwen-Image-Edit 2511 and
+its text encoder take about 51 GB of the 64 GB the Vulkan driver lets the GPU use, which leaves too little to
+compute with (see [engine notes](https://github.com/liberation-data/kiln/blob/main/docs/engine-notes.md)). A
+smaller (fp8 or GGUF) file should fit. These are the
 settings ComfyUI's Qwen-Image-Edit 2511 workflow uses:
 
 ```sh

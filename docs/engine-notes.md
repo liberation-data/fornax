@@ -53,6 +53,12 @@ surprises you.
 - **Qwen-Image-Edit 2511 needs `zero_cond_t`.** The engine enables it when the weights contain an
   `__index_timestep_zero__` tensor (Comfy-Org's bf16 file does). Files without it need
   `model_args = "qwen_image_zero_cond_t=true"`, or edits degrade badly, again with no error.
+- **Qwen-Image-Edit 2511 in bf16 doesn't fit Vulkan's GPU heap on the 8060S.** RADV exposes about 64 GB of the
+  128 GB as device memory. The 41 GB bf16 transformer plus the text encoder tracked 50.7 GB, and the first sampling
+  step then wanted 1.5 GB of compute with about 0.6 GB free (sd-cli fails the same way). `params_backend=te=cpu` did
+  not change the total. `params_backend=*=cpu` (sd-cli's `--offload-to-cpu`) keeps a RAM copy of every weight and
+  stages GPU copies on top; on unified memory that doubles the footprint, and the machine ran out of memory. Use an
+  fp8 or GGUF build of the model, or raise the GTT limit.
 - **sd-cli loads a mask as one grey channel** (stb_image's luma); `DiffusionModel` sends masks the same way, so a
   mask's threshold at 0.5 falls on the same pixels.
 - **Fedora's ROCm lives in `/usr`**, not `/opt/rocm`; `native/build.sh hip` falls back to `/usr/lib64`.

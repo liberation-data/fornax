@@ -40,7 +40,11 @@ public class Image {
                    .llm(qwenVl());
                 yield new Preset(cfg, 20, 2.5);
             }
-            default -> throw new IllegalArgumentException("unknown preset " + name + " (klein, qwen-image, qwen-edit)");
+            case "sd15" -> {  // Stable Diffusion 1.5: small, and the family most ControlNets are for
+                cfg.set("model_path", path("Comfy-Org/stable-diffusion-v1-5-archive", "v1-5-pruned-emaonly-fp16.safetensors"));
+                yield new Preset(cfg, 20, 7.0);
+            }
+            default -> throw new IllegalArgumentException("unknown preset " + name + " (klein, qwen-image, qwen-edit, sd15)");
         };
     }
 
