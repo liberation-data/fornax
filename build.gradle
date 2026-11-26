@@ -1,6 +1,7 @@
 // Fornax: in-process generative models for the JVM via Java's Foreign Function & Memory API.
 
 import com.vanniktech.maven.publish.JavaLibrary
+import com.vanniktech.maven.publish.JavaPlatform
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.SourcesJar
 
@@ -13,7 +14,10 @@ def os = System.getProperty('os.name').toLowerCase().contains('mac') ? 'macos' :
 def arch = System.getProperty('os.arch').replace('amd64', 'x86_64').replace('aarch64', 'arm64')
 def nativeDir = file("build/native/${os}-${arch}-${findProperty('fornax.backend')}")
 
-subprojects {
+// The BOM and the natives POM are POMs, not Java libraries.
+def pomOnly = ['fornax-bom', 'fornax-natives']
+
+configure(subprojects.findAll { !(it.name in pomOnly) }) {
     apply plugin: 'java-library'
 
     repositories { mavenCentral() }
@@ -54,7 +58,7 @@ subprojects {
 }
 
 // What goes to Maven Central, as org.fornax4j:<project name>. The version is gradle.properties' unless -Pversion=...
-def published = [
+ext.published = [
     'fornax-core'   : 'Fornax core: native library loading, model download and Hugging Face cache lookup, audio, the model pool and vector search',
     'fornax-llama'  : 'Fornax llama: GGUF language, vision language, embedding and reranker models through llama.cpp, in-process via Java FFM',
     'fornax-tts'    : 'Fornax TTS: text to speech through llama.cpp (mtmd), in-process via Java FFM',
@@ -64,19 +68,25 @@ def published = [
     'fornax-whisper': 'Fornax Whisper: speech to text with word timings through whisper.cpp, in-process via Java FFM',
     'fornax-demucs' : 'Fornax Demucs: stem separation (vocals, drums, bass, ...) with HTDemucs through stems.cpp, in-process via Java FFM',
 ]
-configure(subprojects.findAll { published.containsKey(it.name) || it.name.startsWith('fornax-natives-') }) { p ->
+configure(subprojects.findAll { published.containsKey(it.name) || it.name.startsWith('fornax-natives') || it.name == 'fornax-bom' }) { p ->
+    if (p.name in pomOnly) apply plugin: 'java-platform'  // before the publishing plugin's configure below
     apply plugin: 'com.vanniktech.maven.publish'
     def natives = p.name.startsWith('fornax-natives-')
     mavenPublishing {
-        configure(natives ? new JavaLibrary(new JavadocJar.Empty(), new SourcesJar.Empty())
+        configure(p.name in pomOnly ? new JavaPlatform()
+                : natives ? new JavaLibrary(new JavadocJar.Empty(), new SourcesJar.Empty())
                           : new JavaLibrary(new JavadocJar.Javadoc(), new SourcesJar.Sources()))
         publishToMavenCentral()
         signAllPublications()
         coordinates('org.fornax4j', p.name, p.version.toString())
         pom {
             name = p.name
-            description = natives ? "Fornax's native engine libraries for ${p.name - 'fornax-natives-'}: llama.cpp, " +
+            description = p.name == 'fornax-bom' ? 'Fornax BOM: the versions of every Fornax module and natives jar of this release'
+                    : p.name == 'fornax-natives' ? "Fornax natives for the host: Maven picks this OS and arch's natives jar"
+                    : natives ? "Fornax's native engine libraries for ${p.name - 'fornax-natives-'}: llama.cpp, " +
                     'stable-diffusion.cpp, acestep.cpp, yue2.cpp, whisper.cpp and stems.cpp, each built into one self-contained library' : published[p.name]
+            if (p.name == 'fornax-natives') withXml { p.nativesProfiles(asNode()) }
+            if (p.name == 'fornax-bom') withXml { p.markNativesPom(asNode()) }
             inceptionYear = '2026'
             url = 'https://fornax4j.org'
             licenses {
@@ -111,6 +121,9 @@ configure(subprojects.findAll { it.name.startsWith('fornax-natives-') }) { p ->
     def ext = platform.startsWith('macos-') ? 'dylib' : 'so'
     tasks.named('jar', Jar) {
         from(libs) { include "*.$ext"; into "org/fornax4j/natives/$platform" }
+        // The name the JDK would derive from the file name has a segment that starts with a digit ("64"), which the
+        // module path rejects, so name it: org.fornax4j.natives.linux_x86_64_vulkan.
+        manifest { attributes 'Automatic-Module-Name': "org.fornax4j.natives.${platform.replace('-', '_')}" }
         // A release ships every engine; a local build may have only some of them.
         def required = providers.gradleProperty('fornax.natives.require').map { it.toBoolean() }.getOrElse(false)
         if (required) doFirst {

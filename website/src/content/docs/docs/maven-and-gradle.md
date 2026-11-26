@@ -27,6 +27,7 @@ The Java modules, each with sources and javadoc jars:
 | `fornax-whisper` | speech to text with word timings (whisper.cpp) |
 | `fornax-demucs` | stem separation: vocals and backing, drums, bass, ... (stems.cpp) |
 | `fornax-core` | what they share; each engine module brings it in |
+| `fornax-bom` | the versions of all of these and the natives below, to import once |
 
 The natives, one jar per platform and GPU backend, each with all seven engines' libraries:
 
@@ -35,6 +36,8 @@ The natives, one jar per platform and GPU backend, each with all seven engines' 
 | `fornax-natives-linux-x86_64-vulkan` | Linux x86-64 (glibc 2.39 or newer: Ubuntu 24.04, Fedora 40 or newer) | Vulkan (AMD, Intel, NVIDIA) |
 | `fornax-natives-macos-aarch64-metal` | macOS 13.3 or newer on Apple silicon | Metal |
 | `fornax-natives-macos-x86_64-metal` | macOS 13.3 or newer on Intel | Metal |
+
+`fornax-natives` is a POM that depends on the one for the building machine (Maven only).
 
 On Linux, the GPU's Vulkan driver must be installed; it usually is. The Linux natives jar is about 130 MB.
 
@@ -45,7 +48,6 @@ The Java packages keep their names: `org.liberationdata.fornax`, `org.liberation
 In `build.gradle.kts`, pick the natives jar for the machine that builds:
 
 ```kotlin
-val fornaxVersion = "0.2.0"
 val fornaxNatives = when {
     !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
     System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
@@ -53,54 +55,49 @@ val fornaxNatives = when {
 }
 
 dependencies {
-    implementation("org.fornax4j:fornax-llama:$fornaxVersion")
-    runtimeOnly("org.fornax4j:fornax-natives-$fornaxNatives:$fornaxVersion")
+    implementation(platform("org.fornax4j:fornax-bom:0.2.0"))  // versions for everything below
+    implementation("org.fornax4j:fornax-llama")
+    runtimeOnly("org.fornax4j:fornax-natives-$fornaxNatives")
 }
 ```
 
-Add more engine modules (`fornax-sd`, `fornax-tts`, ...) the same way; one natives jar covers all of them.
+Add more engine modules (`fornax-sd`, `fornax-tts`, ...) the same way, without a version; one natives jar covers all of
+them. Gradle doesn't run Maven's OS profiles, so `fornax-natives` gives a Gradle build nothing: name the jar as above.
 
 ## Maven
 
-A profile per platform, activated by the OS, names the natives jar:
+Import the BOM once, then add modules without versions. `fornax-natives` brings in the natives jar for the machine
+that builds: Maven activates its profiles by the OS and arch, so your POM needs none.
 
 ```xml
-<properties>
-    <fornax.version>0.2.0</fornax.version>
-</properties>
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>org.fornax4j</groupId>
+            <artifactId>fornax-bom</artifactId>
+            <version>0.2.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
 
 <dependencies>
     <dependency>
         <groupId>org.fornax4j</groupId>
         <artifactId>fornax-llama</artifactId>
-        <version>${fornax.version}</version>
     </dependency>
     <dependency>
         <groupId>org.fornax4j</groupId>
-        <artifactId>fornax-natives-${fornax.natives}</artifactId>
-        <version>${fornax.version}</version>
+        <artifactId>fornax-natives</artifactId>
+        <type>pom</type>
         <scope>runtime</scope>
     </dependency>
 </dependencies>
-
-<profiles>
-    <profile>
-        <id>fornax-linux-x86_64</id>
-        <activation><os><name>Linux</name><arch>amd64</arch></os></activation>
-        <properties><fornax.natives>linux-x86_64-vulkan</fornax.natives></properties>
-    </profile>
-    <profile>
-        <id>fornax-macos-aarch64</id>
-        <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
-        <properties><fornax.natives>macos-aarch64-metal</fornax.natives></properties>
-    </profile>
-    <profile>
-        <id>fornax-macos-x86_64</id>
-        <activation><os><family>mac</family><arch>x86_64</arch></os></activation>
-        <properties><fornax.natives>macos-x86_64-metal</fornax.natives></properties>
-    </profile>
-</profiles>
 ```
+
+To ship for another platform than the one building, name its natives jar instead (`fornax-natives-macos-aarch64-metal`,
+version from the BOM).
 
 ## Running
 

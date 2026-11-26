@@ -17,8 +17,10 @@ val fornaxNatives = when {
 }
 
 dependencies {
-    implementation("org.fornax4j:fornax-llama:$fornaxVersion")
-    runtimeOnly("org.fornax4j:fornax-natives-$fornaxNatives:$fornaxVersion")
+    // Every Fornax module at one version: the lines below take theirs from here
+    implementation(platform("org.fornax4j:fornax-bom:$fornaxVersion"))
+    implementation("org.fornax4j:fornax-llama")
+    runtimeOnly("org.fornax4j:fornax-natives-$fornaxNatives")
 }
 
 application {
