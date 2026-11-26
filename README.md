@@ -204,6 +204,12 @@ A model takes calls from any thread and runs them one at a time. The blocking me
 `Flow.Subscriber` through a bounded buffer. `cancel()` works for every engine, and a callback that throws stops the
 call and rethrows instead of crashing the JVM. See [Threading](https://kiln4j.org/docs/guides/threading/).
 
+A native crash (a failed `GGML_ASSERT`, a segfault, a malformed GGUF) still takes the JVM down in-process, so Kiln
+can also run a model in a **worker process**, opt-in: `LlamaModel.isolated(gguf)`, or `-Dkiln.isolation=process` for
+every `LlamaModel`. It is the same `LlamaModel`, with the same blocking, async, streaming and cancel API. A crash fails
+the call in flight with a `WorkerCrashedException`, and the next call restarts the worker and reloads the model. It
+costs about 15 µs a call and a microsecond a streamed token. See [Isolation](https://kiln4j.org/docs/guides/isolation/).
+
 `ModelPool` keeps models resident between uses, the way ComfyUI does: it unloads idle models least recently used
 first to stay within a memory budget, optionally unloads after an idle timeout, and gives each model one user at a
 time.

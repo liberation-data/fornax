@@ -2,11 +2,15 @@ package org.liberationdata.kiln.llama;
 
 import org.liberationdata.kiln.Call;
 import org.liberationdata.kiln.HfCache;
+import org.liberationdata.kiln.Isolation;
 import org.liberationdata.kiln.ModelThread;
 import org.liberationdata.kiln.NativeLibrary;
 import org.liberationdata.kiln.Scored;
 import org.liberationdata.kiln.StreamOverflowException;
 import org.liberationdata.kiln.Vectors;
+import org.liberationdata.kiln.Wire;
+import org.liberationdata.kiln.Worker;
+import org.liberationdata.kiln.WorkerCrashedException;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -49,44 +53,55 @@ import static java.lang.foreign.ValueLayout.JAVA_INT;
  * rest) run on the calling thread, callback included. The {@code ...Async} methods run on this model's own platform
  * thread and return a {@link CompletableFuture}, so a virtual thread awaiting one doesn't pin its carrier; streaming
  * goes to a {@link Flow.Subscriber}. {@link #cancel()} and {@link #close()} are safe from any thread.
+ *
+ * <p>Isolation: {@link #isolated(String)} (or {@code -Dkiln.isolation=process}, for every LlamaModel) loads the model
+ * in a {@link Worker}, a child JVM, behind this same API. A native crash there fails the call in flight with a
+ * {@link WorkerCrashedException} instead of killing this JVM, and the next call restarts the worker and reloads the
+ * weights. See the isolation guide for the costs.
  */
 public final class LlamaModel implements AutoCloseable {
-    private static final NativeLibrary LIB = NativeLibrary.load("kiln_llama");
-    private static final MethodHandle LAST_ERROR = LIB.function("kiln_llama_last_error", FunctionDescriptor.of(ADDRESS));
-    private static final MethodHandle CREATE = LIB.function("kiln_llama_create",
-            FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT));
-    private static final MethodHandle CHAT = LIB.function("kiln_llama_chat", FunctionDescriptor.of(JAVA_INT,
-            ADDRESS, ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT,
-            ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
-    private static final MethodHandle COMPLETE = LIB.function("kiln_llama_complete", FunctionDescriptor.of(JAVA_INT,
-            ADDRESS, ADDRESS, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT,
-            ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
-    private static final MethodHandle CHAT_JSON = LIB.function("kiln_llama_chat_json", FunctionDescriptor.of(JAVA_INT,
-            ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
-    private static final MethodHandle CREATE_MM = LIB.function("kiln_llama_create_mm",
-            FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS, JAVA_INT, JAVA_INT));
-    private static final MethodHandle SUPPORTS_VISION = LIB.function("kiln_llama_supports_vision",
-            FunctionDescriptor.of(JAVA_INT, ADDRESS));
-    private static final MethodHandle MEDIA_MARKER = LIB.function("kiln_llama_media_marker", FunctionDescriptor.of(ADDRESS));
-    private static final MethodHandle CHAT_IMAGES = LIB.function("kiln_llama_chat_images", FunctionDescriptor.of(JAVA_INT,
-            ADDRESS, ADDRESS, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_INT,
-            JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
-    private static final MethodHandle COMPLETE_IMAGES = LIB.function("kiln_llama_complete_images", FunctionDescriptor.of(JAVA_INT,
-            ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT,
-            ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
-    private static final MethodHandle CHAT_JSON_IMAGES = LIB.function("kiln_llama_chat_json_images", FunctionDescriptor.of(JAVA_INT,
-            ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
-    private static final MethodHandle CREATE_POOLED = LIB.function("kiln_llama_create_pooled",
-            FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_INT));
-    private static final MethodHandle N_EMBD = LIB.function("kiln_llama_n_embd", FunctionDescriptor.of(JAVA_INT, ADDRESS));
-    private static final MethodHandle EMBED = LIB.function("kiln_llama_embed", FunctionDescriptor.of(JAVA_INT,
-            ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
-    private static final MethodHandle RERANK = LIB.function("kiln_llama_rerank", FunctionDescriptor.of(JAVA_INT,
-            ADDRESS, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+    /**
+     * The engine's functions, bound on first use: an isolated model's JVM never loads the engine library, so a
+     * library that crashes as it loads (or a GPU check that fails) stays in the worker.
+     */
+    private static final class N {
+        static final NativeLibrary LIB = NativeLibrary.load("kiln_llama");
+        static final MethodHandle LAST_ERROR = LIB.function("kiln_llama_last_error", FunctionDescriptor.of(ADDRESS));
+        static final MethodHandle CREATE = LIB.function("kiln_llama_create",
+                FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT));
+        static final MethodHandle CHAT = LIB.function("kiln_llama_chat", FunctionDescriptor.of(JAVA_INT,
+                ADDRESS, ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT,
+                ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
+        static final MethodHandle COMPLETE = LIB.function("kiln_llama_complete", FunctionDescriptor.of(JAVA_INT,
+                ADDRESS, ADDRESS, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT,
+                ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
+        static final MethodHandle CHAT_JSON = LIB.function("kiln_llama_chat_json", FunctionDescriptor.of(JAVA_INT,
+                ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
+        static final MethodHandle CREATE_MM = LIB.function("kiln_llama_create_mm",
+                FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS, JAVA_INT, JAVA_INT));
+        static final MethodHandle SUPPORTS_VISION = LIB.function("kiln_llama_supports_vision",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS));
+        static final MethodHandle MEDIA_MARKER = LIB.function("kiln_llama_media_marker", FunctionDescriptor.of(ADDRESS));
+        static final MethodHandle CHAT_IMAGES = LIB.function("kiln_llama_chat_images", FunctionDescriptor.of(JAVA_INT,
+                ADDRESS, ADDRESS, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_INT,
+                JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
+        static final MethodHandle COMPLETE_IMAGES = LIB.function("kiln_llama_complete_images", FunctionDescriptor.of(JAVA_INT,
+                ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT,
+                ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
+        static final MethodHandle CHAT_JSON_IMAGES = LIB.function("kiln_llama_chat_json_images", FunctionDescriptor.of(JAVA_INT,
+                ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+        static final MethodHandle CREATE_POOLED = LIB.function("kiln_llama_create_pooled",
+                FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_INT));
+        static final MethodHandle N_EMBD = LIB.function("kiln_llama_n_embd", FunctionDescriptor.of(JAVA_INT, ADDRESS));
+        static final MethodHandle EMBED = LIB.function("kiln_llama_embed", FunctionDescriptor.of(JAVA_INT,
+                ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+        static final MethodHandle RERANK = LIB.function("kiln_llama_rerank", FunctionDescriptor.of(JAVA_INT,
+                ADDRESS, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+        static final MethodHandle FREE = LIB.function("kiln_llama_free", FunctionDescriptor.ofVoid(ADDRESS));
+        static final MethodHandle DESTROY = LIB.function("kiln_llama_destroy", FunctionDescriptor.ofVoid(ADDRESS));
+    }
     /** The shim's return code for a pooled call that cancel() stopped between batches. */
     private static final int CANCELLED = 13;
-    private static final MethodHandle FREE = LIB.function("kiln_llama_free", FunctionDescriptor.ofVoid(ADDRESS));
-    private static final MethodHandle DESTROY = LIB.function("kiln_llama_destroy", FunctionDescriptor.ofVoid(ADDRESS));
 
     private static final FunctionDescriptor TOKEN_CB = FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS);
     private static final MethodHandle ON_TOKEN;
@@ -295,7 +310,9 @@ public final class LlamaModel implements AutoCloseable {
         public EmbedOptions withNormalize(boolean n) { return new EmbedOptions(prefix, n); }
     }
 
-    private final MemorySegment handle;
+    private final MemorySegment handle;    // in-process
+    private final Worker.Instance remote;  // isolated
+    private final Worker worker;           // isolated
     private final boolean vision;
     private final Mode mode;
     private final int embeddingSize;  // 0 unless EMBED
@@ -312,7 +329,7 @@ public final class LlamaModel implements AutoCloseable {
      * @param gpuLayers -1 offloads every layer. @param contextSize 0 uses the model's trained context.
      */
     public LlamaModel(String ggufPath, String mmprojPath, int gpuLayers, int contextSize) {
-        this(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize);
+        this(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize, defaultWorker(ggufPath, Mode.CHAT), true);
     }
 
     /**
@@ -320,37 +337,118 @@ public final class LlamaModel implements AutoCloseable {
      * @param gpuLayers -1 offloads every layer. @param contextSize 0 uses the model's trained context. In EMBED and
      *        RERANK it is also the batch: the most tokens one text (or query and document) can have, and how many
      *        go through the model at once.
+     * @throws UnsupportedOperationException for EMBED or RERANK under {@code -Dkiln.isolation=process}: those don't
+     *         run in a worker yet
      */
     public LlamaModel(String ggufPath, int gpuLayers, int contextSize, Mode mode) {
-        this(ggufPath, null, mode, gpuLayers, contextSize);
+        this(ggufPath, null, mode, gpuLayers, contextSize, defaultWorker(ggufPath, mode), true);
     }
 
     /** A model loaded for chat, embeddings or reranking, with 8192 tokens of context. */
     public LlamaModel(String ggufPath, Mode mode) { this(ggufPath, -1, 8192, mode); }
 
-    private LlamaModel(String ggufPath, String mmprojPath, Mode mode, int gpuLayers, int contextSize) {
+    /** The worker kiln.isolation asks for, or null for in-process. */
+    private static Worker defaultWorker(String ggufPath, Mode mode) {
+        if (Isolation.configured() != Isolation.PROCESS) return null;
+        if (mode != Mode.CHAT)
+            throw new UnsupportedOperationException(mode + " models don't run isolated yet (kiln.isolation=process): "
+                    + "load them in-process");
+        return workerFor(ggufPath);
+    }
+
+    /** @param worker where to load it, or null for in-process. @param ownsWorker close the worker with the model */
+    private LlamaModel(String ggufPath, String mmprojPath, Mode mode, int gpuLayers, int contextSize, Worker worker, boolean ownsWorker) {
+        String name = Path.of(ggufPath).getFileName().toString();
         this.mode = Objects.requireNonNull(mode, "mode");
         if (mode != Mode.CHAT && mmprojPath != null)
             throw new IllegalArgumentException("an mmproj is for chat with images; " + mode + " takes none");
+        if (mode != Mode.CHAT && worker != null)
+            throw new UnsupportedOperationException(mode + " models don't run isolated yet");
+        this.worker = worker;
+        if (worker != null) {
+            Worker.Instance r = null;
+            try {
+                r = worker.open(LlamaService.class.getName(), LlamaService.config(ggufPath, mmprojPath, gpuLayers, contextSize));
+                vision = new Wire.In(r.invoke("vision", null)).bool();
+            } catch (RuntimeException | Error e) {
+                if (r != null) r.close();
+                if (ownsWorker) worker.close();
+                throw e;
+            }
+            Worker.Instance instance = r;
+            remote = instance;
+            handle = null;
+            embeddingSize = 0;
+            thread = new ModelThread(name, () -> {
+                try { instance.close(); } finally { if (ownsWorker) worker.close(); }
+            }, instance::cancel, null);
+            return;
+        }
+        remote = null;
         try (Arena a = Arena.ofConfined()) {
             if (mode != Mode.CHAT) {
-                handle = (MemorySegment) CREATE_POOLED.invokeExact(a.allocateFrom(ggufPath), gpuLayers, contextSize,
+                handle = (MemorySegment) N.CREATE_POOLED.invokeExact(a.allocateFrom(ggufPath), gpuLayers, contextSize,
                         mode == Mode.RERANK ? 1 : 0);
                 if (handle.equals(MemorySegment.NULL)) throw new IllegalStateException("kiln_llama_create_pooled: " + error());
             } else {
                 handle = mmprojPath == null
-                        ? (MemorySegment) CREATE.invokeExact(a.allocateFrom(ggufPath), gpuLayers, contextSize)
-                        : (MemorySegment) CREATE_MM.invokeExact(a.allocateFrom(ggufPath), a.allocateFrom(mmprojPath), gpuLayers, contextSize);
+                        ? (MemorySegment) N.CREATE.invokeExact(a.allocateFrom(ggufPath), gpuLayers, contextSize)
+                        : (MemorySegment) N.CREATE_MM.invokeExact(a.allocateFrom(ggufPath), a.allocateFrom(mmprojPath), gpuLayers, contextSize);
                 if (handle.equals(MemorySegment.NULL))
                     throw new IllegalStateException((mmprojPath == null ? "kiln_llama_create: " : "kiln_llama_create_mm: ") + error());
             }
-            vision = mmprojPath != null && (int) SUPPORTS_VISION.invokeExact(handle) != 0;
-            embeddingSize = mode == Mode.EMBED ? (int) N_EMBD.invokeExact(handle) : 0;
+            vision = mmprojPath != null && (int) N.SUPPORTS_VISION.invokeExact(handle) != 0;
+            embeddingSize = mode == Mode.EMBED ? (int) N.N_EMBD.invokeExact(handle) : 0;
         } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         MemorySegment h = handle;
-        thread = new ModelThread(Path.of(ggufPath).getFileName().toString(), () -> {
-            try { DESTROY.invokeExact(h); } catch (Throwable t) { throw new RuntimeException(t); }
+        thread = new ModelThread(name, () -> {
+            try { N.DESTROY.invokeExact(h); } catch (Throwable t) { throw new RuntimeException(t); }
         });
+    }
+
+    private static Worker workerFor(String ggufPath) {
+        return new Worker(Path.of(ggufPath).getFileName().toString(), Worker.Options.DEFAULT);
+    }
+
+    /**
+     * The model in a worker process of its own, behind the same API: chat, chatJson, extract, complete, streaming,
+     * the async methods, cancel and close all work as in-process. A native crash fails the call in flight with a
+     * {@link WorkerCrashedException}, and the next call restarts the worker and reloads the weights. Closing the model
+     * stops its worker.
+     */
+    public static LlamaModel isolated(String ggufPath) { return isolated(ggufPath, null, -1, 8192); }
+
+    /** {@link #isolated(String)} for weights Kiln knows by name, with their mmproj if they have one. */
+    public static LlamaModel isolated(Weights w) { return isolated(w.model(), w.mmproj(), -1, 8192); }
+
+    /** {@link #isolated(String)} with an mmproj (or null), GPU layers and context size, as the constructor takes them. */
+    public static LlamaModel isolated(String ggufPath, String mmprojPath, int gpuLayers, int contextSize) {
+        return new LlamaModel(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize, workerFor(ggufPath), true);
+    }
+
+    /**
+     * The model in a worker you share among several models: they run in one process, so one crash takes them all
+     * (each reloads on its next call), but they share one JVM's overhead. Closing the model frees it in the worker;
+     * closing the worker is up to you.
+     */
+    public static LlamaModel isolated(Worker worker, String ggufPath, String mmprojPath, int gpuLayers, int contextSize) {
+        return new LlamaModel(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize, java.util.Objects.requireNonNull(worker), false);
+    }
+
+    /** In this JVM whatever kiln.isolation says: what a worker loads. */
+    static LlamaModel inProcess(String ggufPath, String mmprojPath, int gpuLayers, int contextSize) {
+        return new LlamaModel(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize, null, false);
+    }
+
+    /** Whether this model runs in a worker process. */
+    public boolean isIsolated() { return remote != null; }
+
+    /** The worker this model runs in, or null for one in-process. */
+    public Worker worker() { return worker; }
+
+    /** A call to the worker, with its pieces of text streamed to onPiece (if any) on the calling thread. */
+    private byte[] remote(Call call, String method, byte[] args, Consumer<String> onPiece) {
+        return remote.invoke(method, args, call, onPiece == null ? null : b -> onPiece.accept(LlamaService.decodeString(b)));
     }
 
     /** A vision language model and its mmproj, with 8192 tokens of context (images take their share of it). */
@@ -373,7 +471,7 @@ public final class LlamaModel implements AutoCloseable {
      * {@link #LlamaModel(String, int, int, Mode)}.
      */
     public LlamaModel(Weights w, int gpuLayers, int contextSize, Mode mode) {
-        this(w.model(), mode == Mode.CHAT ? w.mmproj() : null, mode, gpuLayers, contextSize);
+        this(w.model(), mode == Mode.CHAT ? w.mmproj() : null, mode, gpuLayers, contextSize, defaultWorker(w.model(), mode), true);
     }
 
     /** Whether this model takes images: it was loaded with an mmproj that has a vision encoder. */
@@ -388,9 +486,12 @@ public final class LlamaModel implements AutoCloseable {
         return embeddingSize;
     }
 
-    /** The marker {@link #complete(String, List, Options, Consumer)} replaces with an image (llama.cpp's default). */
+    /**
+     * The marker {@link #complete(String, List, Options, Consumer)} replaces with an image (llama.cpp's default). It
+     * loads the engine library in this JVM, even when every model is isolated.
+     */
     public static String mediaMarker() {
-        try { return NativeLibrary.string((MemorySegment) MEDIA_MARKER.invokeExact()); }
+        try { return NativeLibrary.string((MemorySegment) N.MEDIA_MARKER.invokeExact()); }
         catch (Throwable t) { throw new RuntimeException(t); }
     }
 
@@ -469,8 +570,10 @@ public final class LlamaModel implements AutoCloseable {
         return thread.run(c -> chatOn(c, messages, o, onPiece));
     }
 
-    private Result chatOn(Call call, List<Message> messages, Options o, Consumer<String> onPiece) {
+    Result chatOn(Call call, List<Message> messages, Options o, Consumer<String> onPiece) {
         requireMode(Mode.CHAT, "chat");
+        if (remote != null)
+            return LlamaService.decodeResult(remote(call, "chat", LlamaService.chatArgs(messages, o, onPiece != null), onPiece));
         if (messages.stream().anyMatch(m -> !m.images().isEmpty())) return chatImages(call, messages, o, onPiece);
         try (Arena a = Arena.ofConfined()) {
             int n = messages.size();
@@ -481,7 +584,7 @@ public final class LlamaModel implements AutoCloseable {
             }
             Out out = new Out(a);
             MemorySegment cb = callback(a, call, onPiece);
-            int rc = (int) CHAT.invokeExact(handle, roles, contents, n, o.maxTokens(), o.temperature(), o.topP(),
+            int rc = (int) N.CHAT.invokeExact(handle, roles, contents, n, o.maxTokens(), o.temperature(), o.topP(),
                     o.minP(), o.seed(), cb, MemorySegment.NULL, out.text, out.nPrompt, out.nGen);
             return out.result(rc, call);
         } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
@@ -502,13 +605,15 @@ public final class LlamaModel implements AutoCloseable {
         return thread.run(c -> chatJsonOn(c, requestJson, List.of(), onContent));
     }
 
-    private String chatJsonOn(Call call, String requestJson, List<Image> images, Consumer<String> onContent) {
+    String chatJsonOn(Call call, String requestJson, List<Image> images, Consumer<String> onContent) {
         requireMode(Mode.CHAT, "chat");
+        if (remote != null)
+            return LlamaService.decodeString(remote(call, "chatJson", LlamaService.chatJsonArgs(requestJson, images, onContent != null), onContent));
         if (!images.isEmpty()) return chatJsonImages(call, requestJson, images, onContent);
         try (Arena a = Arena.ofConfined()) {
             MemorySegment out = a.allocate(ADDRESS);
             MemorySegment cb = callback(a, call, onContent);
-            int rc = (int) CHAT_JSON.invokeExact(handle, a.allocateFrom(requestJson), cb, MemorySegment.NULL, out);
+            int rc = (int) N.CHAT_JSON.invokeExact(handle, a.allocateFrom(requestJson), cb, MemorySegment.NULL, out);
             return json(out, rc, call);
         } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
@@ -530,7 +635,7 @@ public final class LlamaModel implements AutoCloseable {
             NativeImages img = new NativeImages(a, images);
             Out out = new Out(a);
             MemorySegment cb = callback(a, call, onPiece);
-            int rc = (int) CHAT_IMAGES.invokeExact(handle, roles, contents, counts, n, img.rgb, img.widths, img.heights, img.n,
+            int rc = (int) N.CHAT_IMAGES.invokeExact(handle, roles, contents, counts, n, img.rgb, img.widths, img.heights, img.n,
                     o.maxTokens(), o.temperature(), o.topP(), o.minP(), o.seed(), cb, MemorySegment.NULL,
                     out.text, out.nPrompt, out.nGen);
             return out.result(rc, call);
@@ -558,7 +663,7 @@ public final class LlamaModel implements AutoCloseable {
             NativeImages img = new NativeImages(a, images);
             MemorySegment out = a.allocate(ADDRESS);
             MemorySegment cb = callback(a, call, onContent);
-            int rc = (int) CHAT_JSON_IMAGES.invokeExact(handle, a.allocateFrom(requestJson), img.rgb, img.widths, img.heights,
+            int rc = (int) N.CHAT_JSON_IMAGES.invokeExact(handle, a.allocateFrom(requestJson), img.rgb, img.widths, img.heights,
                     img.n, cb, MemorySegment.NULL, out);
             return json(out, rc, call);
         } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
@@ -596,14 +701,15 @@ public final class LlamaModel implements AutoCloseable {
         return thread.run(c -> images.isEmpty() ? completeOn(c, prompt, o, onPiece) : completeImages(c, prompt, images, o, onPiece));
     }
 
-    private Result completeImages(Call call, String prompt, List<Image> images, Options o, Consumer<String> onPiece) {
+    Result completeImages(Call call, String prompt, List<Image> images, Options o, Consumer<String> onPiece) {
         requireMode(Mode.CHAT, "complete");
+        if (remote != null) return completeRemote(call, prompt, images, o, onPiece);
         requireVision();
         try (Arena a = Arena.ofConfined()) {
             NativeImages img = new NativeImages(a, images);
             Out out = new Out(a);
             MemorySegment cb = callback(a, call, onPiece);
-            int rc = (int) COMPLETE_IMAGES.invokeExact(handle, a.allocateFrom(prompt), img.rgb, img.widths, img.heights, img.n,
+            int rc = (int) N.COMPLETE_IMAGES.invokeExact(handle, a.allocateFrom(prompt), img.rgb, img.widths, img.heights, img.n,
                     o.maxTokens(), o.temperature(), o.topP(), o.minP(), o.seed(), cb, MemorySegment.NULL,
                     out.text, out.nPrompt, out.nGen);
             return out.result(rc, call);
@@ -639,16 +745,21 @@ public final class LlamaModel implements AutoCloseable {
         return thread.run(c -> completeOn(c, prompt, o, onPiece));
     }
 
-    private Result completeOn(Call call, String prompt, Options o, Consumer<String> onPiece) {
+    Result completeOn(Call call, String prompt, Options o, Consumer<String> onPiece) {
         requireMode(Mode.CHAT, "complete");
+        if (remote != null) return completeRemote(call, prompt, List.of(), o, onPiece);
         try (Arena a = Arena.ofConfined()) {
             Out out = new Out(a);
             MemorySegment cb = callback(a, call, onPiece);
-            int rc = (int) COMPLETE.invokeExact(handle, a.allocateFrom(prompt), o.maxTokens(), o.temperature(),
+            int rc = (int) N.COMPLETE.invokeExact(handle, a.allocateFrom(prompt), o.maxTokens(), o.temperature(),
                     o.topP(), o.minP(), o.seed(), cb, MemorySegment.NULL, out.text, out.nPrompt, out.nGen);
             return out.result(rc, call);
         } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
+    }
+
+    private Result completeRemote(Call call, String prompt, List<Image> images, Options o, Consumer<String> onPiece) {
+        return LlamaService.decodeResult(remote(call, "complete", LlamaService.completeArgs(prompt, images, o, onPiece != null), onPiece));
     }
 
     // ---- embeddings and reranking (Mode.EMBED, Mode.RERANK) ----
@@ -677,7 +788,7 @@ public final class LlamaModel implements AutoCloseable {
             MemorySegment in = strings(a, texts, o.prefix());
             MemorySegment out = a.allocate(JAVA_FLOAT, (long) n * dim);
             MemorySegment cb = callback(a, call, null);
-            int rc = (int) EMBED.invokeExact(handle, in, n, o.normalize() ? 1 : 0, out, cb, MemorySegment.NULL);
+            int rc = (int) N.EMBED.invokeExact(handle, in, n, o.normalize() ? 1 : 0, out, cb, MemorySegment.NULL);
             pooledResult(rc, call, "embed");
             float[][] v = new float[n][];
             for (int i = 0; i < n; i++) v[i] = out.asSlice((long) i * dim * Float.BYTES, (long) dim * Float.BYTES).toArray(JAVA_FLOAT);
@@ -704,7 +815,7 @@ public final class LlamaModel implements AutoCloseable {
             MemorySegment docs = strings(a, documents, null);
             MemorySegment out = a.allocate(JAVA_FLOAT, n);
             MemorySegment cb = callback(a, call, null);
-            int rc = (int) RERANK.invokeExact(handle, a.allocateFrom(query), docs, n, out, cb, MemorySegment.NULL);
+            int rc = (int) N.RERANK.invokeExact(handle, a.allocateFrom(query), docs, n, out, cb, MemorySegment.NULL);
             pooledResult(rc, call, "rerank");
             return Vectors.rank(out.toArray(JAVA_FLOAT));
         } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
@@ -743,7 +854,7 @@ public final class LlamaModel implements AutoCloseable {
     private static String json(MemorySegment out, int rc, Call call) throws Throwable {
         MemorySegment r = out.get(ADDRESS, 0);
         String json = NativeLibrary.string(r);
-        if (!r.equals(MemorySegment.NULL)) FREE.invokeExact(r);
+        if (!r.equals(MemorySegment.NULL)) N.FREE.invokeExact(r);
         call.rethrow();
         if (rc != 0) throw new IllegalStateException("llama chat failed (rc=" + rc + "): " + error());
         return json;
@@ -756,7 +867,7 @@ public final class LlamaModel implements AutoCloseable {
         Result result(int rc, Call call) throws Throwable {
             MemorySegment t = text.get(ADDRESS, 0);
             String s = NativeLibrary.string(t);
-            if (!t.equals(MemorySegment.NULL)) FREE.invokeExact(t);
+            if (!t.equals(MemorySegment.NULL)) N.FREE.invokeExact(t);
             call.rethrow();
             if (rc != 0) throw new IllegalStateException("llama generation failed (rc=" + rc + "): " + error());
             return new Result(s, nPrompt.get(JAVA_INT, 0), nGen.get(JAVA_INT, 0));
@@ -764,7 +875,7 @@ public final class LlamaModel implements AutoCloseable {
     }
 
     private static String error() {
-        try { return NativeLibrary.string((MemorySegment) LAST_ERROR.invokeExact()); }
+        try { return NativeLibrary.string((MemorySegment) N.LAST_ERROR.invokeExact()); }
         catch (Throwable t) { return t.toString(); }
     }
 

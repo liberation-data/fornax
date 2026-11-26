@@ -85,6 +85,12 @@ pool.unload("flux2-klein");   // waits until it is free, then unloads it; false 
 pool.unloadAll();             // unloads every model that isn't in use
 ```
 
+## Isolated models
+
+A loader can return an isolated model (`() -> LlamaModel.isolated(path)`), which runs in a worker process of its own.
+Add about 100 MB to its size for the worker's JVM; unloading it stops the worker. See
+[Isolation](/docs/guides/isolation/#with-a-modelpool).
+
 ## Without a pool
 
 For one or two models, plain try-with-resources is enough, and keeps memory use obvious. `./gradlew single` loads
