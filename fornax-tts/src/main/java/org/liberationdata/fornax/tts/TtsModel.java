@@ -5,6 +5,7 @@ import org.liberationdata.fornax.Call;
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.ModelThread;
 import org.liberationdata.fornax.NativeLibrary;
+import org.liberationdata.fornax.hub.ModelCatalog;
 import org.liberationdata.fornax.hub.ModelReferences;
 import org.liberationdata.fornax.hub.ModelSet;
 import org.liberationdata.fornax.StreamOverflowException;
@@ -164,6 +165,8 @@ public final class TtsModel implements AutoCloseable {
      */
     public TtsModel(String modelPath, String mmprojPath, int gpuLayers, int contextSize) {
         String given = modelPath;
+        if (mmprojPath == null && given != null && (ModelReferences.isPath(given) || ModelCatalog.byName(given.strip()).isEmpty()))
+            throw new NullPointerException("mmprojPath: " + given + " needs its mmproj (its voices and audio decoder)");   // before fetching the model
         Optional<Map<String, Path>> model = ModelReferences.locate(given, ENGINE);
         if (mmprojPath == null && model.isPresent() && model.get().containsKey("mmproj")) mmprojPath = model.get().get("mmproj").toString();
         if (mmprojPath == null) throw new NullPointerException("mmprojPath: " + given + " needs its mmproj (its voices and audio decoder)");

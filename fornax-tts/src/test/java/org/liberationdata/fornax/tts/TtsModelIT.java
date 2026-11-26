@@ -75,6 +75,9 @@ class TtsModelIT {
         }
         var e = assertThrows(NullPointerException.class, () -> new TtsModel(repo + ":F32", null));
         assertTrue(e.getMessage().contains("needs its mmproj"), e.getMessage());
+        // refused before the model is fetched: a repo that isn't in the cache (or on the Hub) fails the same way
+        e = assertThrows(NullPointerException.class, () -> new TtsModel("fornax-test/not-a-tts-GGUF:F32", null));
+        assertTrue(e.getMessage().contains("needs its mmproj"), e.getMessage());
         assertThrows(IllegalArgumentException.class, () -> new TtsModel("whisper-base.en"));
     }
 
