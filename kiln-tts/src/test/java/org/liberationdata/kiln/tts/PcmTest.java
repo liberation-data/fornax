@@ -2,6 +2,8 @@ package org.liberationdata.kiln.tts;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Locale;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class PcmTest {
@@ -26,5 +28,17 @@ class PcmTest {
     void weightsByName() {
         assertEquals(TtsModel.Weights.LFM3_AUDIO, TtsModel.Weights.named("lfm3-audio"));
         assertEquals(TtsModel.Weights.KOKORO, TtsModel.Weights.named("Kokoro"));
+    }
+
+    @Test
+    void weightsByNameInATurkishLocale() {
+        Locale saved = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            assertEquals(TtsModel.Weights.LFM3_AUDIO, TtsModel.Weights.named("lfm3-audio"));
+            assertEquals(TtsModel.Weights.TINY_VOCA, TtsModel.Weights.named("tiny-voca"));
+        } finally {
+            Locale.setDefault(saved);
+        }
     }
 }

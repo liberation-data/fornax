@@ -74,10 +74,13 @@ public final class NativeLibrary {
         }
 
         /** The tunables from these properties (System's, except in tests), each set unless its variable already is. */
-        static void apply(java.util.Properties properties) {
-            if (!Boolean.parseBoolean(properties.getProperty("kiln.gpu.graphs", "false"))) setDefault("GGML_CUDA_DISABLE_GRAPHS", "1");
+        static void apply(java.util.Properties properties) { apply(properties, Tunables::setDefault); }
+
+        /** The variables these properties ask for, handed to set (setDefault, or a recorder in tests). */
+        static void apply(java.util.Properties properties, java.util.function.BiConsumer<String, String> set) {
+            if (!Boolean.parseBoolean(properties.getProperty("kiln.gpu.graphs", "false"))) set.accept("GGML_CUDA_DISABLE_GRAPHS", "1");
             String nodes = properties.getProperty("kiln.vulkan.maxNodesPerSubmit");
-            if (nodes != null) setDefault("GGML_VK_MAX_NODES_PER_SUBMIT", nodes);
+            if (nodes != null) set.accept("GGML_VK_MAX_NODES_PER_SUBMIT", nodes);
         }
 
         /** setenv(name, value, 0): the process environment native code sees, unless it is already set. */

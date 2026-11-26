@@ -48,7 +48,7 @@ Package `org.liberationdata.kiln.tts`. See [Speech](/docs/guides/speech/).
 | Type | |
 |---|---|
 | `TtsModel` | a TTS model: `new TtsModel(Weights)`, `(model, mmproj)` or `(model, mmproj, gpuLayers, contextSize)` |
-| `speak(text, voice[, options][, onChunk])` | speech as `Audio`, optionally streamed in chunks; a voice of `@clip.wav` speaks like that clip |
+| `speak(text, voice)`, `(text, voice, onChunk)`, `(text, voice, options, onChunk)` | speech as `Audio`, optionally streamed in chunks; a voice of `@clip.wav` speaks like that clip |
 | `voices()`, `sampleRate()`, `cancel()` | the built-in voices (the default first), the output rate, and stopping a streaming call |
 | `TtsModel.Weights` | the models Kiln knows by name: `KOKORO`, `ZONOS3`, `LFM3_AUDIO`, `TINY_VOCA`, `CHATTERBOX_TURBO`, `SOPRANO`, `VOXCPM2`, `QWEN3_TTS`; `named(...)`, `model()`, `mmproj()`, `downloaded()` |
 | `TtsModel.Options` | `lang`, `temperature`, `seed`, `speed`, `maxFrames`; `DEFAULT` and a `with...` for each |
