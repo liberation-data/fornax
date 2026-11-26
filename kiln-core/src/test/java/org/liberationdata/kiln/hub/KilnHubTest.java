@@ -310,6 +310,56 @@ class KilnHubTest {
         assertEquals(files, hub.require(set));
     }
 
+    @Test void theCacheComesBeforeAModelFolder() throws Exception {
+        fake.add(OTHER, "split_files/vae/v.safetensors", 1_000, true);
+        var set = set("v", Part.of("vae", OTHER, "split_files/vae/v.safetensors"));
+        Path inCache = hub().pull(set, PullListener.NONE).get("vae");
+        Path comfy = dir.resolve("ComfyUI");
+        Files.createDirectories(comfy.resolve("vae"));
+        Files.write(comfy.resolve("vae/v.safetensors"), new byte[7]);
+        KilnHub hub = hub(fake.token).modelFolders(new ModelFolders(List.of(comfy))).build();
+
+        assertEquals(inCache, hub.find(set.parts().get(0)).orElseThrow());
+        assertEquals(Where.HF_CACHE, hub.status(set).parts().get(0).where());
+        assertEquals(1_000, hub.status(set).parts().get(0).size());
+    }
+
+    @Test void aResumedPullsNumbersCountThePartialFileAndNotThePresentPart() throws Exception {
+        var a = fake.add(REPO, "a.gguf", 300_000, true);
+        var b = fake.add(REPO, "b.gguf", 1_000_000, true);
+        hub().pull(set("a", Part.of("a", REPO, "a.gguf")), PullListener.NONE);
+        var set = set("ab", Part.of("a", REPO, "a.gguf"), Part.of("b", REPO, "b.gguf"));
+        fake.pauseMillis = 20;
+        CountDownLatch some = new CountDownLatch(1);
+        PullTask t = hub().pullAsync(set, p -> { if (p.phase() == Phase.DOWNLOADING && p.bytesDone() > 100_000) some.countDown(); });
+        assertTrue(some.await(30, TimeUnit.SECONDS));
+        t.cancel();
+        assertThrows(CancellationException.class, () -> t.result().join());
+        fake.pauseMillis = 0;
+        long partial = hub().status(set).parts().get(1).bytesOnDisk();
+
+        PullPlan plan = hub().plan(set);
+        assertEquals(b.content().length, plan.bytesTotal(), "the present part isn't in the total");
+        assertEquals(b.content().length - partial, plan.bytesToDownload());
+        assertEquals(a.content().length, plan.items().get(0).size());
+
+        List<PullProgress> events = Collections.synchronizedList(new ArrayList<>());
+        hub().pull(set, events::add);
+        List<PullProgress> after = events.stream().filter(e -> e.phase() != Phase.CHECKING).toList();
+        assertEquals(Phase.PRESENT, after.get(0).phase());
+        assertEquals(partial, after.get(0).setBytesDone(), "the bar starts where the last pull stopped");
+        long prev = -1;
+        for (PullProgress e : after) {
+            assertEquals(b.content().length, e.setBytesTotal());
+            assertTrue(e.setBytesDone() >= prev, "the bar never goes back");
+            prev = e.setBytesDone();
+        }
+        PullProgress last = after.get(after.size() - 1);
+        assertEquals(Phase.DONE, last.phase());
+        assertEquals(b.content().length, last.setBytesDone());
+        assertEquals(1.0, last.fraction());
+    }
+
     @Test void requireNamesTheMissingParts() {
         var set = set("flux", Part.of("vae", REPO, "vae.safetensors"));
         var e = assertThrows(IllegalStateException.class, () -> hub().require(set));

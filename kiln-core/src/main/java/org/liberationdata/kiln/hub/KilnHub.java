@@ -156,8 +156,8 @@ public final class KilnHub {
             for (CacheLayout.Pending pending : cache.pendings(s.repo())) {
                 if (!pending.path().equals(s.file())) continue;
                 Path incomplete = cache.incomplete(s.repo(), pending.etag());
-                if (Files.isRegularFile(incomplete))
-                    return new PartStatus(part, State.PARTIAL, incomplete, Where.HF_CACHE, sizeOf(incomplete), pending.size());
+                if (Files.isRegularFile(incomplete))   // sizeOrZero: the pull may finish, and move it, meanwhile
+                    return new PartStatus(part, State.PARTIAL, incomplete, Where.HF_CACHE, sizeOrZero(incomplete), pending.size());
             }
         }
         return new PartStatus(part, State.MISSING, null, null, 0, -1);

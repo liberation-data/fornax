@@ -1,5 +1,7 @@
 package org.liberationdata.kiln.hub;
 
+import org.liberationdata.kiln.HfCache;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,8 +15,8 @@ public final class HubToken {
     private HubToken() {}
 
     /**
-     * {@code HF_TOKEN}, else the file {@code hf auth login} writes: {@code HF_TOKEN_PATH}, else {@code $HF_HOME/token},
-     * else {@code ~/.cache/huggingface/token}.
+     * {@code HF_TOKEN}, else the file {@code hf auth login} writes: {@code HF_TOKEN_PATH}, else {@code token} in
+     * {@link HfCache#home()} ({@code $HF_HOME}, {@code $XDG_CACHE_HOME/huggingface} or {@code ~/.cache/huggingface}).
      */
     public static Optional<String> find() {
         String env = System.getenv("HF_TOKEN");
@@ -25,10 +27,7 @@ public final class HubToken {
     /** Where {@code hf auth login} keeps the token. */
     public static Path tokenFile() {
         String path = System.getenv("HF_TOKEN_PATH");
-        if (path != null && !path.isBlank()) return Path.of(path);
-        String home = System.getenv("HF_HOME");
-        return (home == null || home.isBlank() ? Path.of(System.getProperty("user.home"), ".cache", "huggingface") : Path.of(home))
-                .resolve("token");
+        return path != null && !path.isBlank() ? HfCache.expandHome(path) : HfCache.home().resolve("token");
     }
 
     static Optional<String> fromFile(Path p) {

@@ -64,7 +64,7 @@ It has what a progress bar needs:
 | `part()`, `index()`, `count()` | which part, and how many there are |
 | `bytesDone()`, `bytesTotal()` | this part's bytes on disk, and its size |
 | `setBytesDone()`, `setBytesTotal()` | the same for all the parts this pull downloads. Parts that were already on disk are not counted |
-| `fraction()` | `setBytesDone / setBytesTotal`, from 0 to 1 |
+| `fraction()` | `setBytesDone / setBytesTotal`, from 0 to 1; `-1` while the sizes are not known yet (the `CHECKING` events) |
 | `bytesPerSecond()` | the download rate so far. Bytes resumed from an earlier pull are not counted |
 | `eta()` | the time left at that rate |
 
@@ -149,7 +149,7 @@ enough). Give the token to Kiln in one of these ways:
 
 - set `HF_TOKEN`;
 - run `hf auth login`, which saves it where Kiln looks for it (`HF_TOKEN_PATH`, else `$HF_HOME/token`, else
-  `~/.cache/huggingface/token`);
+  `$XDG_CACHE_HOME/huggingface/token`, else `~/.cache/huggingface/token`);
 - pass it to the builder: `KilnHub.builder().token("hf_...").build()`.
 
 Without a token, or with a token that has not accepted the terms, the pull fails with `HubException` (reason
@@ -211,7 +211,7 @@ A `Source` can pin a revision: `new ModelSet.Source(repo, file, "<40-character c
 
 | Setting | |
 |---|---|
-| `HF_HUB_CACHE`, `HF_HOME` | where the cache is: `HF_HUB_CACHE`, else `$HF_HOME/hub`, else `~/.cache/huggingface/hub`. `KilnHub.builder().cacheRoot(path)` overrides them |
+| `HF_HUB_CACHE`, `HF_HOME` | where the cache is: `HF_HUB_CACHE`, else `$HF_HOME/hub`, else `$XDG_CACHE_HOME/huggingface/hub`, else `~/.cache/huggingface/hub`, as `hf` has it. `KilnHub.builder().cacheRoot(path)` overrides them |
 | `-Dkiln.modelDirs`, `KILN_MODEL_DIRS` | model folders searched after the cache |
 | `HF_TOKEN`, `HF_TOKEN_PATH` | the access token for gated repos |
 | `HF_ENDPOINT` | the Hub to download from (default `https://huggingface.co`), for a mirror |

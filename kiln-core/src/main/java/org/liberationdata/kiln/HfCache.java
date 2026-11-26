@@ -11,17 +11,34 @@ import java.util.stream.Stream;
  * Finds files already downloaded into a Hugging Face hub cache (for example with {@code hf download}).
  * To download them too, or find them in a ComfyUI models folder, see {@link org.liberationdata.kiln.hub.KilnHub}.
  *
- * <p>Cache location: {@code HF_HUB_CACHE}, else {@code $HF_HOME/hub}, else {@code ~/.cache/huggingface/hub}.
+ * <p>Cache location: {@code HF_HUB_CACHE}, else {@code $HF_HOME/hub}, else {@code $XDG_CACHE_HOME/huggingface/hub},
+ * else {@code ~/.cache/huggingface/hub}, as {@code huggingface_hub} has it (a leading {@code ~} is the home directory).
  */
 public final class HfCache {
     private HfCache() {}
 
     public static Path root() {
         String hub = System.getenv("HF_HUB_CACHE");
-        if (hub != null && !hub.isBlank()) return Path.of(hub);
+        return hub != null && !hub.isBlank() ? expandHome(hub) : home().resolve("hub");
+    }
+
+    /**
+     * Where {@code huggingface_hub} keeps its files (the cache, the token): {@code HF_HOME}, else
+     * {@code $XDG_CACHE_HOME/huggingface}, else {@code ~/.cache/huggingface}.
+     */
+    public static Path home() {
         String home = System.getenv("HF_HOME");
-        if (home != null && !home.isBlank()) return Path.of(home, "hub");
-        return Path.of(System.getProperty("user.home"), ".cache", "huggingface", "hub");
+        if (home != null && !home.isBlank()) return expandHome(home);
+        String xdg = System.getenv("XDG_CACHE_HOME");
+        return (xdg != null && !xdg.isBlank() ? expandHome(xdg) : Path.of(System.getProperty("user.home"), ".cache")).resolve("huggingface");
+    }
+
+    /** The path, with a leading {@code ~} as the home directory, as Python's {@code expanduser} reads it. */
+    public static Path expandHome(String path) {
+        String p = path.trim();
+        if (p.equals("~") || p.startsWith("~/") || p.startsWith("~" + java.io.File.separator))
+            return Path.of(System.getProperty("user.home") + p.substring(1));
+        return Path.of(p);
     }
 
     /** The file at {@code path} inside any downloaded snapshot of {@code repo} (e.g. "unsloth/Qwen3-4B-GGUF"). */
