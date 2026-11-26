@@ -203,6 +203,8 @@ class AudioTest {
         Audio s = Audio.ofMono(new float[] {1, 1, 1, 1}, 4).section(0.5, 1.0);
         assertArrayEquals(new float[] {1, 1, 0, 0}, s.left());
         assertArrayEquals(new float[4], Audio.ofMono(new float[] {1}, 4).section(2, 1).left());
+        // a start whose sample index is past Integer.MAX_VALUE is still past the end, not a wrapped offset
+        assertArrayEquals(new float[48], Audio.ofMono(new float[] {1, 1}, 48000).section(50000, 0.001).left());
     }
 
     @Test

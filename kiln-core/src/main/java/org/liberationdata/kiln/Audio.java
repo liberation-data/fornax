@@ -21,12 +21,13 @@ public record Audio(float[] left, float[] right, int sampleRate) {
     public Audio section(double start, double seconds) {
         if (start < 0 || seconds <= 0 || !Double.isFinite(start) || !Double.isFinite(seconds))
             throw new IllegalArgumentException("section needs start >= 0 and seconds > 0, got " + start + ", " + seconds);
-        int from = (int) Math.round(start * sampleRate), n = (int) Math.ceil(seconds * sampleRate - 1e-9);
+        long from = Math.round(start * sampleRate);
+        int n = (int) Math.ceil(seconds * sampleRate - 1e-9);
         float[] l = new float[n], r = new float[n];
-        int copy = Math.max(0, Math.min(n, left.length - from));
+        int copy = (int) Math.max(0, Math.min(n, left.length - from));
         if (copy > 0) {
-            System.arraycopy(left, from, l, 0, copy);
-            System.arraycopy(right, from, r, 0, copy);
+            System.arraycopy(left, (int) from, l, 0, copy);
+            System.arraycopy(right, (int) from, r, 0, copy);
         }
         return new Audio(l, r, sampleRate);
     }
