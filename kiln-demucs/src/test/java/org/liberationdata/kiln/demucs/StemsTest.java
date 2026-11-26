@@ -70,5 +70,7 @@ class StemsTest {
         var e = assertThrows(IllegalArgumentException.class, () -> Stems.of(List.of("vocals", "drums"), List.of(a(1, 1), shorter)));
         assertTrue(e.getMessage().contains("drums"), e.getMessage());
         assertThrows(IllegalArgumentException.class, () -> Stems.of(List.of("vocals", "drums"), List.of(a(1, 1), slower)));
+        Audio shortRight = new Audio(new float[2], new float[1], 44100);
+        assertThrows(IllegalArgumentException.class, () -> Stems.of(List.of("vocals", "drums"), List.of(a(1, 1), shortRight)));
     }
 }

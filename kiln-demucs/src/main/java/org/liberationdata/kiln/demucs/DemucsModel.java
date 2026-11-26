@@ -69,20 +69,19 @@ public final class DemucsModel implements AutoCloseable {
     static {
         try {
             ON_PROGRESS = MethodHandles.lookup().findStatic(DemucsModel.class, "onProgress",
-                    MethodType.methodType(void.class, int.class, int.class, MemorySegment.class));
+                    MethodType.methodType(void.class, Sink.class, int.class, int.class, MemorySegment.class));
         } catch (ReflectiveOperationException e) { throw new ExceptionInInitializerError(e); }
     }
     private record Sink(Call call, Progress progress) {}
 
-    private static final ThreadLocal<Sink> SINK = new ThreadLocal<>();
-
     /**
-     * The progress upcall. Nothing may escape it: an exception thrown into the engine's frames kills the JVM. So a
-     * listener's exception is recorded in the call, which cancels the separation, and {@link #separate} rethrows it.
+     * The progress upcall, bound to its call's sink in that call's own stub (not a thread-local, which a call to
+     * another DemucsModel from the callback, on the same thread, would replace and clear). Nothing may escape it: an
+     * exception thrown into the engine's frames kills the JVM. So a listener's exception is recorded in the call,
+     * which cancels the separation, and {@link #separate} rethrows it.
      */
-    private static void onProgress(int done, int total, MemorySegment user) {
-        Sink sink = SINK.get();
-        if (sink == null || sink.call().stopRequested()) return;
+    private static void onProgress(Sink sink, int done, int total, MemorySegment user) {
+        if (sink.call().stopRequested()) return;
         try {
             sink.progress().update(done, total);
         } catch (Throwable t) {
@@ -228,10 +227,8 @@ public final class DemucsModel implements AutoCloseable {
             MemorySegment.copy(audio.left(), 0, pcm, JAVA_FLOAT, 0, n);
             MemorySegment.copy(audio.right(), 0, pcm, JAVA_FLOAT, (long) n * Float.BYTES, n);
             MemorySegment cb = MemorySegment.NULL;
-            if (progress != null) {
-                SINK.set(new Sink(call, progress));
-                cb = NativeLibrary.linker().upcallStub(ON_PROGRESS, PROGRESS_CB, a);
-            }
+            if (progress != null)
+                cb = NativeLibrary.linker().upcallStub(MethodHandles.insertArguments(ON_PROGRESS, 0, new Sink(call, progress)), PROGRESS_CB, a);
             MemorySegment out = a.allocate(ADDRESS);
             int rc = (int) SEPARATE.invokeExact(handle, pcm, (long) n, 2, audio.sampleRate(), o.shifts(), o.overlap(),
                     o.seed(), cb, MemorySegment.NULL, out);
@@ -256,7 +253,6 @@ public final class DemucsModel implements AutoCloseable {
             }
             return Stems.of(sources, stems);
         } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
-        finally { SINK.remove(); }
     }
 
     private static void destroy(MemorySegment h) {

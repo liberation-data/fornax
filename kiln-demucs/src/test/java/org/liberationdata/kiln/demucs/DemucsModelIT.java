@@ -188,6 +188,26 @@ class DemucsModelIT {
         assertEquals(4, demucs.separate(slice(mix, 0, 1)).names().size());
     }
 
+    /** A second model used from the first one's callback, on the same thread, must not take its progress over. */
+    @Test
+    void anotherModelCalledFromTheProgressCallbackLeavesItsProgressAlone() {
+        try (var other = new DemucsModel(DemucsModel.Weights.HTDEMUCS)) {
+            List<Integer> seen = new ArrayList<>();
+            int[] total = {0};
+            demucs.separate(mix, DemucsModel.Options.DEFAULT, (done, t) -> {
+                seen.add(done);
+                total[0] = t;
+                if (done == 1) other.separate(slice(mix, 0, 1), DemucsModel.Options.DEFAULT, (d, tt) -> {});
+            });
+            assertEquals(total[0], seen.getLast(), "progress after the nested call was lost: " + seen);
+            var e = assertThrows(IllegalStateException.class, () -> demucs.separate(mix, DemucsModel.Options.DEFAULT, (done, t) -> {
+                if (done == 1) other.separate(slice(mix, 0, 1), DemucsModel.Options.DEFAULT, (d, tt) -> {});
+                if (done == 2) throw new IllegalStateException("after");
+            }));
+            assertEquals("after", e.getMessage());
+        }
+    }
+
     @Test
     void separatesAsyncAndCancelsThroughTheFuture() {
         Stems s = demucs.separateAsync(slice(mix, 0, 3)).join();
