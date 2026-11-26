@@ -9,7 +9,7 @@ import java.util.stream.Stream;
 
 /**
  * Finds files already downloaded into a Hugging Face hub cache (for example with {@code hf download}).
- * Kiln never downloads anything itself.
+ * To download them too, or find them in a ComfyUI models folder, see {@link org.liberationdata.kiln.hub.KilnHub}.
  *
  * <p>Cache location: {@code HF_HUB_CACHE}, else {@code $HF_HOME/hub}, else {@code ~/.cache/huggingface/hub}.
  */

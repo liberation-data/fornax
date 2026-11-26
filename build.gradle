@@ -55,7 +55,7 @@ subprojects {
 
 // What goes to Maven Central, as org.kiln4j:<project name>. The version is gradle.properties' unless -Pversion=...
 def published = [
-    'kiln-core'   : 'Kiln core: native library loading, Hugging Face cache lookup, audio and the model pool',
+    'kiln-core'   : 'Kiln core: native library loading, model download and Hugging Face cache lookup, audio and the model pool',
     'kiln-llama'  : 'Kiln llama: GGUF language and vision language models through llama.cpp, in-process via Java FFM',
     'kiln-tts'    : 'Kiln TTS: text to speech through llama.cpp (mtmd), in-process via Java FFM',
     'kiln-sd'     : 'Kiln SD: images and video through stable-diffusion.cpp, in-process via Java FFM',
