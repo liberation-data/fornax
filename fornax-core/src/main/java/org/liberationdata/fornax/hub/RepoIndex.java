@@ -10,7 +10,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,14 +32,17 @@ public final class RepoIndex {
     private final String token;
     private final boolean offline;
     // redirects are followed by hand, so the token goes to the endpoint only (Java 22's client forwards it anywhere)
-    private final HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER)
-            .connectTimeout(Duration.ofSeconds(30)).build();
+    private final HttpClient http;
 
     /** The Hub at {@code endpoint}, with {@code token} (or null) for private and gated repos, online. */
     public RepoIndex(URI endpoint, String token) { this(endpoint, token, false); }
 
     /** {@code offline}: {@link #info} fails at once, as {@code FornaxHub} does for a missing file under HF_HUB_OFFLINE. */
-    public RepoIndex(URI endpoint, String token, boolean offline) {
+    public RepoIndex(URI endpoint, String token, boolean offline) { this(endpoint, token, offline, HubHttp.defaultClient()); }
+
+    /** {@code http} must not follow redirects ({@link FornaxHub.Builder#httpClient}): they're followed by hand. */
+    RepoIndex(URI endpoint, String token, boolean offline, HttpClient http) {
+        this.http = http;
         this.endpoint = URI.create(endpoint.toString().replaceAll("/+$", ""));
         this.token = token;
         this.offline = offline;

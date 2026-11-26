@@ -85,12 +85,12 @@ public final class FornaxHub {
         this.folders = b.folders != null ? b.folders : ModelFolders.configured();
         URI endpoint = b.endpoint != null ? b.endpoint : defaultEndpoint();
         String token = b.tokenSet ? b.token : HubToken.find().orElse(null);
-        this.http = new HubHttp(URI.create(endpoint.toString().replaceAll("/+$", "")), token,
-                b.httpClient != null ? b.httpClient : HubHttp.defaultClient(), b.retryDelay);
+        HttpClient client = b.httpClient != null ? b.httpClient : HubHttp.defaultClient();
+        this.http = new HubHttp(URI.create(endpoint.toString().replaceAll("/+$", "")), token, client, b.retryDelay);
         this.reserveBytes = b.reserveBytes;
         this.offline = b.offline != null ? b.offline : envFlag("HF_HUB_OFFLINE");
         this.catalogue = b.catalogue != null ? List.copyOf(b.catalogue) : ModelCatalog.all();
-        this.index = new RepoIndex(endpoint, token, offline);
+        this.index = new RepoIndex(endpoint, token, offline, client);   // one client: the builder's, if given
     }
 
     /**

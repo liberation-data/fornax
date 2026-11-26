@@ -152,6 +152,16 @@ class FetchTest {
         assertTrue(hub.isReference(REPO));
     }
 
+    @Test void theListingGoesThroughTheBuildersClient() throws Exception {
+        // a host only the client's proxy can reach: the listing must use the client given, as downloads do
+        var viaProxy = java.net.http.HttpClient.newBuilder().followRedirects(java.net.http.HttpClient.Redirect.NEVER)
+                .proxy(java.net.ProxySelector.of(new java.net.InetSocketAddress(fake.endpoint().getHost(), fake.endpoint().getPort())))
+                .build();
+        var hub = builder().endpoint(java.net.URI.create("http://hub.invalid")).httpClient(viaProxy).build();
+        assertEquals("m-Q8_0.gguf", hub.resolve(ModelRef.parse(REPO + ":Q8_0")).parts().get(0).primary().file());
+        assertEquals(List.of(REPO + "@main"), fake.listings);
+    }
+
     @Test void offlineWithNothingCachedSaysSo() {
         var e = assertThrows(HubException.class, () -> builder().offline(true).build().fetch(REPO + ":Q8_0", PullListener.NONE));
         assertEquals(HubException.Reason.OFFLINE, e.reason());

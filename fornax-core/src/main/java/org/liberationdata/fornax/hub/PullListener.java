@@ -31,7 +31,7 @@ public interface PullListener {
                             started = p.part();
                             next = now + 10_000_000_000L;
                             log.log(System.Logger.Level.INFO, "Downloading " + p.set().id() + ": " + p.part().primary().repo()
-                                    + " " + p.part().primary().file() + " (" + FornaxHub.bytes(p.bytesTotal()) + ")");
+                                    + " " + p.part().primary().file() + (p.bytesTotal() < 0 ? "" : " (" + FornaxHub.bytes(p.bytesTotal()) + ")"));
                         } else if (now >= next) {
                             next = now + 10_000_000_000L;
                             double f = p.fraction();
