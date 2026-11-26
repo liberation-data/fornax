@@ -48,7 +48,7 @@ class GpuCheckTest {
         UnsatisfiedLinkError e = assertThrows(UnsatisfiedLinkError.class,
                 () -> GpuCheck.decide(GpuCheck.Gpu.VULKAN, "libkiln_llama.so", OptionalInt.of(0), false, m -> {}));
         assertTrue(e.getMessage().contains("Kiln found no GPU for libkiln_llama.so, which is built for Vulkan"), e.getMessage());
-        assertTrue(e.getMessage().contains("sudo dnf install vulkan-loader mesa-vulkan-drivers"), e.getMessage());
+        assertTrue(e.getMessage().contains("sudo dnf install vulkan-loader mesa-vulkan-drivers vulkan-tools"), e.getMessage());
         assertTrue(e.getMessage().contains("vulkaninfo --summary"), e.getMessage());
         assertTrue(e.getMessage().contains(GpuCheck.DOCS), e.getMessage());
         assertTrue(e.getMessage().contains("-Dkiln.allowCpu=true"), e.getMessage());
@@ -89,6 +89,65 @@ class GpuCheckTest {
         IllegalArgumentException failure = new IllegalArgumentException("Cannot open library");
         assertDoesNotThrow(() -> GpuCheck.explainLoadFailure(vulkan, failure, n -> true));
         assertDoesNotThrow(() -> GpuCheck.explainLoadFailure(cpu, failure, n -> false));
+    }
+
+    @Test
+    void asksVulkanHowManyGpusItHas() throws IOException {
+        assumeTrue(System.getProperty("os.name").toLowerCase().startsWith("linux"));
+        assumeTrue(loads("libvulkan.so.1"));
+        assumeTrue(System.getenv("GGML_VK_VISIBLE_DEVICES") == null);
+        OptionalInt gpus = GpuCheck.gpus(GpuCheck.Gpu.VULKAN);
+        assertTrue(gpus.isPresent(), "the probe couldn't tell");
+        boolean renderNode;
+        try (var nodes = Files.list(Path.of("/dev/dri")).filter(p -> p.getFileName().toString().startsWith("renderD"))) {
+            renderNode = nodes.findAny().isPresent();
+        } catch (IOException e) {
+            renderNode = false;
+        }
+        if (!renderNode) assertEquals(0, gpus.getAsInt(), "no GPU device, yet Vulkan counted a GPU (llvmpipe?)");
+    }
+
+    @Test
+    void noCudaDriverMeansNoGpu() {
+        assumeTrue(System.getProperty("os.name").toLowerCase().startsWith("linux"));
+        assumeTrue(!loads("libcuda.so.1"));
+        assertEquals(OptionalInt.of(0), GpuCheck.gpus(GpuCheck.Gpu.CUDA));
+    }
+
+    @Test
+    void allowsTheCpuOnlyWhenAskedTo() {
+        assumeTrue(System.getenv("KILN_ALLOW_CPU") == null);
+        String before = System.getProperty(GpuCheck.ALLOW_CPU);
+        try {
+            System.clearProperty(GpuCheck.ALLOW_CPU);
+            assertEquals(false, GpuCheck.allowCpu());
+            for (String yes : List.of("true", "TRUE", "1")) {
+                System.setProperty(GpuCheck.ALLOW_CPU, yes);
+                assertTrue(GpuCheck.allowCpu(), yes);
+            }
+            for (String no : List.of("false", "0", "yes")) {
+                System.setProperty(GpuCheck.ALLOW_CPU, no);
+                assertEquals(false, GpuCheck.allowCpu(), no);
+            }
+        } finally {
+            if (before == null) System.clearProperty(GpuCheck.ALLOW_CPU);
+            else System.setProperty(GpuCheck.ALLOW_CPU, before);
+        }
+    }
+
+    @Test
+    void leavesACpuBuildAlone() throws IOException {
+        Path cpu = lib("libkiln_cpu.so", ascii("\0libm.so.6\0libgomp.so.1\0"));
+        assertDoesNotThrow(() -> GpuCheck.requireGpu(cpu));
+    }
+
+    private static boolean loads(String name) {
+        try {
+            java.lang.foreign.SymbolLookup.libraryLookup(name, java.lang.foreign.Arena.global());
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     @Test

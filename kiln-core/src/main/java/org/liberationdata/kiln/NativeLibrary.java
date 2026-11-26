@@ -28,7 +28,8 @@ import java.util.Optional;
  * </ol>
  *
  * <p>On Linux, a library built for a GPU (Vulkan, HIP, CUDA) refuses to start on a machine where that GPU runtime
- * finds no GPU, since its engine would otherwise run on the CPU without a word, and says what to install. Set
+ * finds no GPU, since its engine would otherwise run on the CPU without a word, and says what to install. (Not one the
+ * platform loader finds: Kiln doesn't know its file, so can't tell what it was built for.) Set
  * {@code -Dkiln.allowCpu=true} (or {@code KILN_ALLOW_CPU=true}) to run on the CPU anyway. See {@link GpuCheck}.
  *
  * <p>Before the first library loads, Kiln sets the engines' tunables that it gives a default to, as environment

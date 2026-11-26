@@ -129,10 +129,10 @@ final class GpuCheck {
         return switch (gpu) {
             case VULKAN -> """
                     Install your GPU's Vulkan driver:
-                      Fedora:          sudo dnf install vulkan-loader mesa-vulkan-drivers
-                      Ubuntu, Debian:  sudo apt install libvulkan1 mesa-vulkan-drivers
-                      Arch:            sudo pacman -S vulkan-icd-loader vulkan-radeon   (vulkan-intel for Intel)
-                      openSUSE:        sudo zypper install libvulkan1 libvulkan_radeon  (libvulkan_intel for Intel)
+                      Fedora:          sudo dnf install vulkan-loader mesa-vulkan-drivers vulkan-tools
+                      Ubuntu, Debian:  sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools
+                      Arch:            sudo pacman -S vulkan-icd-loader vulkan-tools vulkan-radeon   (vulkan-intel for Intel)
+                      openSUSE:        sudo zypper install libvulkan1 vulkan-tools libvulkan_radeon  (libvulkan_intel for Intel)
                     NVIDIA: install NVIDIA's driver, which includes Vulkan.
                     Then check that your GPU is listed:  vulkaninfo --summary
                     """ + guide();
