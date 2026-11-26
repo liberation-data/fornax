@@ -20,7 +20,12 @@ Package `org.liberationdata.kiln`. The engine modules depend on it.
 
 | Type | |
 |---|---|
-| `HfCache` | finds files in the Hugging Face cache: `root()`, `find(repo, path)`, `require(repo, path)`, `requireAny(repo, path, ...)` |
+| `HfCache` | finds files in the Hugging Face cache: `root()`, `home()`, `find(repo, path)`, `require(repo, path)`, `requireAny(repo, path, ...)` |
+| `hub.KilnHub` | pulls, finds, reports and evicts model sets: `standard()`, `builder()`, `pull(set, listener)`, `pullAsync`, `plan`, `status`, `find`, `require`, `evict`. See [Downloading models](/docs/guides/models/) |
+| `hub.ModelSet` | a model as a set of files by role: `id`, `kind`, `title`, `engine`, `parts`, `license`, `gated`, `aliases`; `Part` (role and sources), `Source` (repo, file, revision) |
+| `hub.ModelCatalog` | the models Kiln's examples, CLI and Studio use: `all()`, `of(kind)`, `byName`, `require` |
+| `hub.ModelFolders` | folders searched after the cache (a ComfyUI `models/`): `configured()`, `find(part)` |
+| `hub.PullProgress`, `PullTask`, `PullPlan`, `ModelStatus`, `Eviction`, `HubException`, `HubToken` | a pull's progress, a background pull, its sizes, what is on disk, what eviction did, failures by reason, and where the token comes from |
 | `ModelPool` | keeps models loaded within a memory budget: `acquire(key, sizeBytes, loader)` returns a `Lease`; `unload`, `unloadAll`, `entries`, `loadedBytes`, `sizeOf(Path...)`. See [ModelPool and memory](/docs/guides/model-pool/) |
 | `ModelPool.Lease<M>` | a borrowed model: `model()`; `close()` gives it back |
 | `ModelPool.Entry` | a snapshot of one pooled model: `key`, `sizeBytes`, `loaded`, `inUse`, `lastUsed` |
@@ -154,4 +159,6 @@ used end to end.
 | `-Dkiln.vulkan.maxNodesPerSubmit` | graph nodes per Vulkan submission |
 | `KILN_VERBOSE` | the engines' own logs; `debug` for everything from stable-diffusion.cpp |
 | `KILN_ACESTEP_VAE_CHUNK` | ACE-Step's VAE decode tile, in frames (512) |
-| `HF_HUB_CACHE`, `HF_HOME` | where `HfCache` looks |
+| `HF_HUB_CACHE`, `HF_HOME` | where `HfCache` and `KilnHub` look |
+| `-Dkiln.modelDirs`, `KILN_MODEL_DIRS` | model folders `KilnHub` searches after the cache |
+| `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`), `HF_TOKEN_PATH`, `HF_ENDPOINT`, `HF_HUB_OFFLINE` | `KilnHub`'s token for gated repos, the Hub to download from, and no network |

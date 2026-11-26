@@ -237,8 +237,14 @@ compute timeout and lose the device. Kiln decodes ACE-Step audio in 512-frame ti
 
 ## Models
 
-Kiln doesn't download anything. Fetch weights with the Hugging Face CLI, and `HfCache` finds them in the cache
-(`HF_HUB_CACHE`, `HF_HOME/hub` or `~/.cache/huggingface/hub`), or pass file paths directly.
+Kiln finds weights in the Hugging Face cache (`HF_HUB_CACHE`, `HF_HOME/hub` or `~/.cache/huggingface/hub`), or you
+pass file paths directly. `KilnHub`, in `kiln-core`, can also download them: `KilnHub.standard().pull(set, listener)`
+fetches a model's missing files (FLUX.2 [klein] is three, LTX-2.5 five) into the cache, in the layout `hf` uses, with
+resume, SHA-256 checks, progress, and a token for gated repos. It also finds weights in a ComfyUI models folder
+(`KILN_MODEL_DIRS`), reports what is on disk, and evicts a model's files. `ModelCatalog` lists the models Kiln's
+examples use. See [Downloading models](https://kiln4j.org/docs/guides/models/).
+
+Or fetch the files with the Hugging Face CLI:
 
 ```sh
 hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
