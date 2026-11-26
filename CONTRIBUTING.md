@@ -19,7 +19,7 @@ See [Building](README.md#building) for the toolchain and `native/build.sh`. Then
 ```
 
 The integration tests (`*IT`) skip themselves when their model isn't in the Hugging Face cache, so on a machine with
-no models downloaded `./gradlew build` needs only the JDK. Those model-free tests must pass on every change. If you
+no models downloaded `./gradlew build` needs only JDK 25. Those model-free tests must pass on every change. If you
 do have models downloaded, build the natives first (`native/build.sh`): a test whose model is there loads it. When you touch an engine, also run its integration tests (`*IT`) with the model downloaded, and say in
 the pull request which ones you ran and on what hardware.
 
