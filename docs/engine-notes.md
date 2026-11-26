@@ -69,6 +69,20 @@ surprises you.
   average, ends from 0.76 s to 0.08 s (synthesized narration with known gaps). Whisper's timestamp tokens (no DTW)
   were worse: starts up to 0.5 s early or late, and ends that ran into the next sentence.
 - **large-v3-turbo's segment times are coarse**, often whole seconds. Kiln fits each segment to its words.
+- **`no_context` is per call, not per window.** It only clears the text a previous `whisper_full` call left in the
+  state (and is on by default). Each 30 s window within a call is still prompted with the text before it, up to
+  `n_max_text_ctx` tokens; OpenAI's `condition_on_previous_text=False` is `n_max_text_ctx = 0`. The shim always sets
+  `no_context`, so transcriptions are independent, and `Options.conditionOnPreviousText(false)` sets
+  `n_max_text_ctx` to 0.
+- **VAD doesn't map DTW times.** With `vad` on, whisper.cpp transcribes the speech segments joined (each plus
+  `samples_overlap` of the audio after it, with 0.1 s of silence between) and maps segment and token `t0`/`t1` back to
+  the original audio, but not `t_dtw`. `Words.VadTimeline` rebuilds that layout from `whisper_full_get_vad_segment_t0`
+  and `_t1` and maps DTW times the way `whisper_map_token_time_segment_aware` does. VAD runs on the CPU, and the
+  state keeps the first VAD model it loads, whatever path a later call gives.
+- **Repeats in silence.** On a sung vocal stem with a near-silent 30 s outro, large-v3-turbo repeated the last line 24
+  times with the defaults. VAD, `n_max_text_ctx = 0`, `entropy_thold` 2.8 and `suppress_nst` each stopped it (the
+  speech-to-text guide has the numbers). `suppress_nst` also took out most commas and full stops, though they aren't
+  on its list.
 - **SPIRV-Headers.** whisper.cpp v1.9.6's ggml finds SPIRV-Headers but doesn't link the target into ggml-vulkan, so the
   headers must be on the compiler's include path. Fedora's `spirv-headers-devel` puts them in `/usr/include`; for a
   private install, pass `CMAKE_EXTRA="-DCMAKE_CXX_FLAGS=-I<prefix>/include"`.

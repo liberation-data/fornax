@@ -121,7 +121,9 @@ Package `org.liberationdata.kiln.whisper`. See [Speech to text](/docs/guides/spe
 | `multilingual()`, `type()`, `cancel()` | English-only or not, the model size, and stopping a call from another thread |
 | `WhisperModel.Weights` | the models Kiln knows by name: `LARGE_V3_TURBO`, `LARGE_V3_TURBO_Q8_0`, `BASE_EN`; `named(...)`, `path()`, `downloaded()`, `alignment` |
 | `WhisperModel.Alignment` | the DTW alignment heads for a model size (`LARGE_V3_TURBO`, `BASE_EN`, ...), or `NONE` |
-| `WhisperModel.Options` | `language`, `translate`, `initialPrompt`, `threads`, `beamSize`, `temperature`; `DEFAULT` and a `with...` for each |
+| `WhisperModel.Options` | `language`, `translate`, `initialPrompt`, `threads`, `beamSize`, `temperature`, `conditionOnPreviousText`, `suppressNonSpeech`, `temperatureIncrement`, `entropyThreshold`, `logProbThreshold`, `noSpeechThreshold`, `vad`; `DEFAULT` and a `with...` for each |
+| `WhisperModel.Vad` | voice activity detection: `Vad.of(path)` or `Vad.of(VadWeights)`, then `withThreshold`, `withMinSpeechMs`, `withMinSilenceMs`, `withMaxSpeechSeconds`, `withSpeechPadMs`, `withOverlapSeconds` |
+| `WhisperModel.VadWeights` | Silero VAD models by name: `SILERO_V6_2_0`, `SILERO_V5_1_2`; `named(...)`, `path()`, `downloaded()` |
 | `WhisperModel.Listener` | `progress(percent)` and `segment(segment)` as the transcription runs |
 | `Transcript` | `text`, `language`, `segments`; `words()`, `wordsTsv()`, `srt()`, `vtt()` |
 | `Transcript.Segment`, `Transcript.Word` | `start`, `end` (seconds), `text`; a segment's `words`, a word's `probability` |
