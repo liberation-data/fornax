@@ -174,6 +174,20 @@ class DemucsModelIT {
         assertThrows(IllegalArgumentException.class, () -> demucs.separate(new Audio(new float[0], new float[0], 44100)));
     }
 
+    @Test
+    void aMissingModelFileIsAnError() {
+        var e = assertThrows(IllegalStateException.class, () -> new DemucsModel("/nonexistent/htdemucs.gguf"));
+        assertTrue(e.getMessage().contains("/nonexistent/htdemucs.gguf"), e.getMessage());
+    }
+
+    @Test
+    void closeIsIdempotentAndLaterCallsAreRefused() {
+        var m = new DemucsModel(DemucsModel.Weights.HTDEMUCS);
+        m.close();
+        m.close();
+        assertThrows(IllegalStateException.class, () -> m.separate(slice(mix, 0, 1)));
+    }
+
     // ---- the episode's song against torchaudio's Hybrid Demucs ----
 
     static String setting(String property, String env) {
