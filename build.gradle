@@ -147,6 +147,8 @@ project(':fornax-examples') {
     // website's pages by scripts/Snippets.java. checkSnippets fails the build when a doc's block differs from its
     // region, so an API change that breaks an example breaks the build. ./gradlew syncSnippets rewrites the blocks.
     sourceSets { snippets { compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output } }
+    // SnippetsTest calls the script's methods, so the tests compile it too
+    sourceSets { test { java { srcDir rootProject.file('scripts') } } }
     // the language-models guide's JSON examples use Jackson, as an app would
     dependencies { snippetsImplementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0' }
     def snippetJava = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }

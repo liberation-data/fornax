@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -33,10 +34,13 @@ import java.util.stream.Stream;
  * Either way it fails for a marker whose region isn't there, and for a Java block with no marker.
  */
 public class Snippets {
-    static final Path ROOT = Path.of("").toAbsolutePath();
-    static final Path SOURCES = Path.of("fornax-examples/src/snippets/java/org/liberationdata/fornax/snippets");
+    /** The repository: the script's parent's parent when run as {@code java scripts/Snippets.java}, so any directory works. */
+    static final Path ROOT = Optional.ofNullable(System.getProperty("jdk.launcher.sourcefile"))
+            .map(f -> Path.of(f).toAbsolutePath().getParent().getParent()).orElse(Path.of("").toAbsolutePath());
+    static final Path SOURCES = rel(ROOT.resolve("fornax-examples/src/snippets/java/org/liberationdata/fornax/snippets"));
     static final Pattern MARKER = Pattern.compile("^\\s*(?:<!--|\\{/\\*)\\s*snippet:\\s*([\\w-]+)#([\\w-]+)\\s*(?:-->|\\*/})\\s*$");
-    static final Pattern FENCE = Pattern.compile("^(\\s*)```(\\S*).*$");
+    // a fence opens with 3+ backticks or tildes, then the info string, whose first word is the language
+    static final Pattern FENCE = Pattern.compile("^(\\s*)(`{3,}|~{3,})\\s*([^\\s`]*).*$");
     static final Pattern REGION = Pattern.compile("//\\s*--8<--\\s*\\[(start|end):([\\w-]+)]");
     static final String SKIP = "// --8<-- [skip]";
 
@@ -61,26 +65,33 @@ public class Snippets {
     }
 
     static List<Path> allDocs() throws IOException {
-        List<Path> out = new ArrayList<>(List.of(Path.of("README.md")));
-        try (Stream<Path> s = Files.walk(Path.of("website/src/content/docs"))) {
-            s.filter(p -> p.toString().endsWith(".md") || p.toString().endsWith(".mdx")).sorted().forEach(out::add);
+        List<Path> out = new ArrayList<>(List.of(rel(ROOT.resolve("README.md"))));
+        try (Stream<Path> s = Files.walk(ROOT.resolve("website/src/content/docs"))) {
+            s.filter(p -> p.toString().endsWith(".md") || p.toString().endsWith(".mdx")).sorted().map(Snippets::rel).forEach(out::add);
         }
         return out;
     }
 
+    /** The path relative to the working directory, for messages, when it is under it. */
+    static Path rel(Path p) {
+        Path cwd = Path.of("").toAbsolutePath();
+        return p.startsWith(cwd) ? cwd.relativize(p) : p;
+    }
+
     /** The doc with every marked Java block's body replaced by its region. */
     static String fill(Path doc, String text, Map<String, Map<String, String>> sources, List<String> problems) throws IOException {
-        List<String> lines = new ArrayList<>(List.of(text.split("\n", -1)));
+        String eol = text.contains("\r\n") ? "\r\n" : "\n";   // a doc checked out with CRLF keeps them
+        List<String> lines = new ArrayList<>(List.of(text.replace("\r\n", "\n").split("\n", -1)));
         List<String> out = new ArrayList<>();
         String[] pending = null;   // {file, tag, line} from a marker, for the next fence
         boolean inOther = false;   // inside a non-Java fence, where markers and fences are text
-        String otherIndent = "";
+        String otherIndent = "", otherFence = "";
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
             Matcher f = FENCE.matcher(line);
             if (inOther) {
                 out.add(line);
-                if (f.matches() && f.group(2).isEmpty() && f.group(1).equals(otherIndent)) inOther = false;
+                if (closes(line, otherIndent, otherFence)) inOther = false;
                 continue;
             }
             Matcher m = MARKER.matcher(line);
@@ -98,10 +109,16 @@ public class Snippets {
                 out.add(line);
                 continue;
             }
-            String indent = f.group(1);
-            if (!f.group(2).equals("java")) { inOther = true; otherIndent = indent; out.add(line); continue; }
+            String indent = f.group(1), fence = f.group(2);
+            if (!f.group(3).equals("java")) {
+                if (pending != null) {
+                    problems.add(doc + ":" + pending[2] + ": snippet marker with no ```java block after it");
+                    pending = null;
+                }
+                inOther = true; otherIndent = indent; otherFence = fence; out.add(line); continue;
+            }
             int end = i + 1;
-            while (end < lines.size() && !lines.get(end).equals(indent + "```")) end++;
+            while (end < lines.size() && !closes(lines.get(end), indent, fence)) end++;
             if (end == lines.size()) { problems.add(doc + ":" + (i + 1) + ": unclosed ```java block"); out.addAll(lines.subList(i, lines.size())); break; }
             out.add(line);
             if (pending == null) {
@@ -121,7 +138,14 @@ public class Snippets {
             i = end;
         }
         if (pending != null) problems.add(doc + ":" + pending[2] + ": snippet marker with no ```java block after it");
-        return String.join("\n", out);
+        return String.join(eol, out);
+    }
+
+    /** Whether the line closes a fence opened at this indent: the same character, at least as many, nothing else. */
+    static boolean closes(String line, String indent, String fence) {
+        String t = line.stripTrailing();
+        return t.startsWith(indent) && t.length() - indent.length() >= fence.length()
+                && t.substring(indent.length()).chars().allMatch(c -> c == fence.charAt(0));
     }
 
     /** The region's text, or null when the file or region isn't there. */

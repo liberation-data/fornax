@@ -31,6 +31,13 @@ the pull request which ones you ran and on what hardware.
 - **Tests.** A new branch or failure path needs a test that drives it. A bug fix needs a test that failed before it.
 - **Docs in the same pull request.** If behaviour a user can see changes, update the Javadoc, the README and the
   guide under `website/src/content/docs/` that describes it.
+- **Java examples in the docs come from compiled code.** Every ```` ```java ```` block in the README and the guides is
+  copied from a region of a class in `fornax-examples/src/snippets/java/org/liberationdata/fornax/snippets/` (one
+  class per page), between `// --8<-- [start:tag]` and `// --8<-- [end:tag]`, and is marked by a
+  `<!-- snippet: Class#tag -->` line before it (`{/* snippet: Class#tag */}` in `.mdx`). A line ending in
+  `// --8<-- [skip]` compiles but doesn't show. Edit the snippet, not the block, then run `./gradlew syncSnippets` to
+  copy it into the docs; `./gradlew build` fails while a block differs from its region or has no marker. See
+  `scripts/Snippets.java` for the details.
 - **Numbers for performance claims.** Say what got faster, by how much, on what hardware, and give the command that
   produced the numbers (for example `./gradlew bench --args='out/bench acestep'` from `fornax-bench`, or the
   integration test's own timing output), so a reviewer can rerun it.
