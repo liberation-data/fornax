@@ -22,9 +22,13 @@ mkdir -p "$SRC" "$OUT"
 prop() { grep "^$1=" "$ROOT/native/engines.properties" | cut -d= -f2-; }
 
 fetch() {  # fetch <dir-name>
-    local dir=$SRC/$1 url commit
+    local dir=$SRC/$1 url commit want
     url=$(prop "$1.url"); commit=$(prop "$1.commit")
     [ -d "$dir/.git" ] || git clone -q "$url" "$dir"
+    # When the pin or any patch changed since the last fetch, drop the old patches (tracked files only: the build
+    # dirs stay) so the new ones apply to a clean checkout.
+    want="$commit $({ cat "$ROOT/native/patches/$1"/*.patch 2>/dev/null || true; } | git hash-object --stdin)"
+    [ "$(cat "$dir/.git/kiln-patches" 2>/dev/null)" = "$want" ] || git -C "$dir" reset -q --hard
     if [ "$(git -C "$dir" rev-parse HEAD)" != "$commit" ]; then
         git -C "$dir" fetch -q origin "$commit" 2>/dev/null || git -C "$dir" fetch -q origin
         git -C "$dir" checkout -q "$commit"
@@ -36,6 +40,7 @@ fetch() {  # fetch <dir-name>
         if git -C "$dir" apply --reverse --check "$p" 2>/dev/null; then continue; fi
         git -C "$dir" apply "$p" || { echo "patch failed: $p" >&2; exit 1; }
     done
+    echo "$want" > "$dir/.git/kiln-patches"
 }
 
 # ggml backend switches, plus the system libraries a static ggml backend needs at link time.
