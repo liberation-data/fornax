@@ -37,14 +37,16 @@ behind the popular command-line tools and servers, so you get their speed and th
 | `kiln-yue2` | [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp) | YuE2 songs |
 | `kiln-core` | | what the others share: native loading, `ModelPool`, `HfCache`, `Audio` |
 
-Every model class is `AutoCloseable`, and its weights are freed on `close()`. Instances aren't thread-safe: use one
-per thread, or borrow them through a [`ModelPool`](/docs/guides/model-pool/), which gives each model one user at a
-time.
+Every model class is `AutoCloseable`, and its weights are freed on `close()`. A model can be called from any thread;
+its calls run one at a time. From virtual threads, use the `...Async` methods, which run the native call on the
+model's own thread (see [Threading](/docs/guides/threading/)). A [`ModelPool`](/docs/guides/model-pool/) keeps
+several models loaded and gives each one user at a time.
 
 ## How it works
 
 Kiln calls the engines through Java's **Foreign Function & Memory API** (Java 22 or newer; Kiln is built and tested
-on JDK 25). A Kiln call is a native function call, made directly from your thread.
+on JDK 25). A Kiln call is a native function call, made directly from your thread, or from the model's own thread
+for the async methods.
 
 Each engine is built into **one self-contained shared library**, with its own copy of ggml (the tensor library
 under all four engines) linked in statically and kept private. The engines pin different ggml versions, so this is

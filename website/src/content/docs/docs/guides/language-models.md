@@ -30,7 +30,9 @@ try (var llm = new LlamaModel(gguf, -1, 32768)) {            // gpuLayers (-1 = 
 The constructor loads the weights onto the GPU, and they stay there until `close()`. Load once and reuse the model
 for many calls; [ModelPool](/docs/guides/model-pool/) helps when an app has several models to juggle.
 
-A `LlamaModel` isn't thread-safe. Use one per thread, or hand it out one user at a time.
+A `LlamaModel` can be called from any thread; its calls run one at a time, in arrival order. From virtual threads,
+use `chatAsync`, `chatJsonAsync` and `extractAsync`, which return a `CompletableFuture` and stream to a
+`Flow.Subscriber`: see [Threading](/docs/guides/threading/).
 
 ## Chat
 
@@ -81,10 +83,11 @@ llm.chat(List.of(Message.user("Write a haiku about a kiln.")), Options.DEFAULT, 
 ```
 
 The callback runs on the calling thread, between tokens, so keep it quick: append to a buffer, push to a queue or
-write to a socket.
+write to a socket. If it throws, the generation stops and `chat` throws that exception. For a subscriber on its own
+thread, with a bounded buffer, use `chatAsync(messages, options, subscriber)` (see [Threading](/docs/guides/threading/#streaming)).
 
-To stop early, call `cancel()` from any other thread. The generation stops after the current token and the call
-returns what it has so far. `cancel()` only affects calls that stream (ones with a callback).
+To stop early, call `cancel()` from any other thread (or from the callback). The generation stops after the current
+token and the call returns what it has so far. It works with or without a callback.
 
 ```java
 import java.util.concurrent.Executors;
@@ -142,7 +145,7 @@ Its defaults are llama-server's, so they differ a little from `Options.DEFAULT` 
 token limit).
 
 The second argument streams the message's `content` as it is generated (not its reasoning, and not tool calls), or
-pass `null`. `cancel()` works here as it does for `chat`.
+pass `null`. `cancel()` works here as it does for `chat`, including while the model reasons or writes a tool call.
 
 Kiln has no JSON library of its own on `main`; the examples below use Jackson, but any JSON library works.
 
