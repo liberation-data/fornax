@@ -32,7 +32,7 @@ import java.util.function.Function;
  * try (var dispatch = new Dispatch(Dispatch.Options.of(2, 48L << 30))) {     // two worker processes, a 48 GB budget
  *     var qwen = dispatch.register("qwen3-4b", ModelPool.sizeOf(gguf),
  *             worker -> LlamaModel.isolated(worker, gguf.toString(), null, -1, 8192));
- *     Result r = qwen.submit(QoS.INTERACTIVE, llm -> llm.chatAsync(messages, Options.DEFAULT)).join();
+ *     Result r = qwen.submit(QoS.INTERACTIVE, llm -> llm.chatAsync(messages, LlamaModel.Options.DEFAULT)).join();
  * }
  * }</pre>
  *
@@ -230,8 +230,7 @@ public final class Dispatch implements AutoCloseable {
             CompletableFuture<T> out = new CompletableFuture<>();
             CompletableFuture<ModelPool.Lease<M>> grant = acquireAsync(qos);
             AtomicReference<CompletableFuture<T>> inner = new AtomicReference<>();
-            out.whenComplete((v, e) -> {
-                if (e == null) return;
+            out.whenComplete((v, e) -> {             // a no-op once the body's future is done; else as a cancel
                 grant.cancel(false);
                 CompletableFuture<T> i = inner.get();
                 if (i != null) i.cancel(true);
@@ -314,12 +313,11 @@ public final class Dispatch implements AutoCloseable {
                 queue.add(r);
                 requests++;
             } finally { lock.unlock(); }
-            r.grant.whenComplete((l, e) -> {
-                if (e instanceof CancellationException) {
-                    lock.lock();
-                    try { queue.remove(r); } finally { lock.unlock(); }
-                    reschedule();                    // it may have been holding back loads ranked below it
-                }
+            r.grant.whenComplete((l, e) -> {         // granted, or ended by cancel, orTimeout or completeOnTimeout
+                boolean wasQueued;
+                lock.lock();
+                try { wasQueued = queue.remove(r); } finally { lock.unlock(); }
+                if (wasQueued) reschedule();         // it may have been holding back loads ranked below it
             });
             reschedule();
             return (CompletableFuture) r.grant;

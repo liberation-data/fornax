@@ -185,6 +185,25 @@ class DispatchTest {
         assertEquals(List.of("small"), order);
     }
 
+    /** orTimeout on acquireAsync's future fails it with a TimeoutException, not a cancel: it leaves the queue all the same. */
+    @Test
+    void aLeaseRequestTimingOutWhileWaitingForRoomLetsTheLoadsBelowItGo() throws Exception {
+        var d = dispatch(3, 3);
+        var a = model(d, "a", "", 2);
+        var big = model(d, "big", "", 2);
+        var small = model(d, "small", "", 1);
+        var gate = hold(a);
+        var fb = big.acquireAsync(QoS.INTERACTIVE).orTimeout(500, TimeUnit.MILLISECONDS);
+        awaitQueued(d, 1, 0);
+        var fs = small.submit(QoS.BATCH, i -> CompletableFuture.completedFuture("small"));
+        awaitQueued(d, 1, 1);
+        var e = assertThrows(ExecutionException.class, () -> fb.get(10, TimeUnit.SECONDS));
+        assertInstanceOf(TimeoutException.class, e.getCause());
+        assertEquals("small", fs.get(10, TimeUnit.SECONDS), "small fits now, and nothing ranked above it is waiting");
+        assertFalse(gate.isDone());
+        awaitQueued(d, 0, 0);
+    }
+
     /** Room that an unload in progress is freeing goes to the next load as soon as the unload finishes. */
     @Test
     void aLoadWaitingOnAnUnloadInProgressGoesWhenItFinishes() throws Exception {
@@ -254,10 +273,12 @@ class DispatchTest {
         var cancelled = a.submit(QoS.BATCH, i -> { ran.set(true); return CompletableFuture.completedFuture(1); });
         var timedOut = a.submit(QoS.INTERACTIVE, i -> { ran.set(true); return CompletableFuture.completedFuture(2); })
                 .orTimeout(100, TimeUnit.MILLISECONDS);
-        awaitQueued(d, 1, 1);
+        var defaulted = a.submit(QoS.BATCH, i -> { ran.set(true); return CompletableFuture.completedFuture(3); })
+                .completeOnTimeout(-1, 100, TimeUnit.MILLISECONDS);
         assertTrue(cancelled.cancel(true));
         var e = assertThrows(ExecutionException.class, () -> timedOut.get(10, TimeUnit.SECONDS));
         assertInstanceOf(TimeoutException.class, e.getCause());
+        assertEquals(-1, defaulted.get(10, TimeUnit.SECONDS));
         awaitQueued(d, 0, 0);
         gate.complete(null);
         assertEquals(7L, (long) a.call(QoS.BATCH, i -> 7L), "the worker is free for the next request");

@@ -29,7 +29,7 @@ try (var dispatch = new Dispatch(Dispatch.Options.of(2, 48L << 30))) {   // two 
     var qwen = dispatch.register("qwen3-4b", ModelPool.sizeOf(gguf),
             worker -> LlamaModel.isolated(worker, gguf.toString(), null, -1, 8192));
 
-    LlamaModel.Result r = qwen.submit(QoS.INTERACTIVE, llm -> llm.chatAsync(messages, Options.DEFAULT)).join();
+    LlamaModel.Result r = qwen.submit(QoS.INTERACTIVE, llm -> llm.chatAsync(messages, LlamaModel.Options.DEFAULT)).join();
 }
 ```
 
@@ -91,7 +91,7 @@ the GPU's budget, or the part of it that its models may use.
 
 ## Cancel, timeouts and back-pressure
 
-- **Cancelling a queued request** (`future.cancel(true)`, or `orTimeout` running out) takes it out of the queue. It
+- **Cancelling a queued request** (`future.cancel(true)`, or `orTimeout` or `completeOnTimeout` running out) takes it out of the queue. It
   never runs, and its model never loads.
 - **Cancelling a running request** cancels the future that its body returned. For a Kiln model, that stops the
   generation in the worker, and the worker takes the next request.
