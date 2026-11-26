@@ -1,133 +1,134 @@
 WEBVTT
 
-00:00:00.500 --> 00:00:02.853
+00:00:00.500 --> 00:00:03.214
 Kiln runs open models in your JVM.
 
-00:00:02.853 --> 00:00:06.489
+00:00:03.214 --> 00:00:07.408
 For business, industrial,
 medical and creative work,
 
-00:00:06.489 --> 00:00:09.776
+00:00:07.408 --> 00:00:11.199
 or anywhere a specialized
 model earns its keep.
 
-00:00:09.776 --> 00:00:11.853
+00:00:11.199 --> 00:00:13.595
 Plain Java calls, on your GPU.
 
-00:00:12.482 --> 00:00:17.068
+00:00:14.900 --> 00:00:20.103
 If you want a local language model
 or embeddings in Java, there are options.
 
-00:00:17.068 --> 00:00:20.628
+00:00:20.103 --> 00:00:24.142
 They work, though they're often
 slower than they should be.
 
-00:00:20.628 --> 00:00:24.429
+00:00:24.142 --> 00:00:28.455
 But what if you want to flag
 a fracture on an X-ray for review?
 
-00:00:24.429 --> 00:00:26.480
+00:00:28.455 --> 00:00:30.783
 Spot defects on a production line?
 
-00:00:26.480 --> 00:00:27.988
+00:00:30.783 --> 00:00:32.494
 Read a stack of invoices?
 
-00:00:27.988 --> 00:00:29.919
+00:00:32.494 --> 00:00:34.685
 Isolate the vocals from a track?
 
-00:00:29.919 --> 00:00:32.513
+00:00:34.685 --> 00:00:37.629
 Or any of a plethora
 of other capabilities?
 
-00:00:32.513 --> 00:00:34.927
+00:00:37.629 --> 00:00:40.367
 Until now, from the JVM, you were stuck.
 
-00:00:34.927 --> 00:00:39.609
+00:00:40.367 --> 00:00:45.680
 It meant a Python stack, or a tool like
 ComfyUI behind HTTP: another runtime,
 
-00:00:39.609 --> 00:00:42.589
+00:00:45.680 --> 00:00:49.062
 another process,
 and a network hop on every call.
 
-00:00:42.589 --> 00:00:44.942
+00:00:49.062 --> 00:00:51.732
 Kiln calls the native engines directly.
 
-00:00:44.942 --> 00:00:47.416
+00:00:51.732 --> 00:00:54.539
 No Python, no server, nothing in between.
 
-00:00:48.016 --> 00:00:51.072
+00:00:55.833 --> 00:00:59.029
 It uses Java's Foreign
 Function and Memory API,
 
-00:00:51.072 --> 00:00:54.388
+00:00:59.029 --> 00:01:02.496
 so the call into the engine
 is a plain native call.
 
-00:00:54.388 --> 00:00:57.954
+00:01:02.496 --> 00:01:06.226
 Weights load once and stay
 on the GPU between requests,
 
-00:00:57.954 --> 00:01:03.077
+00:01:06.226 --> 00:01:11.583
 and when memory runs short, Kiln unloads
 the models you've used least recently.
 
-00:01:03.077 --> 00:01:07.260
+00:01:11.583 --> 00:01:15.958
 Text streams back token by token,
 and models can call your tools.
 
-00:01:07.882 --> 00:01:12.387
-In Kiln Studio, read an invoice
-into JSON, spot a defect on a part,
+00:01:17.250 --> 00:01:22.815
+Try a model in Kiln Studio before you
+write any code: read an invoice into JSON,
 
-00:01:12.387 --> 00:01:15.009
-or flag an X-ray for a doctor's review.
+00:01:22.815 --> 00:01:27.267
+spot a defect on a part, or flag
+an X-ray for a doctor's review.
 
-00:01:15.009 --> 00:01:18.739
+00:01:27.267 --> 00:01:31.136
 Or chat, paint an image,
 write a song, or render a clip.
 
-00:01:18.739 --> 00:01:24.056
+00:01:31.136 --> 00:01:36.652
 On our test laptop, Kiln made a one-minute
 song up to twice as fast as ComfyUI,
 
-00:01:24.056 --> 00:01:25.133
+00:01:36.652 --> 00:01:37.769
 on the same GPU.
 
-00:01:25.749 --> 00:01:30.095
+00:01:39.066 --> 00:01:43.967
 Pull a model from Hugging Face with
 one command, and try it in Kiln Studio.
 
-00:01:30.095 --> 00:01:33.617
+00:01:43.967 --> 00:01:47.938
 Kiln needs no other Java libraries,
 just its native engines,
 
-00:01:33.617 --> 00:01:38.489
+00:01:47.938 --> 00:01:53.431
 so it works in any app, and it's a great
 companion for Embabel Agent: local models,
 
-00:01:38.489 --> 00:01:39.135
+00:01:53.431 --> 00:01:54.160
 in process.
 
-00:01:39.749 --> 00:01:42.966
+00:01:55.466 --> 00:01:59.075
 Here's what open models
 can make, running in Kiln.
 
-00:01:42.966 --> 00:01:45.347
+00:01:59.075 --> 00:02:01.746
 This is Endless Country, episode two.
 
-00:01:54.130 --> 00:01:54.648
+00:02:10.970 --> 00:02:11.488
 Kiln!
 
-00:01:54.648 --> 00:01:57.652
+00:02:11.488 --> 00:02:14.492
 Open models, inside your JVM!
 
-00:01:57.652 --> 00:02:03.247
+00:02:14.492 --> 00:02:20.087
 Sponsored by Rod Johnson,
 and created by Jasper Blues!
 
-00:02:03.247 --> 00:02:03.972
+00:02:20.087 --> 00:02:20.812
 kiln4j.
 
-00:02:03.972 --> 00:02:04.387
+00:02:20.812 --> 00:02:21.227
 org!
