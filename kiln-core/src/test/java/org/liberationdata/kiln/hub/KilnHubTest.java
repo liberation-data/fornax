@@ -145,6 +145,29 @@ class KilnHubTest {
         assertEquals(200_000 + 500_000 - from, fake.bytesServed.get(), "only the missing bytes were sent again");
     }
 
+    @Test void aChunkedTransferThatEndsShortIsResumedNotDeleted() throws Exception {
+        var f = fake.add(REPO, "big.gguf", 300_000, true);
+        fake.chunked = true;   // no Content-Length, so the short body ends cleanly rather than with an error
+        fake.dropNextAfter.set(100_000);
+
+        Map<String, Path> files = hub().pull(set("one", Part.of("model", REPO, "big.gguf")), PullListener.NONE);
+
+        assertArrayEquals(f.content(), Files.readAllBytes(files.get("model")));
+        assertEquals(List.of(f.etag() + " bytes=100000-"), fake.ranges);
+    }
+
+    @Test void aPathWithSpacesUnicodeAndReservedCharactersIsEncoded() throws Exception {
+        var a = fake.add(REPO, "dir one/naïve #1+2%.gguf", 1, true);
+        var b = fake.add(REPO, "sub/x y?.json", 1, false);
+        var set = set("odd", Part.of("a", REPO, a.path()), Part.of("b", REPO, b.path()));
+
+        Map<String, Path> files = hub().pull(set, PullListener.NONE);
+
+        assertArrayEquals(a.content(), Files.readAllBytes(files.get("a")));
+        assertArrayEquals(b.content(), Files.readAllBytes(files.get("b")));
+        assertEquals(State.PRESENT, hub().status(set).state());
+    }
+
     @Test void aCancelledPullLeavesAPartialFileThatTheNextPullResumes() throws Exception {
         var f = fake.add(REPO, "big.gguf", 1_000_000, true);
         var set = set("one", Part.of("model", REPO, "big.gguf"));

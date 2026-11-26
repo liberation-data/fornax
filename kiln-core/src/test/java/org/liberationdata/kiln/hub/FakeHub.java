@@ -62,6 +62,8 @@ final class FakeHub implements AutoCloseable {
      * as huggingface.co does for small files, instead of redirecting to the CDN.
      */
     volatile boolean gitFilesDirect;
+    /** The CDN sends bodies chunked, without a Content-Length. */
+    volatile boolean chunked;
 
     FakeHub() throws IOException {
         InetSocketAddress any = new InetSocketAddress(InetAddress.getLoopbackAddress(), 0);
@@ -164,7 +166,7 @@ final class FakeHub implements AutoCloseable {
             }
             x.getResponseHeaders().set("Accept-Ranges", "bytes");
             long length = content.length - from;
-            x.sendResponseHeaders(range != null && !ignoreRange ? 206 : 200, length);
+            x.sendResponseHeaders(range != null && !ignoreRange ? 206 : 200, chunked ? 0 : length);
             long drop = dropNextAfter.getAndSet(0);
             OutputStream out = x.getResponseBody();
             int pos = (int) from;

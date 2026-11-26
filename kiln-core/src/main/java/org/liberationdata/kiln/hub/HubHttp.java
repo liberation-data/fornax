@@ -183,6 +183,8 @@ final class HubHttp {
         } finally {
             cancel.untrack();
         }
+        // a body that ends cleanly but short (no Content-Length to hold it to): resume it, as for a dropped connection
+        if (f.size() >= 0 && have < f.size()) throw new IOException("the transfer ended at " + have + " of " + f.size() + " bytes");
     }
 
     private HttpRequest.Builder request(URI uri) {
