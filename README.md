@@ -335,6 +335,23 @@ The song examples use the requests in `kiln-examples/src/main/resources/requests
 second argument. The request formats are the engines' own (see
 [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) and [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp)).
 
+## Kiln Studio
+
+`kiln-studio-server` is the backend of [Kiln Studio](https://github.com/liberation-data/kiln-studio), a desktop app for
+trying models: a JDK-only HTTP server on localhost (`com.sun.net.httpserver`, replies streamed as server-sent events)
+that lists what in the Hugging Face cache Kiln can run, keeps models in a `ModelPool`, and serves chat (with a
+tool-calling demo through `chatJson`), images, songs (ACE-Step and YuE2), video clips with sound (LTX-2.5, whose .mp4
+needs ffmpeg) and questions about an image for a vision model (Qwen3-VL, PaddleOCR-VL, MedGemma), as text or held to a
+JSON schema. The app starts it; to run it on its own:
+
+```sh
+./gradlew studioServer                    # http://127.0.0.1:5191; -Pport=, -Pbudget=<GB>, -Pstub=image,song,video
+./gradlew :kiln-studio-server:studioJar   # one runnable jar, which the app ships
+```
+
+On Linux, as with every Kiln engine, a GPU build refuses to load a model on a machine with no usable GPU (the request's
+error says what to install) unless `KILN_ALLOW_CPU=true` is set in the server's environment.
+
 ## Roadmap
 
 - Test and document the HIP, CUDA and Metal builds; natives jars for HIP and CUDA.
