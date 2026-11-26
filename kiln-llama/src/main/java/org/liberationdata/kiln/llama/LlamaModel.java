@@ -103,7 +103,8 @@ public final class LlamaModel implements AutoCloseable {
     /**
      * The token upcall. Nothing may escape it: an exception thrown into llama.cpp's frames kills the JVM. So a
      * consumer's exception is recorded in the call, generation stops, and the Java method rethrows it on return.
-     * An empty piece is the shim polling for a stop while no content is streaming (reasoning, tool calls).
+     * An empty piece is the shim polling for a stop while no content is streaming (reasoning, tool calls, and
+     * between embed and rerank batches).
      */
     private static int onToken(MemorySegment piece, MemorySegment user) {
         Sink sink = SINK.get();
@@ -121,7 +122,8 @@ public final class LlamaModel implements AutoCloseable {
 
     /**
      * Stops the generation in progress (from any thread, including its own callback) after the current token; the
-     * call returns what was generated so far ({@link #extract} throws a {@link CancellationException} instead). Works
+     * call returns what was generated so far ({@link #extract} throws a {@link CancellationException} instead, and so
+     * do {@link #embed} and {@link #rerank}, which stop between batches). Works
      * for every call, streaming or not, blocking or async. A call that hasn't started yet
      * isn't affected: cancel its future instead.
      */

@@ -208,6 +208,30 @@ class EmbeddingsIT {
     }
 
     @Test
+    void closeDuringAnEmbedStopsItBetweenBatches() throws Exception {
+        var m = new LlamaModel(W, Mode.EMBED);
+        List<String> many = IntStream.range(0, 20_000).mapToObj(i -> "text " + i + " about kilns, glazes and clay bodies").toList();
+        var running = m.embedAsync(many, EmbedOptions.DEFAULT);
+        var queued = m.embedAsync(List.of("queued"), EmbedOptions.DEFAULT);
+        Thread.sleep(300);
+        long t0 = System.nanoTime();
+        m.close();
+        long closeMs = (System.nanoTime() - t0) / 1_000_000;
+        assertThrows(CancellationException.class, running::get);
+        assertThrows(CancellationException.class, queued::join);
+        assertTrue(closeMs < 3000, "close waited " + closeMs + " ms: the embed wasn't cancelled");
+        assertThrows(IllegalStateException.class, () -> m.embed("closed"));
+        m.close();
+    }
+
+    @Test
+    void aNullTextFailsBeforeTheEngine() {
+        var e = assertThrows(NullPointerException.class, () -> model.embed(java.util.Arrays.asList("kiln", null)));
+        assertTrue(e.getMessage().contains("text 1"), e.getMessage());
+        assertEquals(1024, model.embed("still works").length);
+    }
+
+    @Test
     void throughput() {
         // ~20-token texts, as a search over short passages would embed (README Status figure)
         List<String> texts = IntStream.range(0, 2000)
