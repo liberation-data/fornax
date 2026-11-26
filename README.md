@@ -191,7 +191,8 @@ private. The engines pin different ggml versions, so this is what lets several o
   `kiln-llama` binds a small stable C layer (`kiln-llama/native`) instead.
 - `acestep.cpp` and `yue2.cpp` are C++ only, so each gets a ~100-line C layer: JSON request in, PCM audio out.
 - `whisper.cpp` has a C API, but it passes two large parameter structs by value, so `kiln-whisper` binds a small C
-  layer (`kiln-whisper/native`) that takes plain arguments and reads results back token by token.
+  layer (`kiln-whisper/native`) that takes plain arguments and a small struct of its own, and reads results back token
+  by token.
 
 Engine quirks and how to debug them: [docs/engine-notes.md](docs/engine-notes.md).
 

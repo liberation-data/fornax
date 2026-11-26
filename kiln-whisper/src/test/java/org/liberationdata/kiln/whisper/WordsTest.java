@@ -182,4 +182,46 @@ class WordsTest {
         assertEquals(WhisperModel.Alignment.LARGE_V3_TURBO, WhisperModel.Weights.LARGE_V3_TURBO.alignment);
         assertTrue(Arrays.stream(WhisperModel.Weights.values()).allMatch(w -> w.file.startsWith("ggml-") && w.file.endsWith(".bin")));
     }
+
+    /** Speech at 1-3 s and 5-8 s of 10 s, as whisper.cpp lays it out: 2 s + 0.1 s overlap + 0.1 s gap, then 3 s. */
+    static Words.VadTimeline twoSegments() {
+        return Words.VadTimeline.of(new long[] {100, 500}, new long[] {300, 800}, 10 * 16000, 0.1f);
+    }
+
+    @Test
+    void vadTimelineLaysOutSpeechAsWhisperCppDoes() {
+        var t = twoSegments();
+        assertArrayEquals(new long[] {0, 220}, t.vadStart());
+        assertArrayEquals(new long[] {200, 520}, t.vadEnd());
+    }
+
+    @Test
+    void vadTimelineMapsDtwTimesBackToTheAudio() {
+        var t = twoSegments();
+        assertEquals(100, t.map(0));       // the first segment's start
+        assertEquals(200, t.map(100));     // inside it, scaled
+        assertEquals(300, t.map(200));     // its end
+        assertEquals(300, t.map(205));     // in the overlap and gap: the nearer edge
+        assertEquals(500, t.map(215));
+        assertEquals(500, t.map(220));     // the second segment's start
+        assertEquals(650, t.map(370));
+        assertEquals(800, t.map(520));
+        assertEquals(800, t.map(900));     // past the end
+        assertEquals(-1, t.map(-1));       // no DTW time
+    }
+
+    @Test
+    void vadTimelineWithoutSegmentsLeavesTimesAlone() {
+        var t = Words.VadTimeline.of(new long[0], new long[0], 16000, 0.1f);
+        assertEquals(1234, t.map(1234));
+        assertEquals(-1, t.map(-1));
+    }
+
+    @Test
+    void vadTimelineClampsSegmentsToTheAudio() {
+        // the last segment runs to the end, past the last sample: whisper.cpp stops it there
+        var t = Words.VadTimeline.of(new long[] {0}, new long[] {200}, 16000, 0.1f);
+        assertArrayEquals(new long[] {0}, t.vadStart());
+        assertArrayEquals(new long[] {100}, t.vadEnd());
+    }
 }
