@@ -66,7 +66,7 @@ which `downloadCommand()` also gives you.
 |---|---|---|
 | `QWEN3_VL_4B` | questions about images, documents and charts; grounding (boxes on a 0 to 1000 grid) | Apache-2.0 |
 | `PADDLEOCR_VL` | PaddleOCR-VL 1.6 (0.9B): reading documents. It takes task prompts, not questions (below) | Apache-2.0 |
-| `MEDGEMMA_4B` | MedGemma 1.5 4B: medical images and text, for research, not diagnosis | Health AI Developer Foundations terms |
+| `MEDGEMMA_4B` | MedGemma 1.5 4B: medical images and text. Using it to diagnose or treat patients may need a health regulator's authorization | Health AI Developer Foundations terms |
 | `QWEN3_4B` | Qwen3 4B Instruct: text only | Apache-2.0 |
 
 Any other vision GGUF llama.cpp runs works too:

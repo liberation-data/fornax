@@ -164,7 +164,7 @@ public final class LlamaModel implements AutoCloseable {
          */
         PADDLEOCR_VL("PaddlePaddle/PaddleOCR-VL-1.6-GGUF", "PaddleOCR-VL-1.6-GGUF.gguf", "PaddleOCR-VL-1.6-GGUF-mmproj.gguf"),
         /**
-         * Google MedGemma 1.5 4B (instruction tuned): medical images and text. For research, not diagnosis.
+         * Google MedGemma 1.5 4B (instruction tuned): medical images and text. Using it to diagnose or treat patients may need a health regulator's authorization (see the Health AI Developer Foundations terms).
          * Health AI Developer Foundations terms.
          */
         MEDGEMMA_4B("unsloth/medgemma-1.5-4b-it-GGUF", "medgemma-1.5-4b-it-Q4_K_M.gguf", "mmproj-F16.gguf");
