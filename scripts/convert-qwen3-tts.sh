@@ -25,6 +25,7 @@ OUT=${1:-$HOME/models/qwen3-tts-clone}
 PYTHON=${PYTHON:-python3}
 LLAMA_CPP=${LLAMA_CPP:-$ROOT/engines-src/llama.cpp}
 OUTTYPE=${OUTTYPE:-q8_0}
+TYPE=$(echo "$OUTTYPE" | tr a-z A-Z)  # not ${OUTTYPE^^}: macOS has bash 3.2
 REPO=Qwen/Qwen3-TTS-12Hz-1.7B-Base
 NAME=Qwen3-TTS-12Hz-1.7B-Base
 
@@ -40,11 +41,11 @@ snap=$cache/snapshots/$(cat "$cache/refs/main" 2>/dev/null || true)
 
 mkdir -p "$OUT"
 # convert_hf_to_gguf.py puts its own gguf-py first on sys.path, so the converter and gguf always match.
-"$PYTHON" "$LLAMA_CPP/convert_hf_to_gguf.py" "$snap" --outtype "$OUTTYPE" --outfile "$OUT/$NAME-${OUTTYPE^^}.gguf"
-"$PYTHON" "$LLAMA_CPP/convert_hf_to_gguf.py" "$snap" --outtype "$OUTTYPE" --mmproj --outfile "$OUT/mmproj-$NAME-${OUTTYPE^^}.gguf"
+"$PYTHON" "$LLAMA_CPP/convert_hf_to_gguf.py" "$snap" --outtype "$OUTTYPE" --outfile "$OUT/$NAME-$TYPE.gguf"
+"$PYTHON" "$LLAMA_CPP/convert_hf_to_gguf.py" "$snap" --outtype "$OUTTYPE" --mmproj --outfile "$OUT/mmproj-$NAME-$TYPE.gguf"
 
 # The reference encoder's last tensor: present means voice cloning with a transcript (ICL) works.
-PYTHONPATH="$LLAMA_CPP/gguf-py${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" - "$OUT/mmproj-$NAME-${OUTTYPE^^}.gguf" <<'EOF'
+PYTHONPATH="$LLAMA_CPP/gguf-py${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" - "$OUT/mmproj-$NAME-$TYPE.gguf" <<'EOF'
 import sys, gguf
 names = {t.name for t in gguf.GGUFReader(sys.argv[1]).tensors}
 enc = sorted(n for n in names if n.startswith(("a.gen.enc.", "a.seanet.", "a.downsample.")))
