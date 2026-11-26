@@ -49,7 +49,7 @@ Package `org.liberationdata.kiln.llama`. See [Language models](/docs/guides/lang
 | `new LlamaModel(Weights)`, `(gguf, mmproj)` | a vision language model with its mmproj; see [Vision](/docs/guides/vision/). `supportsVision()` |
 | `extract(messages, jsonSchema, options)` | a reply constrained to a JSON schema, as JSON text; messages may carry images |
 | `chatJson(requestJson, images, onContent)`, `complete(prompt, images, options, onPiece)` | `chatJson` and `complete` with images; `mediaMarker()` |
-| `new LlamaModel(Weights, Mode)`, `(gguf, Mode)`, `(gguf, gpuLayers, contextSize, Mode)` | a model loaded for `Mode.CHAT`, `EMBED` or `RERANK`; `mode()`. See [Embeddings and reranking](/docs/guides/embeddings/) |
+| `new LlamaModel(Weights, Mode)`, `(gguf, Mode)`, `(Weights or gguf, gpuLayers, contextSize, Mode)` | a model loaded for `Mode.CHAT`, `EMBED` or `RERANK`; `mode()`. See [Embeddings and reranking](/docs/guides/embeddings/) |
 | `embed(texts[, embedOptions])`, `embed(text)`, `embedAsync(texts, embedOptions)` | embeddings (`float[][]`, L2-normalised by default); `embeddingSize()` |
 | `rerank(query, documents)`, `rerankAsync(query, documents)` | the documents' relevance scores, best first, as `List<Scored>` |
 | `LlamaModel.EmbedOptions` | `prefix`, `normalize`; `DEFAULT`, `query(task)` (Qwen3-Embedding's instruction format), `withPrefix`, `withNormalize` |

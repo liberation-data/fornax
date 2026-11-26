@@ -367,6 +367,11 @@ public final class LlamaModel implements AutoCloseable {
      */
     public LlamaModel(Weights w, Mode mode) { this(w, -1, 8192, mode); }
 
+    /**
+     * Weights Kiln knows by name, loaded for chat, embeddings or reranking. The mmproj (if the weights have one) is
+     * loaded only for {@link Mode#CHAT}: EMBED and RERANK take no images. gpuLayers and contextSize are as in
+     * {@link #LlamaModel(String, int, int, Mode)}.
+     */
     public LlamaModel(Weights w, int gpuLayers, int contextSize, Mode mode) {
         this(w.model(), mode == Mode.CHAT ? w.mmproj() : null, mode, gpuLayers, contextSize);
     }
