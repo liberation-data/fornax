@@ -11,7 +11,7 @@
 > - **Studio:** Fornax Studio keeps using an existing `~/.kiln-studio`.
 
 ```java
-try (var llm = new LlamaModel("Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {   // weights load onto the GPU once
+try (var llm = new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M")) {   // downloaded on first use, then loaded onto the GPU
     llm.chat(List.of(Message.user("Name a country song about a robot.")), Options.DEFAULT, System.out::print);
 }
 ```

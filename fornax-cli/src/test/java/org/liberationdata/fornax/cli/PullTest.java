@@ -1,5 +1,6 @@
 package org.liberationdata.fornax.cli;
 
+import org.liberationdata.fornax.hub.RepoIndex;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;

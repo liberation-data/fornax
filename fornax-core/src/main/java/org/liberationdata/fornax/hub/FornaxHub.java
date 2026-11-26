@@ -4,6 +4,7 @@ import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.hub.HubException.Reason;
 import org.liberationdata.fornax.hub.HubHttp.Cancel;
 import org.liberationdata.fornax.hub.HubHttp.RemoteFile;
+import org.liberationdata.fornax.hub.ModelSet.Kind;
 import org.liberationdata.fornax.hub.ModelSet.Part;
 import org.liberationdata.fornax.hub.ModelSet.Source;
 import org.liberationdata.fornax.hub.ModelStatus.PartStatus;
@@ -34,6 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -76,6 +78,7 @@ public final class FornaxHub {
     private final long reserveBytes;
     private final boolean offline;
     private final List<ModelSet> catalogue;
+    private final RepoIndex index;
 
     private FornaxHub(Builder b) {
         this.cache = new CacheLayout(b.cacheRoot != null ? b.cacheRoot : HfCache.root());
@@ -87,6 +90,7 @@ public final class FornaxHub {
         this.reserveBytes = b.reserveBytes;
         this.offline = b.offline != null ? b.offline : envFlag("HF_HUB_OFFLINE");
         this.catalogue = b.catalogue != null ? List.copyOf(b.catalogue) : ModelCatalog.all();
+        this.index = new RepoIndex(endpoint, token, offline);
     }
 
     /**
@@ -135,6 +139,92 @@ public final class FornaxHub {
             if (p.isPresent()) return Optional.of(new Located(p.get(), Where.HF_CACHE));
         }
         return folders.find(part).map(p -> new Located(p, Where.MODEL_FOLDER));
+    }
+
+    // ---- by reference ----
+
+    /**
+     * Whether s names a model to {@link #fetch} rather than a file: it isn't an existing path, and it is a catalogue
+     * alias ({@code qwen3-4b}) or reads as a {@link ModelRef} ({@code owner/repo:Q4_K_M}, but not
+     * {@code folder/model.gguf}, which is a path that isn't there).
+     */
+    public boolean isReference(String s) {
+        if (s == null || s.isBlank()) return false;
+        try { if (Files.exists(Path.of(s))) return false; } catch (java.nio.file.InvalidPathException notAPath) { /* "a:b" on Windows */ }
+        return alias(s).isPresent() || ModelRef.looksLikeReference(s);
+    }
+
+    /**
+     * A model by name, its files downloaded into the cache if they aren't already there, by role. The name is a
+     * catalogue alias ({@code qwen3-4b}, {@code qwen3-vl-4b}: every file the set needs, such as a {@code "gguf"}
+     * and its {@code "mmproj"}) or a {@link ModelRef} ({@code owner/repo[@revision][:tag]}: the file the tag picks,
+     * as {@code "gguf"}, or {@code "model"} for a file that isn't a GGUF, with any further parts of a split GGUF
+     * under their paths). A model already in the cache needs no network, so this works under {@code HF_HUB_OFFLINE}
+     * once it has been downloaded.
+     *
+     * @throws IllegalArgumentException for a name that is neither (a URL says which reference to use instead), or a
+     *         tag that matches several files
+     * @throws HubException for a repo or tag that isn't there, and as {@link #pull} throws
+     */
+    public Map<String, Path> fetch(String ref, PullListener listener) throws IOException {
+        Objects.requireNonNull(ref, "ref");
+        Optional<ModelSet> alias = alias(ref);
+        return pull(alias.isPresent() ? alias.get() : resolve(ModelRef.parse(ref)), listener);
+    }
+
+    /**
+     * The set a reference names, without downloading it: from the cache when the model is there (default revision
+     * only), else from the repo's file list on the Hub.
+     */
+    public ModelSet resolve(ModelRef ref) throws IOException {
+        if (ref.revision() == null) {
+            Map<String, Path> cached = HfCache.files(cache.root(), ref.repo());
+            List<String> files = pick(ref, cached.keySet(), false);
+            if (!files.isEmpty() && cached.keySet().containsAll(files)) return refSet(ref, "main", files);
+        }
+        String revision = ref.revision() == null ? "main" : ref.revision();
+        RepoIndex.RepoInfo info = index.info(ref.repo(), revision);
+        return refSet(ref, revision, pick(ref, info.files().stream().map(RepoIndex.RepoFile::path).toList(), true));
+    }
+
+    private Optional<ModelSet> alias(String name) { return catalogue.stream().filter(m -> m.isNamed(name.strip())).findFirst(); }
+
+    /**
+     * The files of ref's model among paths, first the one to load: a tag that is a path or file name takes that file
+     * (with a split GGUF's other parts); otherwise the GGUF model the tag (or, with no tag, the repo's only one)
+     * picks. strict: fail on no match or on several, as for the Hub's list; else empty, for the cache, where a model
+     * that isn't there yet is the usual case.
+     */
+    private static List<String> pick(ModelRef ref, java.util.Collection<String> paths, boolean strict) throws HubException {
+        Map<String, List<String>> models = GgufFiles.models(paths);
+        String tag = ref.tag();
+        if (tag != null && !GgufFiles.isGguf(tag)) {
+            List<String> named = paths.stream().filter(p -> p.equals(tag) || GgufFiles.name(p).equals(tag)).toList();
+            if (named.size() == 1) return named;
+            if (named.size() > 1) {
+                if (!strict) return List.of();
+                throw new IllegalArgumentException(tag + " is ambiguous in " + ref.repo() + ":\n  " + String.join("\n  ", named));
+            }
+        }
+        List<String> hits = tag == null ? List.copyOf(models.keySet()) : GgufFiles.match(models, tag);
+        if (hits.size() == 1) return GgufFiles.allParts(models.get(hits.get(0)));
+        if (!strict) return List.of();
+        if (hits.isEmpty()) throw new HubException(Reason.NOT_FOUND, ref.repo(), (tag == null
+                ? ref.repo() + " has no GGUF model" : "No file or GGUF model matching " + tag + " in " + ref.repo())
+                + (models.isEmpty() ? "; name a file: " + ref.repo() + ":FILE." : ". It has:\n  " + String.join("\n  ", models.keySet())));
+        throw new IllegalArgumentException((tag == null ? ref.repo() + " has several GGUF models" : tag + " matches several models in "
+                + ref.repo()) + "; name one:\n  " + String.join("\n  ", hits.stream().map(h -> ref.repo() + ":" + h).toList()));
+    }
+
+    /** One part per file: the first as "gguf" (or "model"), a split GGUF's others by path. */
+    private static ModelSet refSet(ModelRef ref, String revision, List<String> files) {
+        List<Part> parts = new ArrayList<>();
+        for (int i = 0; i < files.size(); i++) {
+            String f = files.get(i);
+            String role = i > 0 ? f : GgufFiles.isGguf(f) ? "gguf" : "model";
+            parts.add(new Part(role, List.of(new Source(ref.repo(), f, revision))));
+        }
+        return new ModelSet(ref.toString(), Kind.CHAT, ref.toString(), ref.repo(), parts, null, false, List.of());
     }
 
     // ---- status ----

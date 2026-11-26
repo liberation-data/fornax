@@ -11,6 +11,8 @@ import org.liberationdata.fornax.Vectors;
 import org.liberationdata.fornax.Wire;
 import org.liberationdata.fornax.Worker;
 import org.liberationdata.fornax.WorkerCrashedException;
+import org.liberationdata.fornax.hub.FornaxHub;
+import org.liberationdata.fornax.hub.PullListener;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -27,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -44,6 +47,11 @@ import static java.lang.foreign.ValueLayout.JAVA_INT;
  * Loaded with an mmproj GGUF as well, it is a vision language model: user messages can carry {@link Image}s (through
  * llama.cpp's mtmd, as llama-mtmd-cli and llama-server run them). See {@link Weights} for the models Fornax knows by name.
  * Weights stay loaded until {@link #close()}.
+ *
+ * <p>The model's path can instead be a model by name, downloaded into the Hugging Face cache on first use and loaded
+ * from there after: {@code new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M")} (a repo and a quant, see
+ * {@link org.liberationdata.fornax.hub.ModelRef}) or a catalogue alias ({@code "qwen3-vl-4b"}, which brings its
+ * mmproj). See {@link FornaxHub#fetch}. A string naming an existing file is always a path.
  *
  * <p>Loaded in {@link Mode#EMBED} or {@link Mode#RERANK} instead, it is an embedding model ({@link #embed}) or a
  * reranker ({@link #rerank}), through llama.cpp's pooled embeddings output, as llama-embedding and llama-server run
@@ -358,8 +366,16 @@ public final class LlamaModel implements AutoCloseable {
 
     /** @param worker where to load it, or null for in-process. @param ownsWorker close the worker with the model */
     private LlamaModel(String ggufPath, String mmprojPath, Mode mode, int gpuLayers, int contextSize, Worker worker, boolean ownsWorker) {
-        String name = Path.of(ggufPath).getFileName().toString();
         this.mode = Objects.requireNonNull(mode, "mode");
+        try {
+            String[] located = locate(ggufPath, mmprojPath, mode);
+            ggufPath = located[0];
+            mmprojPath = located[1];
+        } catch (RuntimeException | Error e) {
+            if (worker != null && ownsWorker) worker.close();
+            throw e;
+        }
+        String name = Path.of(ggufPath).getFileName().toString();
         if (mode != Mode.CHAT && mmprojPath != null)
             throw new IllegalArgumentException("an mmproj is for chat with images; " + mode + " takes none");
         if (mode != Mode.CHAT && worker != null)
@@ -407,7 +423,34 @@ public final class LlamaModel implements AutoCloseable {
     }
 
     private static Worker workerFor(String ggufPath) {
-        return new Worker(Path.of(ggufPath).getFileName().toString(), Worker.Options.DEFAULT);
+        return new Worker(workerName(ggufPath), Worker.Options.DEFAULT);
+    }
+
+    /** A worker's name: the file's name, or for a model reference its last segment ("Qwen3-4B-GGUF:Q4_K_M"). */
+    private static String workerName(String ggufPath) {
+        return ggufPath.substring(Math.max(ggufPath.lastIndexOf('/'), ggufPath.lastIndexOf(java.io.File.separatorChar)) + 1);
+    }
+
+    /**
+     * {gguf, mmproj}: as given, or for a model reference or catalogue alias ({@link FornaxHub#isReference}), the
+     * files {@link FornaxHub#fetch} finds or downloads. An alias brings its mmproj for {@link Mode#CHAT} unless one
+     * was given.
+     */
+    private static String[] locate(String gguf, String mmproj, Mode mode) {
+        Objects.requireNonNull(gguf, "ggufPath");
+        try { if (Files.exists(Path.of(gguf))) return new String[]{gguf, mmproj}; }   // the usual case: no hub needed
+        catch (java.nio.file.InvalidPathException notAPath) { /* a reference's ':' on Windows */ }
+        FornaxHub hub = FornaxHub.standard();
+        if (!hub.isReference(gguf)) return new String[]{gguf, mmproj};
+        Map<String, Path> files;
+        try { files = hub.fetch(gguf, PullListener.logging()); }
+        catch (IOException e) { throw new UncheckedIOException(gguf + ": " + e.getMessage(), e); }
+        Path model = files.get("gguf");
+        if (model == null)
+            throw new IllegalArgumentException(gguf + " isn't a GGUF language model (it has " + files.keySet() + ")");
+        String mm = mmproj != null || mode != Mode.CHAT ? mmproj
+                : files.containsKey("mmproj") ? files.get("mmproj").toString() : null;
+        return new String[]{model.toString(), mm};
     }
 
     /**
