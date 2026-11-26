@@ -81,6 +81,7 @@ final class Chat {
                 if (line.equals("/exit") || line.equals("/quit")) return 0;
                 if (line.equals("/reset")) {
                     history.subList(system != null ? 1 : 0, history.size()).clear();
+                    opensInside = false;   // a guess from the replies: a stray </think> mustn't hide every later one
                     err.println("[kiln] history cleared");
                     continue;
                 }
