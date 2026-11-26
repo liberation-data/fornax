@@ -243,6 +243,8 @@ const theme = 'vitesse-dark';
             .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
             .intro { padding: 96px 32px 40px; text-align: center; }
+            .embabel { background: var(--tint); padding-bottom: 96px; }
+            .embabel .embabel-links { font-size: 16px; }
             .intro .wrap { max-width: 860px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
             .intro p.accent { margin: -6px 0 0; font-family: 'Noto Serif', Georgia, serif; font-style: italic; font-size: 22px; line-height: 1.4; color: var(--ember); }
             .intro p:not(.eyebrow, .accent) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
@@ -809,6 +811,20 @@ const theme = 'vitesse-dark';
                 </div>
             </section>
 
+            <section class="intro embabel" id="embabel">
+                <div class="wrap">
+                    <p class="eyebrow">Embabel</p>
+                    <h2>A great companion for Embabel Agent.</h2>
+                    <p>
+                        <a href="https://github.com/embabel/embabel-agent">Embabel Agent</a> plans with goals and actions on the JVM, and its agents
+                        ask for a capability, not a vendor. Kiln gives them local models in the same process: chat and tool calls, vision,
+                        speech, images, songs and video. The <code>kiln-embabel</code> module plugs in through Embabel’s own model interfaces,
+                        with no Spring AI (<a href="https://github.com/liberation-data/kiln/issues/9">in progress</a>).
+                    </p>
+                    <p class="embabel-links"><a href="https://embabel.com">embabel.com</a> · <a href="https://github.com/embabel/embabel-agent">Embabel Agent on GitHub</a></p>
+                </div>
+            </section>
+
             <section class="start-section" id="start">
                 <div class="wrap">
                     <header>
@@ -883,7 +899,7 @@ const theme = 'vitesse-dark';
                 <div class="about">
                     <img src={logoSmall.src} alt="" width="40" height="40" />
                     <p>
-                        Kiln is a community project by Liberation Data, the home of <a href="https://drivine.org">Drivine</a>.
+                        Kiln is a community project by Liberation Data, the home of <a href="https://drivine.org">Drivine</a>. It grew out of <a href="https://endlesscountry.com">Endless Country</a>, a country-music side quest made with open models.
                         Founded by Jasper Blues, creator of Typhoon. Sponsored by Rod Johnson, creator of the Spring Framework and Embabel.
                         Apache 2.0. The engines it builds against are MIT-licensed.
                     </p>
