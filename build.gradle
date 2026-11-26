@@ -225,7 +225,7 @@ project(':fornax-cli') {
     distributions {
         main {
             distributionBaseName = 'fornax-cli'
-            contents { filesMatching('bin/fornax') { filePermissions { unix('rwxr-xr-x') } } }
+            contents { filesMatching('bin/fornax') { it.permissions { unix('rwxr-xr-x') } } }
         }
     }
     // ./gradlew :fornax-cli:run --args='info'
