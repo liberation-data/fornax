@@ -93,6 +93,20 @@ class ModelReferencesTest {
         assertTrue(e.getMessage().contains("ggerganov/whisper.cpp:ggml-base.en.bin"), e.getMessage());
     }
 
+    @Test void checkRefusesWhatLocateRefusesWithoutAnyRequest() throws Exception {
+        var speech = ModelSet.of("kokoro", Kind.SPEECH, "Kokoro", "llama.cpp", Part.of("gguf", "stems/htdemucs-GGUF", "htdemucs-F32.gguf"));
+        var e = assertThrows(IllegalArgumentException.class, () -> ModelReferences.check("kokoro", STT, hub(List.of(speech))));
+        assertEquals("kokoro is a speech model (llama.cpp); WhisperModel loads speech-to-text models", e.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> ModelReferences.check(
+                "https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-base.en.bin", STT, hub(List.of())));
+        // a reference, a path, and a missing one are each left to locate
+        ModelReferences.check("ggerganov/whisper.cpp:ggml-huge.bin", STT, hub(List.of()));
+        ModelReferences.check(Files.writeString(dir.resolve("model.bin"), "x").toString(), STT, hub(List.of()));
+        ModelReferences.check(dir.resolve("model.bin").toString(), STT);
+        assertEquals(List.of(), fake.listings);
+        assertEquals(0, fake.heads.get());
+    }
+
     @Test void aMissingFileFailsAsTheHubSays() {
         var e = assertThrows(java.io.UncheckedIOException.class,
                 () -> ModelReferences.locate("ggerganov/whisper.cpp:ggml-huge.bin", STT, hub(List.of())));

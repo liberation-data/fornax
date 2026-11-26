@@ -62,13 +62,9 @@ public final class ModelReferences {
      * @throws UncheckedIOException when the download fails, as {@link FornaxHub#fetch} throws
      */
     public static Optional<Map<String, Path>> locate(String s, Engine engine, FornaxHub hub) {
-        Objects.requireNonNull(s, "model");
-        if (ModelRef.urlHint(s).isPresent()) ModelRef.parse(s);   // throws, naming the reference to use instead
+        check(s, engine, hub);
         if (!hub.isReference(s)) return Optional.empty();
-        var alias = hub.alias(s);   // refused before fetching: an image model's files are gigabytes
-        if (alias.isPresent() && !engine.kinds().contains(alias.get().kind()))
-            throw new IllegalArgumentException(s + " is a " + alias.get().kind().name().toLowerCase(Locale.ROOT) + " model ("
-                    + alias.get().engine() + "); " + engine.name() + " loads " + engine.loads());
+        var alias = hub.alias(s);
         try {
             ModelSet set = alias.isPresent() ? alias.get() : hub.resolve(ModelRef.parse(s));   // fetch, checked first
             if (set.parts().stream().noneMatch(p -> engine.roles().contains(p.role())))
@@ -76,6 +72,27 @@ public final class ModelReferences {
                         + set.parts().stream().map(p -> p.primary().file()).toList() + ")");
             return Optional.of(hub.pull(set, PullListener.logging()));
         } catch (IOException e) { throw new UncheckedIOException(s + ": " + e.getMessage(), e); }
+    }
+
+    /**
+     * The refusals {@link #locate} makes before any request: a Hugging Face URL, or an alias of a kind the engine
+     * doesn't load. For an engine that takes two models, to refuse the second before the first is downloaded.
+     *
+     * @throws IllegalArgumentException as {@link #locate} does for these
+     */
+    public static void check(String s, Engine engine) {
+        Objects.requireNonNull(s, "model");
+        if (!isPath(s)) check(s, engine, FornaxHub.standard());
+    }
+
+    static void check(String s, Engine engine, FornaxHub hub) {
+        Objects.requireNonNull(s, "model");
+        if (ModelRef.urlHint(s).isPresent()) ModelRef.parse(s);   // throws, naming the reference to use instead
+        if (!hub.isReference(s)) return;
+        var alias = hub.alias(s);   // refused before fetching: an image model's files are gigabytes
+        if (alias.isPresent() && !engine.kinds().contains(alias.get().kind()))
+            throw new IllegalArgumentException(s + " is a " + alias.get().kind().name().toLowerCase(Locale.ROOT) + " model ("
+                    + alias.get().engine() + "); " + engine.name() + " loads " + engine.loads());
     }
 
     /** The model's file among what {@link #locate} found: the first of the engine's roles that's there. */

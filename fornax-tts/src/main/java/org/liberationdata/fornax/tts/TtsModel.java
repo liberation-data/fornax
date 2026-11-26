@@ -167,6 +167,7 @@ public final class TtsModel implements AutoCloseable {
         String given = modelPath;
         if (mmprojPath == null && given != null && (ModelReferences.isPath(given) || ModelCatalog.byName(given.strip()).isEmpty()))
             throw new NullPointerException("mmprojPath: " + given + " needs its mmproj (its voices and audio decoder)");   // before fetching the model
+        if (mmprojPath != null) ModelReferences.check(mmprojPath, ENGINE);   // a wrong one refused before fetching the model
         Optional<Map<String, Path>> model = ModelReferences.locate(given, ENGINE);
         if (mmprojPath == null && model.isPresent() && model.get().containsKey("mmproj")) mmprojPath = model.get().get("mmproj").toString();
         if (mmprojPath == null) throw new NullPointerException("mmprojPath: " + given + " needs its mmproj (its voices and audio decoder)");

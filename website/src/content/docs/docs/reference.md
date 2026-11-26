@@ -23,7 +23,7 @@ Package `org.liberationdata.fornax`. The engine modules depend on it.
 | `HfCache` | finds files in the Hugging Face cache: `root()`, `home()`, `find(repo, path)`, `require(repo, path)`, `requireAny(repo, path, ...)`, and the cache's contents: `repos(root)`, `files(root, repo)` |
 | `hub.FornaxHub` | pulls, finds, reports and evicts model sets: `standard()`, `builder()`, `pull(set, listener)`, `pullAsync`, `plan`, `status`, `find`, `require`, `evict`, `fetch(reference, listener)`, `isReference`. See [Downloading models](/docs/guides/models/) |
 | `hub.ModelRef` | a model reference, `owner/repo[@revision][:tag]`: `parse`, `tryParse`, `pick`. See [By reference](/docs/guides/models/#by-reference) |
-| `hub.ModelReferences` | what an engine's constructor does with a path or reference: `locate(model, engine)`, `isPath`, `file` |
+| `hub.ModelReferences` | what an engine's constructor does with a path or reference: `locate(model, engine)`, `check(model, engine)` (its refusals, before any request), `isPath`, `file` |
 | `hub.ModelSet` | a model as a set of files by role: `id`, `kind`, `title`, `engine`, `parts`, `license`, `gated`, `aliases`; `Part` (role and sources), `Source` (repo, file, revision) |
 | `hub.ModelCatalog` | the models Fornax's examples, CLI and Studio use: `all()`, `of(kind)`, `byName`, `require` |
 | `hub.ModelFolders` | folders searched after the cache (a ComfyUI `models/`): `configured()`, `find(part)` |
