@@ -74,11 +74,12 @@ class GuardTest {
             assertTrue(reply.contains("\"permission_error\""), reply);
         }
         assertEquals(403, status(send("GET", "/v1/models", null, "Host: attacker.example:" + p)));
-        // No Host at all: some JDKs' HttpServer answer a Host-less HTTP/1.1 request themselves (a 400) before any
+        // No Host, or two: newer JDKs' HttpServer answer such an HTTP/1.1 request themselves (a 400) before any
         // handler runs; ours answers 403. Either way it's refused, and nothing reaches a model (checked below).
         String none = send("POST", "/v1/chat/completions", CHAT);
         assertTrue(status(none) >= 400 && status(none) < 500, "no Host at all: " + none);
-        assertEquals(403, status(send("POST", "/v1/chat/completions", CHAT, host(), "Host: attacker.example:" + p)), "two Hosts");
+        String two = send("POST", "/v1/chat/completions", CHAT, host(), "Host: attacker.example:" + p);   // the JDK may refuse it first, as above
+        assertTrue(status(two) >= 400 && status(two) < 500, "two Hosts: " + two);
         assertEquals(403, status(send("DELETE", "/v1/nothing", null, "Host: attacker.example:" + p)), "before routing");
         assertTrue(engines.requests.isEmpty(), "nothing reached a model");
     }
