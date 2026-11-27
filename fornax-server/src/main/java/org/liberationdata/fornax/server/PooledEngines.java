@@ -10,6 +10,7 @@ import org.liberationdata.fornax.hub.ModelReferences;
 import org.liberationdata.fornax.hub.ModelSet;
 import org.liberationdata.fornax.hub.ModelSet.Kind;
 import org.liberationdata.fornax.hub.PullListener;
+import org.liberationdata.fornax.jitllm.JitLlmModel;
 import org.liberationdata.fornax.llama.LlamaModel;
 import org.liberationdata.fornax.sd.DiffusionModel;
 import org.liberationdata.fornax.tts.TtsModel;
@@ -67,6 +68,7 @@ final class PooledEngines implements Engines {
     private final Consumer<String> log;
     private final boolean allowDownloads;
     private final Map<String, Found> found = new java.util.concurrent.ConcurrentHashMap<>();
+    private final boolean jitllm;   // language and embedding models run on jitllm, not llama.cpp
 
     /** A model name, found: its key in the pool, its files by role, and its catalogue set (null for a file or reference). */
     record Found(String key, String id, Use use, Map<String, Path> files, ModelSet set) {
@@ -80,6 +82,14 @@ final class PooledEngines implements Engines {
     /** allowDownloads: whether a request may name a model the server wasn't started with that isn't downloaded. */
     PooledEngines(FornaxHub hub, ModelPool pool, List<String> configured, int contextSize, int parallel, PullListener pulls,
                   Consumer<String> log, boolean allowDownloads) {
+        this(hub, pool, configured, contextSize, parallel, pulls, log, allowDownloads, FornaxServer.LanguageEngine.LLAMA_CPP);
+    }
+
+    PooledEngines(FornaxHub hub, ModelPool pool, List<String> configured, int contextSize, int parallel, PullListener pulls,
+                  Consumer<String> log, boolean allowDownloads, FornaxServer.LanguageEngine languageEngine) {
+        this.jitllm = languageEngine == FornaxServer.LanguageEngine.JITLLM;
+        if (jitllm && parallel > 1)
+            throw new IllegalArgumentException("parallel is for llama.cpp; jitllm answers one request at a time per model");
         if (parallel > 1 && contextSize <= 0)
             throw new IllegalArgumentException("parallel needs each slot's context size: set contextSize (not 0)");
         this.parallel = parallel;
@@ -121,7 +131,11 @@ final class PooledEngines implements Engines {
 
     @Override public void checkChat(String model, boolean images) { check(find(model, Use.CHAT, false), images); }
 
-    private static void check(Found f, boolean images) {
+    private void check(Found f, boolean images) {
+        if (jitllm && f.set() != null && f.set().kind() == Kind.VISION)
+            throw ApiError.badRequest(f.id() + " is a vision model, which this server's language engine (jitllm) doesn't run", "model");
+        if (jitllm && images)
+            throw ApiError.badRequest("this server's language engine (jitllm) takes no images", "messages");
         if (images && (f.set() == null || f.set().kind() != Kind.VISION))
             throw ApiError.badRequest(f.id() + " takes no images; use a vision model (" + ids(Kind.VISION) + ")", "messages");
     }
@@ -129,8 +143,14 @@ final class PooledEngines implements Engines {
     @Override public String chat(String model, String requestJson, boolean images, Consumer<String> onContent, Stopper stop) {
         Found f = find(model, Use.CHAT, true);
         check(f, images);
-        try (ModelPool.Lease<LlamaModel> lease = lease(f)) {
-            LlamaModel m = lease.model();
+        try (ModelPool.Lease<AutoCloseable> lease = lease(f)) {
+            if (lease.model() instanceof JitLlmModel j) {
+                stop.attach(j::cancel);
+                try { return j.chatJson(requestJson, onContent); }
+                catch (IllegalStateException e) { throw engineError(e); }
+                finally { stop.detach(); }
+            }
+            LlamaModel m = (LlamaModel) lease.model();
             if (m.slots() > 1) return chatInSlot(sub -> m.chatJsonAsync(requestJson, List.of(), sub), onContent, stop);
             stop.attach(m::cancel);
             try { return m.chatJson(requestJson, onContent); }
@@ -195,8 +215,10 @@ final class PooledEngines implements Engines {
 
     @Override public float[][] embed(String model, List<String> texts) {
         Found f = find(model, Use.EMBED, true);
-        try (ModelPool.Lease<LlamaModel> lease = lease(f)) {
-            try { return lease.model().embed(texts); }
+        try (ModelPool.Lease<AutoCloseable> lease = lease(f)) {
+            try {
+                return lease.model() instanceof JitLlmModel j ? j.embed(texts) : ((LlamaModel) lease.model()).embed(texts);
+            }
             catch (IllegalStateException e) { throw ApiError.badRequest(e.getMessage(), "input"); }   // a text longer than the context
         }
     }
@@ -399,10 +421,14 @@ final class PooledEngines implements Engines {
 
     /** A language model's slots: {@link #parallel}, except for a vision model, whose images a model with slots can't take. */
     int slots(Found f) {
+        if (jitllm) return 1;
         return f.use() == Use.CHAT && !(f.set() != null && f.set().kind() == Kind.VISION) ? parallel : 1;
     }
 
     private AutoCloseable load(Found f) {
+        if (jitllm && (f.use() == Use.CHAT || f.use() == Use.EMBED))
+            return new JitLlmModel(f.file("gguf").toString(), contextSize,
+                    f.use() == Use.EMBED ? JitLlmModel.Mode.EMBED : JitLlmModel.Mode.CHAT);
         int slots = slots(f);
         if (slots > 1) return new LlamaModel(f.file("gguf").toString(), -1, contextSize, slots);
         return switch (f.use()) {
