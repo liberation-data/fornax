@@ -702,7 +702,8 @@ public final class FornaxServer implements AutoCloseable {
         /**
          * jitllm (fornax-jitllm), a Java engine on the GPU through TornadoVM: chat, streaming and embeddings. A request
          * with tools, a JSON schema or images is refused (400); vision models are llama.cpp's; one request at a time
-         * per model. Needs a TornadoVM SDK ({@code TORNADOVM_HOME}).
+         * per model; {@code min_p} and {@code top_k} are ignored (it samples with temperature and top-p). Needs a
+         * TornadoVM SDK ({@code TORNADOVM_HOME}).
          */
         JITLLM
     }
@@ -845,6 +846,9 @@ public final class FornaxServer implements AutoCloseable {
                 throw new IllegalArgumentException("parallel needs each slot's context size: set contextSize (not 0)");
             if (engines == null && parallel > 1 && languageEngine == LanguageEngine.JITLLM)
                 throw new IllegalArgumentException("parallel is for llama.cpp; jitllm answers one request at a time per model");
+            // jitllm's TornadoVM SDK is checked before any model is downloaded
+            if (engines == null && languageEngine == LanguageEngine.JITLLM)
+                org.liberationdata.fornax.jitllm.JitLlmModel.checkRuntime();
             return new FornaxServer(this);
         }
 

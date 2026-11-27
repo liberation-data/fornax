@@ -53,6 +53,32 @@ class JitLlmModelGpuTest {
         }
     }
 
+    @Test void anEmbeddingInputLongerThanTheContextIsABadRequest() {
+        try (var llm = new JitLlmModel(MODEL, 64, JitLlmModel.Mode.EMBED)) {
+            assertEquals(llm.embeddingSize(), llm.embed("a kiln").length);
+            IllegalStateException e = assertThrows(IllegalStateException.class, () -> llm.embed("kiln ".repeat(200)));
+            assertTrue(e.getMessage().contains("more than the context holds"), e.getMessage());
+        }
+    }
+
+    @Test void thinkingCanBeTurnedOff() {
+        String thinker = System.getProperty("jitllm.test.thinkingModel");
+        org.junit.jupiter.api.Assumptions.assumeTrue(thinker != null && !thinker.isBlank(), "-PjitllmThinkingModel=<Qwen3 GGUF>");
+        try (var llm = new JitLlmModel(thinker, 2048)) {
+            String ask = "{\"messages\": [{\"role\": \"user\", \"content\": \"What is 17*3?\"}], \"temperature\": 0, \"max_tokens\": 600";
+            Object on = Json.parse(llm.chatJson(ask + "}", null));
+            Object off = Json.parse(llm.chatJson(ask + ", \"enable_thinking\": false}", null));
+            Object onAgain = Json.parse(llm.chatJson(ask + ", \"enable_thinking\": true}", null));
+            System.out.println("thinking on: " + on + "\nthinking off: " + off);
+            assertFalse(((String) Json.get(on, "message", "reasoning_content")).isBlank());
+            assertTrue(Json.get(off, "message", "reasoning_content") == null
+                    || ((String) Json.get(off, "message", "reasoning_content")).isBlank(), off.toString());
+            assertTrue(((Long) Json.get(off, "usage", "completion_tokens")) < ((Long) Json.get(on, "usage", "completion_tokens")));
+            assertTrue(((String) Json.get(off, "message", "content")).contains("51"), off.toString());
+            assertFalse(((String) Json.get(onAgain, "message", "reasoning_content")).isBlank());
+        }
+    }
+
     @Test void cancelStopsAGeneration() throws Exception {
         try (var llm = new JitLlmModel(MODEL, 2048)) {
             var f = llm.chatAsync(List.of(Message.user("Write a very long story about a kiln.")),

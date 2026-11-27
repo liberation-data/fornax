@@ -87,9 +87,10 @@ try (var llm = new JitLlmModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M")) { 
 ```
 
 It needs a TornadoVM SDK for your JDK and GPU (`TORNADOVM_HOME`, 8.2.0 or newer). A JVM started with the SDK's
-`tornado-argfile`, `--add-modules jdk.incubator.vector` and `-Duse.tornadovm=true` runs the model in-process; any
-other JVM runs it in a [worker process](https://fornax4j.org/docs/guides/isolation/) that Fornax starts with those
-options, so a plain `java` or `./gradlew run` works too. TornadoVM's device memory budget is 14 GB, as for the
+`tornado-argfile`, `--add-modules jdk.incubator.vector`, `-Duse.tornadovm=true` and
+`-Dtornado.tvm.maxbytecodesize=65536` runs the model in-process; any other JVM runs it in a
+[worker process](https://fornax4j.org/docs/guides/isolation/) that Fornax starts with those options, so a plain `java`
+or `./gradlew run` works too. TornadoVM's device memory budget is 14 GB, as for the
 `jitllm` command; set `-Dtornado.device.memory=...` to change it. From the command line:
 
 ```sh
@@ -99,7 +100,7 @@ fornax server -m qwen3-4b --engine jitllm      # chat (streaming) and embeddings
 
 `FornaxServer.builder().languageEngine(LanguageEngine.JITLLM)` does the same from Java. jitllm runs text only: tool
 calls, JSON-schema output, images, reranking and `--parallel` stay with llama.cpp, and the server answers a request
-that needs them with a 400.
+that needs them with a 400. It samples with temperature and top-p: `min_p` and `top_k` are ignored.
 
 ## Getting started
 

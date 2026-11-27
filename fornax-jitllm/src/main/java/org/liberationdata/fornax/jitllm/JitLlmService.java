@@ -47,7 +47,8 @@ public final class JitLlmService implements WorkerService {
         };
     }
 
-    @Override public void cancel() { model.cancel(); }
+    /** The calls run on the worker's thread, not the model's: the engine is stopped directly, mid-prompt too. */
+    @Override public void cancel() { model.cancelEngine(); }
 
     @Override public void close() { model.close(); }
 

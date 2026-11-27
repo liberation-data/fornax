@@ -50,8 +50,7 @@ public final class TornadoJvm {
         Path argfile = home.resolve("tornado-argfile");
         if (Files.isRegularFile(argfile)) return argfile;
         try {
-            String text = Files.readString(home.resolve("tornado-argfile.template"), StandardCharsets.UTF_8)
-                    .replace("${TORNADOVM_HOME}", home.toString());
+            String text = expand(Files.readString(home.resolve("tornado-argfile.template"), StandardCharsets.UTF_8), home);
             Path dir = privateDirectory(cacheRoot().resolve("tornadovm"));
             Path out = dir.resolve("tornado-argfile-" + Integer.toHexString(home.toString().hashCode()));
             Path tmp = Files.createTempFile(dir, "argfile", ".tmp");
@@ -61,6 +60,28 @@ public final class TornadoJvm {
         } catch (IOException e) {
             throw new UncheckedIOException("can't write a tornado-argfile for " + home + ": " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * The template with the SDK's path for {@code ${TORNADOVM_HOME}}. A token that then holds whitespace (an SDK under
+     * "Tornado SDKs") is quoted as a whole, as an argfile needs, with its backslashes and quotes escaped.
+     */
+    static String expand(String template, Path home) {
+        StringBuilder out = new StringBuilder();
+        String[] lines = template.split("\\R", -1);
+        for (int n = 0; n < lines.length; n++) {
+            String line = lines[n];
+            if (n > 0) out.append('\n');
+            if (line.stripLeading().startsWith("#") || !line.contains("${TORNADOVM_HOME}")) { out.append(line); continue; }
+            String[] tokens = line.strip().split("\\s+");
+            for (int i = 0; i < tokens.length; i++) {
+                String t = tokens[i].replace("${TORNADOVM_HOME}", home.toString());
+                if (i > 0) out.append(' ');
+                out.append(t.chars().anyMatch(Character::isWhitespace)
+                        ? '"' + t.replace("\\", "\\\\").replace("\"", "\\\"") + '"' : t);
+            }
+        }
+        return out.toString();
     }
 
     /** The user's Fornax cache directory, as fornax-core's natives cache finds it. */
@@ -94,7 +115,7 @@ public final class TornadoJvm {
         args.add("@" + argfile(home()));
         args.add("--add-modules");
         args.add("jdk.incubator.vector");
-        args.add("-Dtornado.tvm.maxbytecodesize=65536");
+        args.add("-Dtornado.tvm.maxbytecodesize=" + JitLlmModel.MAX_BYTECODE);
         args.add("-Duse.tornadovm=true");
         if (System.getProperty("tornado.device.memory") == null) args.add("-Dtornado.device.memory=" + DEVICE_MEMORY);
         for (String key : System.getProperties().stringPropertyNames().stream().sorted().toList())

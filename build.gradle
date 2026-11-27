@@ -228,6 +228,8 @@ project(':fornax-jitllm') {
     tasks.withType(Test).configureEach {
         def model = providers.gradleProperty('jitllmModel').orNull
         if (model) systemProperty 'jitllm.test.model', model
+        def thinker = providers.gradleProperty('jitllmThinkingModel').orNull   // a Qwen3 GGUF: thinking on and off
+        if (thinker) systemProperty 'jitllm.test.thinkingModel', thinker
     }
 }
 

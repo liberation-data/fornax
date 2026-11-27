@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TornadoJvmTest {
 
@@ -32,5 +33,18 @@ class TornadoJvmTest {
             assertEquals("rwx------", java.nio.file.attribute.PosixFilePermissions.toString(Files.getPosixFilePermissions(argfile.getParent())));
         assertEquals("-Djava.library.path=" + sdk + "/lib\n--module-path .:" + sdk + "/share/java/tornado\n",
                 Files.readString(argfile));
+    }
+
+    @Test void quotesAnSdkPathWithSpaces(@TempDir Path dir) throws Exception {
+        Path sdk = Files.createDirectories(dir.resolve("Tornado SDKs").resolve("tornadovm"));
+        String argfile = TornadoJvm.expand("# a comment with ${TORNADOVM_HOME}\n-server\n-Dfornax.sdk.lib=${TORNADOVM_HOME}/lib\n", sdk);
+        assertEquals("# a comment with ${TORNADOVM_HOME}\n-server\n\"-Dfornax.sdk.lib=" + sdk + "/lib\"\n", argfile);
+        // and the JVM reads it back as one option
+        Path file = Files.writeString(dir.resolve("args"), argfile);
+        Process p = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(), "@" + file,
+                "-XshowSettings:properties", "-version").redirectErrorStream(true).start();
+        String out = new String(p.getInputStream().readAllBytes());
+        assertEquals(0, p.waitFor(), out);
+        assertTrue(out.contains("fornax.sdk.lib = " + sdk + "/lib"), out);
     }
 }

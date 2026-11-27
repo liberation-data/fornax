@@ -24,10 +24,13 @@ import java.util.function.Consumer;
  * pure-Java inference engine whose kernels TornadoVM compiles at run time for CUDA, OpenCL or Metal. It takes the same
  * {@link Message}s and {@link Options} as {@code LlamaModel} and gives the same {@link Result}, so code written for
  * one runs on the other: {@code chat}, {@code chatJson} (what fornax-server serves), {@code embed}, streaming, the
- * async methods and {@code cancel}. jitllm has no min-p sampling: {@link Options#minP()} is ignored. Images, JSON-schema constrained output and reranking stay with {@code LlamaModel}.
+ * async methods and {@code cancel}. jitllm samples with temperature and top-p only: {@link Options#minP()} is
+ * ignored. Images, tools, JSON-schema constrained output and reranking stay with {@code LlamaModel}.
  *
  * <p>jitllm needs a TornadoVM SDK ({@code TORNADOVM_HOME}) and the JVM options it lists. When this JVM was started
- * with them, {@code --add-modules jdk.incubator.vector} and {@code -Duse.tornadovm=true}, the model loads in-process. Otherwise (a plain {@code java} or {@code ./gradlew run}) it loads in a
+ * with them, {@code --add-modules jdk.incubator.vector}, {@code -Duse.tornadovm=true} and
+ * {@code -Dtornado.tvm.maxbytecodesize=65536} (or more), the model loads in-process. Otherwise (a plain {@code java}
+ * or {@code ./gradlew run}) it loads in a
  * {@link Worker}, a child JVM started with TornadoVM's options (see {@link TornadoJvm}), behind this same API; so does
  * every JitLlmModel with {@code -Dfornax.isolation=process}.
  *
@@ -56,11 +59,27 @@ public final class JitLlmModel implements AutoCloseable {
 
     /** A chat or embedding model, in-process if this JVM has TornadoVM, else in a worker of its own. */
     public JitLlmModel(String ggufPath, int contextSize, Mode mode) {
-        this(locate(ggufPath), contextSize, mode, inProcessPossible() ? null : workerFor(ggufPath), true);
+        this(locate(sdkFirst(ggufPath)), contextSize, mode, inProcessPossible() ? null : workerFor(ggufPath), true);
+    }
+
+    /** The path as given, once a model that will need a worker has its TornadoVM SDK: said before any download. */
+    private static String sdkFirst(String ggufPath) {
+        checkRuntime();
+        return ggufPath;
+    }
+
+    /**
+     * Throws an IllegalStateException that says what to set if jitllm couldn't run here: neither this JVM has
+     * TornadoVM (see {@link #inProcessPossible}) nor is there an SDK for a worker. For a caller to check before it
+     * downloads a model.
+     */
+    public static void checkRuntime() {
+        if (!inProcessPossible()) TornadoJvm.home();
     }
 
     /** The model in a worker process of its own, whether or not this JVM has TornadoVM. */
     public static JitLlmModel isolated(String ggufPath, int contextSize, Mode mode) {
+        TornadoJvm.home();   // before any download
         return new JitLlmModel(locate(ggufPath), contextSize, mode, workerFor(ggufPath), true);
     }
 
@@ -68,7 +87,7 @@ public final class JitLlmModel implements AutoCloseable {
     static JitLlmModel inProcess(String ggufPath, int contextSize, Mode mode) {
         if (!tornadoJvm())
             throw new IllegalStateException("jitllm in this JVM needs TornadoVM's tornado-argfile, --add-modules "
-                    + "jdk.incubator.vector and -Duse.tornadovm=true");
+                    + "jdk.incubator.vector, -Duse.tornadovm=true and -Dtornado.tvm.maxbytecodesize=" + MAX_BYTECODE);
         return new JitLlmModel(ggufPath, contextSize, mode, null, false);
     }
 
@@ -118,6 +137,15 @@ public final class JitLlmModel implements AutoCloseable {
 
     /** Stops the call in progress, if any: it returns the text so far. */
     public void cancel() { thread.cancel(); }
+
+    /**
+     * Stops the engine's generation in progress, prompt processing included: for a worker, whose calls run on the
+     * worker's own thread rather than this model's.
+     */
+    void cancelEngine() {
+        if (local != null) local.cancel();
+        else thread.cancel();
+    }
 
     // ---- chat ----
 
@@ -178,7 +206,7 @@ public final class JitLlmModel implements AutoCloseable {
         if (remote != null)
             return JitLlmService.decodeString(remote(call, "chatJson", JitLlmService.chatJsonArgs(requestJson, onContent != null), onContent));
         ChatJson.Request request = ChatJson.parse(requestJson);
-        ChatJson.Content content = onContent == null ? null : new ChatJson.Content(onContent);
+        ChatJson.Content content = onContent == null ? null : new ChatJson.Content(onContent, local.opensInside());
         ChatJson.Reply reply = local.chat(call, request, content);
         if (content != null) content.finish();
         return ChatJson.response(reply);
@@ -216,18 +244,22 @@ public final class JitLlmModel implements AutoCloseable {
     }
 
     /**
-     * Whether jitllm can run on the GPU in this JVM: it was started with TornadoVM's modules, the Vector API and
-     * {@code -Duse.tornadovm=true} (without which jitllm runs on the CPU), and fornax.isolation doesn't ask for a
-     * worker. A worker itself always runs its models in-process.
+     * Whether jitllm can run on the GPU in this JVM: it was started with TornadoVM's modules, the Vector API,
+     * {@code -Duse.tornadovm=true} (without which jitllm runs on the CPU) and a bytecode buffer big enough for prompt
+     * ingestion, and fornax.isolation doesn't ask for a worker. A worker itself always runs its models in-process.
      */
     static boolean inProcessPossible() {
         return Isolation.configured() == Isolation.IN_PROCESS && tornadoJvm();
     }
 
+    /** The interpreter bytecode buffer jitllm's prompt ingestion needs: TornadoVM's default is smaller. */
+    static final int MAX_BYTECODE = 65536;
+
     private static boolean tornadoJvm() {
         return ModuleLayer.boot().findModule("tornado.runtime").isPresent()
                 && ModuleLayer.boot().findModule("jdk.incubator.vector").isPresent()
-                && Boolean.getBoolean("use.tornadovm");
+                && Boolean.getBoolean("use.tornadovm")
+                && Integer.getInteger("tornado.tvm.maxbytecodesize", 0) >= MAX_BYTECODE;
     }
 
     private static Worker workerFor(String ggufPath) {
