@@ -6,7 +6,6 @@ import org.liberationdata.fornax.http.Loopback;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -49,8 +48,7 @@ final class Guard {
     ApiError refusal(Headers h, int port, boolean preflight) {
         if (checkHost) {
             List<String> hosts = h.get("Host");
-            String host = hosts == null || hosts.size() != 1 ? null : hosts.get(0).toLowerCase(Locale.ROOT);
-            if (host == null || !Loopback.host(host, port))
+            if (hosts == null || hosts.size() != 1 || !Loopback.host(hosts.get(0), port))
                 return forbidden("this server only answers requests to its own loopback address (wrong Host)");
         }
         if (h.containsKey("Origin") && allowedOrigin(h) == null)
