@@ -48,8 +48,9 @@ final class GgufHeader {
 
     // Projectors of models that speak aloud and also chat in text (LFM3-Audio): Chat keeps them.
     private static final Set<String> CHATTY_VOICES = Set.of("lfm3a_gen");
-    // Projectors of models that hear audio only to transcribe it (Qwen3-ASR): Chat leaves them out.
-    private static final Set<String> TRANSCRIBERS = Set.of("qwen3a");
+    // Projectors of models that hear audio only to transcribe it (Qwen3-ASR, GLM-ASR, Voxtral Realtime, Nemotron
+    // Transcribe, VibeVoice-ASR): Chat leaves them out. Qwen3-Omni hears with qwen3a too, but it sees as well, and chats.
+    private static final Set<String> TRANSCRIBERS = Set.of("qwen3a", "glma", "voxtral_rt", "nemotron_transcribe", "vibevoice_asr");
 
     /**
      * Whether a model's projector ({@code mmproj-*.gguf}) makes it a speech model and not one to chat with: text to
@@ -59,14 +60,17 @@ final class GgufHeader {
      *
      * <p>A projector that makes audio is a voice unless it's one known to chat as well; one that only hears audio is
      * a chat model (Ultravox, Voxtral, Qwen2.5-Omni) unless it's a known transcriber. So an unknown voice stays out of
-     * Chat, where it couldn't answer, and an unknown listener stays in.
+     * Chat, where it couldn't answer, and an unknown listener stays in. One that sees as well as hears (an omni model)
+     * chats. A projector with audio alone names its type {@code clip.projector_type}; one with several modalities names
+     * each, as {@code clip.audio.projector_type}.
      */
     static boolean onlySpeech(Path mmproj) {
         Map<String, Object> h = read(mmproj);
         if (Boolean.TRUE.equals(h.get("clip.has_gen_audio_encoder")))
             return !CHATTY_VOICES.contains(String.valueOf(h.get("clip.gen.audio.projector_type")));
-        return Boolean.TRUE.equals(h.get("clip.has_audio_encoder")) 
-                && TRANSCRIBERS.contains(String.valueOf(h.get("clip.audio.projector_type")));
+        Object hears = h.getOrDefault("clip.audio.projector_type", h.get("clip.projector_type"));
+        return Boolean.TRUE.equals(h.get("clip.has_audio_encoder")) && !Boolean.TRUE.equals(h.get("clip.has_vision_encoder"))
+                && TRANSCRIBERS.contains(String.valueOf(hears));
     }
 
     private static Object readValue(DataInputStream in, int type) throws IOException {
