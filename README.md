@@ -276,7 +276,8 @@ native/build.sh vulkan            # or hip | cuda | metal | cpu; optionally list
 
 `native/build.sh` clones the engines at the commits pinned in `native/engines.properties` into `engines-src/`,
 applies Fornax's patches from `native/patches/` (when a pin or a patch changes, it first resets that engine's tracked
-files, so keep no edits of your own there), and writes the libraries to `build/native/<os>-<arch>-<backend>/`.
+files and its submodules', so keep no edits of your own there), and writes the libraries to
+`build/native/<os>-<arch>-<backend>/`.
 The Gradle build points the examples and tests at that folder; pick another backend with `-Pfornax.backend=hip`.
 Without it, `./gradlew build` still compiles every module and runs the tests that need no engine library and no
 model (the rest skip themselves): what CI runs on every pull request (`.github/workflows/ci.yml`), along with a
