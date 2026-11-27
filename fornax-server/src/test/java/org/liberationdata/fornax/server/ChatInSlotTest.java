@@ -25,12 +25,17 @@ class ChatInSlotTest {
 
     @AfterEach void close() { thread.close(); }
 
-    /** Streams up to n pieces ("0", "1", ...), then answers "all"; stopped, answers how many it had sent. */
+    /**
+     * Streams up to n pieces ("0", "1", ...), a millisecond apart as a model's tokens are, then answers "all"; stopped,
+     * answers how many it had sent. (Flat out, it could fill the stream's buffer before a stop got through, on a slow
+     * machine, and overflow instead.)
+     */
     String chat(int n, java.util.function.Consumer<String> onContent, Stopper stop) {
         return PooledEngines.chatInSlot(sub -> thread.<String, String>submit((c, sink) -> {
             for (int i = 0; i < n; i++) {
                 if (c.stopRequested()) return "stopped after " + i;
                 sink.accept(String.valueOf(i));
+                try { Thread.sleep(1); } catch (InterruptedException e) { return "interrupted after " + i; }
             }
             return "all";
         }, sub), onContent, stop);
