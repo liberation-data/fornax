@@ -37,6 +37,9 @@ class BenchmarksTest {
         // Run without -d, there's no generation test at the prompt's depth: not an infinite time to the first token.
         var e = assertThrows(IllegalStateException.class, () -> Benchmarks.llamaBench(LLAMA_BENCH, 600));
         assertTrue(e.getMessage().contains("depth 600"), e.getMessage());
+        // Run with only -n, there's no prompt test on an empty context to time the prompt by.
+        assertThrows(IllegalStateException.class, () -> Benchmarks.llamaBench("""
+                [{"n_prompt": 0, "n_gen": 128, "n_depth": 553, "avg_ts": 75.0}]""", 553));
     }
 
     @Test
@@ -104,6 +107,25 @@ class BenchmarksTest {
         assertEquals("3b12781", Benchmarks.Machine.pin(props, "stable-diffusion.cpp"));
         assertEquals("?", Benchmarks.Machine.pin(props, "whisper.cpp"));
         assertEquals("?", Benchmarks.Machine.pin(dir.resolve("missing.properties"), "llama.cpp"));
+    }
+
+    @Test
+    void memoryIsInBytesAndMissingWithoutTheFile() throws Exception {
+        Path meminfo = Files.writeString(dir.resolve("meminfo"), "MemTotal:       127386092 kB\nMemFree: 1 kB\n");
+        assertEquals(127386092L * 1024, Benchmarks.Machine.firstNumber(meminfo, "MemTotal:\\s*(\\d+) kB", 1024));
+        assertNull(Benchmarks.Machine.firstNumber(dir.resolve("missing"), "MemTotal:\\s*(\\d+) kB", 1024));
+    }
+
+    @Test
+    void aCounterThatIsGoneOrGarbledCountsAsNothing() throws Exception {
+        Path device = Files.createDirectories(dir.resolve("card0/device"));
+        Path vram = Files.writeString(device.resolve("mem_info_vram_used"), "100\n");
+        Path gtt = Files.writeString(device.resolve("mem_info_gtt_used"), "1000\n");
+        List<Path> counters = Benchmarks.GpuMemory.counters(dir);
+        Files.writeString(vram, "busy");
+        assertEquals(1000L, Benchmarks.GpuMemory.used(counters));
+        Files.delete(gtt);
+        assertEquals(0L, Benchmarks.GpuMemory.used(counters));
     }
 
     @Test

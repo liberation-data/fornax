@@ -305,6 +305,7 @@ project(':fornax-bench') {
         javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
         jvmArgs '--enable-native-access=ALL-UNNAMED'
         systemProperty 'fornax.library.path', nativeDir.absolutePath
+        systemProperty 'fornax.backend', findProperty('fornax.backend')  // so results.json names the natives it ran
         workingDir = rootProject.projectDir
         def cli = gradle.startParameter.projectProperties
         ['llama.bench', 'sd.cli'].each { p -> if (cli.containsKey(p)) systemProperty p, cli[p] }
