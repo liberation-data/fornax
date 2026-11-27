@@ -1,6 +1,5 @@
 package org.liberationdata.fornax.cli;
 
-import org.liberationdata.fornax.acestep.AceStepModel;
 import org.liberationdata.fornax.cli.Args.UsageException;
 import org.liberationdata.fornax.hub.FornaxHub;
 import org.liberationdata.fornax.hub.ModelSet;
@@ -9,7 +8,6 @@ import org.liberationdata.fornax.llama.LlamaModel;
 import org.liberationdata.fornax.llama.LlamaModel.Message;
 import org.liberationdata.fornax.llama.LlamaModel.Options;
 import org.liberationdata.fornax.sd.DiffusionModel;
-import org.liberationdata.fornax.yue2.Yue2Model;
 
 import javax.imageio.ImageIO;
 import java.awt.Color;
@@ -95,12 +93,10 @@ final class SmokeTest {
     }
 
     private static void image(ModelSet m, Map<String, Path> files, String prompt, Path file, long t0, PrintStream out) throws IOException {
-        var cfg = DiffusionModel.Config.builder().diffusionModel(path(files, "diffusion_model"))
-                .vae(path(files, "vae")).llm(path(files, "llm")).build();
-        double guidance = m.id().startsWith("qwen") ? 2.5 : 4.0;
+        double guidance = Image.cfg(m);
         int size = 256, steps = 4;
-        List<BufferedImage> refs = m.id().equals("qwen-image-edit") ? List.of(gray(size)) : List.of();
-        try (var model = new DiffusionModel(cfg)) {
+        List<BufferedImage> refs = Image.needsRef(m) ? List.of(gray(size)) : List.of();
+        try (var model = new DiffusionModel(Image.config(files))) {
             out.printf("Load      %s (%s)%n", Fmt.seconds(secs(t0)), model.modelVersion());
             long g0 = System.nanoTime();
             var img = model.generate(new DiffusionModel.Request(prompt, size, size, steps, guidance, 7, refs, Map.of())).get(0);
@@ -112,37 +108,20 @@ final class SmokeTest {
 
     private static void song(ModelSet m, Map<String, Path> files, String about, int seconds, Path file, long t0, PrintStream out) throws IOException {
         String lyrics = "[Verse]\nThe kiln is warm, the clay is new\nIt sings all night the whole way through\n";
-        if (m.engine().equals("acestep.cpp")) {
-            Path lm = files.get("lm");   // the turbo sets without the lyric LM: caption and lyrics drive the DiT directly
-            try (var model = new AceStepModel(lm == null ? null : lm.toString(), path(files, "text_encoder"), path(files, "dit"),
-                    path(files, "vae"), true)) {
-                out.printf("Load      %s%n", Fmt.seconds(secs(t0)));
-                String req = "{\"caption\": " + Json.quote("acoustic folk, warm male vocal, " + about) + ", \"lyrics\": "
+        String req = m.engine().equals("acestep.cpp")
+                ? "{\"caption\": " + Json.quote("acoustic folk, warm male vocal, " + about) + ", \"lyrics\": "
                         + Json.quote(lyrics) + ", \"bpm\": 100, \"duration\": " + seconds + ", \"keyscale\": \"G major\", "
                         + "\"timesignature\": \"4\", \"vocal_language\": \"en\", \"seed\": 7, \"lm_seed\": 7, "
-                        + "\"inference_steps\": 8, \"guidance_scale\": 1.0, \"shift\": 3.0}";
-                long g0 = System.nanoTime();
-                var r = model.generate(req);
-                r.audio().writeWav(file.toFile());
-                out.printf("Generate  %s of audio in %s%n", Fmt.seconds(r.audio().seconds()), Fmt.seconds(secs(g0)));
-            }
-        } else {
-            try (var model = new Yue2Model(path(files, "model"), path(files, "vae"), true, 0)) {
-                out.printf("Load      %s%n", Fmt.seconds(secs(t0)));
-                String req = "{\"style\": " + Json.quote("acoustic folk, warm male vocal, " + about) + ", \"lyrics\": "
+                        + "\"inference_steps\": 8, \"guidance_scale\": 1.0, \"shift\": 3.0}"
+                : "{\"style\": " + Json.quote("acoustic folk, warm male vocal, " + about) + ", \"lyrics\": "
                         + Json.quote(lyrics) + ", \"duration\": " + seconds + ", \"seed\": 7, \"lm_seed\": 7}";
-                long g0 = System.nanoTime();
-                var r = model.generate(req);
-                r.audio().writeWav(file.toFile());
-                out.printf("Generate  %s of audio in %s%n", Fmt.seconds(r.audio().seconds()), Fmt.seconds(secs(g0)));
-            }
+        try (var model = Song.load(m, files)) {
+            out.printf("Load      %s%n", Fmt.seconds(secs(t0)));
+            long g0 = System.nanoTime();
+            var audio = model.sing(req);
+            audio.writeWav(file.toFile());
+            out.printf("Generate  %s of audio in %s%n", Fmt.seconds(audio.seconds()), Fmt.seconds(secs(g0)));
         }
-    }
-
-    private static String path(Map<String, Path> files, String role) {
-        Path p = files.get(role);
-        if (p == null) throw new IllegalStateException("no " + role + " among " + files.keySet());
-        return p.toString();
     }
 
     private static BufferedImage gray(int size) {

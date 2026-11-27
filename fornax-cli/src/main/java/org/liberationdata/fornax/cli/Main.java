@@ -33,6 +33,11 @@ public final class Main {
               list                     the catalogue's models, what's downloaded, other GGUFs in the cache
               rm <alias>               delete a model's files from the cache
               chat <model> ["prompt"]  chat with a GGUF language model (interactive without a prompt)
+              image <model> "prompt"   draw an image (flux2-klein, ...)
+              song <model> "about"     make a song (ace-step-turbo, ...)
+              speak ["text"]           text to speech (kokoro)
+              transcribe <audio.wav>   speech to text (whisper-base.en)
+              see <model> <image>      ask a vision model about an image (qwen3-vl-4b, ...)
               test <model>             load, generate a little, report speed
               info                     native libraries, Java and cache locations
 
@@ -40,9 +45,11 @@ public final class Main {
             %s
             fornax <command> --help for more. Set FORNAX_VERBOSE=1 to see the engines' logs.""";
 
-    private static final Map<String, String> COMMAND_USAGE = Map.of(
-            "pull", Pull.USAGE, "list", Listing.USAGE, "rm", Remove.USAGE, "chat", Chat.USAGE, "test", SmokeTest.USAGE,
-            "info", Info.USAGE);
+    private static final Map<String, String> COMMAND_USAGE = Map.ofEntries(
+            Map.entry("pull", Pull.USAGE), Map.entry("list", Listing.USAGE), Map.entry("rm", Remove.USAGE),
+            Map.entry("chat", Chat.USAGE), Map.entry("image", Image.USAGE), Map.entry("song", Song.USAGE),
+            Map.entry("speak", Speak.USAGE), Map.entry("transcribe", Transcribe.USAGE), Map.entry("see", See.USAGE),
+            Map.entry("test", SmokeTest.USAGE), Map.entry("info", Info.USAGE));
 
     public static void main(String[] argv) {
         System.exit(run(argv, System.out, System.err));
@@ -65,7 +72,7 @@ public final class Main {
         String help = COMMAND_USAGE.get(cmd);
         if (help == null) { err.println("fornax: unknown command " + cmd + "\n\n" + usage()); return 2; }
         try {
-            Args a = Args.parse(rest, valueOptions(cmd), cmd.equals("chat") ? Chat.FLAGS : Set.of());
+            Args a = Args.parse(rest, valueOptions(cmd), flags(cmd));
             if (a.has("help")) { out.println(help); return 0; }
             FornaxHub hub = FornaxHub.standard();
             BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
@@ -74,6 +81,11 @@ public final class Main {
                 case "list" -> { noArgs(a); yield Listing.run(hub, out); }
                 case "rm" -> Remove.run(a, hub, out);
                 case "chat" -> Chat.run(a, hub, in, out, err);
+                case "image" -> Image.run(a, hub, out, err);
+                case "song" -> Song.run(a, hub, in, out, err);
+                case "speak" -> Speak.run(a, hub, in, out, err);
+                case "transcribe" -> Transcribe.run(a, hub, out, err);
+                case "see" -> See.run(a, hub, out, err);
                 case "test" -> SmokeTest.run(a, hub, out);
                 case "info" -> { noArgs(a); yield Info.run(hub, out); }
                 default -> throw new IllegalStateException(cmd);
@@ -113,7 +125,22 @@ public final class Main {
         return switch (cmd) {
             case "pull" -> Pull.OPTIONS;
             case "chat" -> Chat.OPTIONS;
+            case "image" -> Image.OPTIONS;
+            case "song" -> Song.OPTIONS;
+            case "speak" -> Speak.OPTIONS;
+            case "transcribe" -> Transcribe.OPTIONS;
+            case "see" -> See.OPTIONS;
             case "test" -> SmokeTest.OPTIONS;
+            default -> Set.of();
+        };
+    }
+
+    private static Set<String> flags(String cmd) {
+        return switch (cmd) {
+            case "chat" -> Chat.FLAGS;
+            case "speak" -> Speak.FLAGS;
+            case "transcribe" -> Transcribe.FLAGS;
+            case "see" -> See.FLAGS;
             default -> Set.of();
         };
     }

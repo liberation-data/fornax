@@ -24,10 +24,12 @@ final class Info {
 
     /** The engines, by the native library name each module loads. */
     static final List<String[]> LIBRARIES = List.of(
-            new String[]{"fornax_llama", "llama.cpp (fornax chat, language models)"},
-            new String[]{"stable-diffusion", "stable-diffusion.cpp (images)"},
-            new String[]{"fornax_acestep", "acestep.cpp (ACE-Step songs)"},
-            new String[]{"fornax_yue2", "yue2.cpp (YuE2 songs)"});
+            new String[]{"fornax_llama", "llama.cpp (fornax chat and see)"},
+            new String[]{"stable-diffusion", "stable-diffusion.cpp (fornax image)"},
+            new String[]{"fornax_acestep", "acestep.cpp (fornax song, ACE-Step)"},
+            new String[]{"fornax_yue2", "yue2.cpp (fornax song, YuE2)"},
+            new String[]{"fornax_tts", "llama.cpp text to speech (fornax speak)"},
+            new String[]{"fornax_whisper", "whisper.cpp (fornax transcribe)"});
 
     static int run(FornaxHub hub, PrintStream out) {
         String v = Info.class.getPackage().getImplementationVersion();

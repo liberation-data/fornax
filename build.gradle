@@ -254,6 +254,8 @@ project(':fornax-cli') {
         implementation project(':fornax-sd')
         implementation project(':fornax-acestep')
         implementation project(':fornax-yue2')
+        implementation project(':fornax-tts')
+        implementation project(':fornax-whisper')
         // 0.1.0's natives jar says Java 25 in its metadata (it holds no classes), so ask for it as 25
         natives.each { n -> runtimeOnly(n) { attributes { attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25) } } }
     }

@@ -1,13 +1,14 @@
 ---
 title: The fornax command
-description: Fetch models with fornax pull, see what is on disk, chat with a language model and try an image or song model from a terminal, and how fornax is installed and launched.
+description: Fetch models with fornax pull, see what is on disk, chat with a language model, make images, songs and speech, transcribe audio and ask about images from a terminal, and how fornax is installed and launched.
 ---
 
-`fornax` is Fornax's command-line tool. It fetches models into the Hugging Face cache and tries them without any code:
+`fornax` is Fornax's command-line tool. It fetches models into the Hugging Face cache and runs them without any code:
 
 ```sh
 fornax pull qwen3-4b                                 # an alias from Fornax's catalogue: every file the model needs
 fornax chat qwen3-4b "Write a haiku about a fornax"
+fornax image flux2-klein "a brick kiln at dusk"      # downloads the model first if it isn't in the cache
 ```
 
 ## Installing it
@@ -77,7 +78,8 @@ fornax test ace-step --seconds 5          # a short song
 ```
 
 `<model>` is an alias, `org/name:TAG`, `org/name:file.gguf`, `org/name` (when the cache has one GGUF model from it)
-or a path to a `.gguf` file.
+or a path to a `.gguf` file. `chat` and `test` use what is already downloaded, and say what to `fornax pull` when it
+isn't.
 
 A reasoning model, such as Qwen3, thinks aloud in `<think>…</think>` before it answers. `fornax chat` hides that, and
 shows only the answer; `--think` shows the reasoning too. Some models (Qwen3 Thinking, DeepSeek-R1 distills) are
@@ -86,6 +88,56 @@ characters of a reply until it can tell, or longer while the reply opens the way
 If the reasoning runs past that, you see it, but the `</think>` is still hidden. Once a reply opens inside, an
 interactive chat takes the model's later replies as starting inside too, until `/reset`. Other options: `--system`, `--max-tokens`,
 `--temperature`, `--seed`, `--ctx` and `--gpu-layers` (`fornax chat --help`).
+
+## Making things
+
+```sh
+fornax image flux2-klein "a brick kiln at dusk, a fox by the door"
+fornax image flux2-klein "a fox" --width 768 --height 512 --steps 12 --seed 42 --out fox.png
+fornax image qwen-image-edit "make it night" --ref kiln.png
+fornax song ace-step-turbo "acoustic folk, fingerpicked guitar, warm male vocal" --lyrics words.txt --seconds 60
+fornax song ace-step "upbeat synth pop about a robot"     # with its lyric LM, it writes the words too
+fornax speak "Hello from Fornax"                          # kokoro, voice af_heart -> speech.wav
+fornax speak "Good evening" --voice bm_george --out evening.wav
+fornax speak --list-voices
+fornax transcribe speech.wav                              # whisper-base.en: the text
+fornax transcribe interview.wav --model whisper-large-v3-turbo --words   # start, end and word, a line each
+fornax see qwen3-vl-4b kiln.png                           # "Describe this image."
+fornax see qwen3-vl-4b receipt.jpg "What is the total?"
+```
+
+Each is a thin wrapper over its engine (`DiffusionModel`, `AceStepModel` or `Yue2Model`, `TtsModel`,
+`WhisperModel` and a vision `LlamaModel`), and `--help` lists its options. Unlike `chat`, these download a model
+that isn't in the cache yet before loading it, with the same progress line as `fornax pull`. A model of the wrong
+kind is refused before anything is downloaded, with the ones that fit: `fornax image qwen3-4b` says qwen3-4b is a
+chat model and names the image models.
+
+- **image** takes an image alias (`flux2-klein`, `qwen-image`, `qwen-image-edit`) and draws 1024x1024 in 20 steps,
+  at the guidance the model is tuned for (4.0 for FLUX.2 [klein], 2.5 for Qwen-Image). Width and height are
+  multiples of 16. `qwen-image-edit` edits the image given with `--ref`, at that image's size unless told otherwise.
+  The seed is random unless given, and printed, so a good image can be made again.
+- **song** takes a song alias and a description of the style: genre, instruments, voice, mood. `--lyrics` reads the
+  words from a file (`-` for stdin), with section tags such as `[Verse]` and `[Chorus]`. Without it, `ace-step`
+  and `ace-step-xl` (which have the 4B lyric LM) and `yue2` write their own words, and `ace-step-turbo` and
+  `ace-step-xl-turbo` make an instrumental. 30 seconds unless `--seconds` says otherwise. YuE2's weights are
+  CC BY-NC 4.0: no commercial use of them or of what they make.
+- **speak** uses `kokoro` and its first voice, `af_heart`, unless `--model` and `--voice` say otherwise; without text
+  it reads stdin. A TTS model that isn't in the catalogue loads by reference or path with its `--mmproj`:
+  `fornax speak --model ggml-org/tiny-voca-GGUF:tiny-voca-F32.gguf --mmproj ggml-org/tiny-voca-GGUF:mmproj-tiny-voca-F32.gguf "Hi"`.
+- **transcribe** reads a WAV at any rate (convert other formats first: `ffmpeg -i in.mp3 in.wav`) and prints the
+  text, or with `--words` each word's start and end in seconds and the word, tab-separated. `whisper-base.en` hears
+  English only; `whisper-large-v3-turbo` hears 99 languages (`--language` names one, else it is detected).
+  `--model` also takes `org/name:file.bin` or a path to a whisper.cpp model.
+- **see** takes a vision alias (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`), or a GGUF by reference or path with
+  its `--mmproj`, an image (PNG, JPEG, BMP or GIF) and a question, and streams the answer as `chat` does, with
+  `chat`'s options. Without a question it asks "Describe this image.", or for `paddleocr-vl` "OCR:", which reads
+  the image's text out.
+
+`image`, `song` and `speak` write to `--out`: a file, which is written over, or a folder (an existing one, or a
+name ending in `/`). Otherwise they write `image.png`, `song.wav` or `speech.wav` in the current folder, numbered
+(`image-2.png`) rather than overwrite one an earlier run made. A wrong extension, or an input file that isn't
+there, fails before any model loads. Timings and other notes go to stderr; stdout has only the file written, the
+transcript or the answer, for scripts.
 
 Set `FORNAX_VERBOSE=1` to see the engines' own logs.
 

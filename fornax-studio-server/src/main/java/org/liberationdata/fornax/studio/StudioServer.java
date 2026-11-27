@@ -2,6 +2,7 @@ package org.liberationdata.fornax.studio;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.liberationdata.fornax.hub.HubException;
 import org.liberationdata.fornax.llama.LlamaModel;
 import org.liberationdata.fornax.sd.DiffusionModel;
 
@@ -42,15 +43,32 @@ import java.util.regex.Pattern;
  * POST /api/video                  generates a video clip with sound, with LTX-2.5 (status, progress, done | error)
  * POST /api/inspect                asks a vision model about an image, free text or to a JSON schema (status, token, done | error)
  * GET  /api/outputs/{file}         an image, song or video made, from the studio's home
+ * GET  /api/catalogue              Fornax's model sets: what of each is on disk, licence, gated, downloading
+ * POST /api/models/plan  {id, token?}   what getting one would download, and the free disk ({@link Pulls#plan}); 403 (reason, termsUrl) for a gated repo, 502 for another answer from the Hub
+ * POST /api/models/pull  {id, token?}   downloads it (start, progress, done | cancelled | error), or watches its download
+ * POST /api/models/pull/cancel {id}     stops its download; what has arrived stays, for the next pull to resume
+ * GET  /api/hub                   {"tokenSet": ...}: whether the app has given a Hugging Face token
+ * POST /api/hub/token   {token}    the token for gated repos, from the app's keychain (null or "" clears it); 400 for one that isn't a token
  * </pre>
+ *
+ * A {@code token} is a Hugging Face token for a gated repo, from the app's keychain; it is sent to the Hub only, and
+ * never logged. Without one, the hub's own is used ({@code HF_TOKEN}, or the token file {@code hf auth login} writes).
  *
  * Settings, as system properties or the environment: {@code fornax.studio.port} / {@code FORNAX_STUDIO_PORT} (5191),
  * {@code fornax.studio.budget} / {@code FORNAX_STUDIO_BUDGET_GB} (the pool's budget in GB, 24),
  * {@code fornax.studio.stub} / {@code FORNAX_STUDIO_STUB} (kinds answered by stubs, as {@code image,song,video}),
  * {@code fornax.studio.ffmpeg} / {@code FORNAX_STUDIO_FFMPEG} (the ffmpeg that makes a video's .mp4; else the PATH's),
- * {@code FORNAX_STUDIO_HOME} (~/.fornax-studio, where outputs are kept), {@code FORNAX_STUDIO_IDLE_MINUTES} (15), and
+ * {@code FORNAX_STUDIO_HOME} (~/.fornax-studio, where outputs are kept), {@code FORNAX_STUDIO_IDLE_MINUTES} (15),
  * {@code FORNAX_STUDIO_PARENT_PID}: the app that started it, whose exit ends the server too, so a model never stays on
- * the GPU after the app has gone.
+ * the GPU after the app has gone, and {@code FORNAX_STUDIO_SECRET} (environment only; see below).
+ *
+ * <p>Who may call it. Listening on loopback alone doesn't keep out the web pages open in the user's browser: a page can
+ * send a "simple" POST to 127.0.0.1 with no CORS preflight, and DNS rebinding gets round the same-origin check. So every
+ * request is refused (403) unless its {@code Host} is this server's own loopback address and port, and it carries no
+ * {@code Origin} (its callers, the studio's proxy and the desktop app's main process, send none; a browser always sends
+ * one with a POST). And when {@code FORNAX_STUDIO_SECRET} is set (the desktop app makes one each launch, and passes it in
+ * the environment, not on the command line, where {@code ps} would show it), every route but {@code /api/health} needs it
+ * in the {@code X-Fornax-Studio-Secret} header.
  */
 public final class StudioServer {
     private static final Pattern OUTPUT_NAME = Pattern.compile("[A-Za-z0-9._-]+\\.(png|wav|json|mp4)");
@@ -58,6 +76,10 @@ public final class StudioServer {
     private final Studio studio;
     private final HttpServer http;
     private final String ffmpeg;
+    private final Pulls pulls;
+    /** The secret every request but health must carry, or null for none ({@code FORNAX_STUDIO_SECRET}). */
+    private final byte[] secret;
+    static final String SECRET_HEADER = "X-Fornax-Studio-Secret";
 
     StudioServer(Studio studio, int port) throws IOException {
         this(studio, port, Mp4.find(setting("fornax.studio.ffmpeg", "FORNAX_STUDIO_FFMPEG", "")));
@@ -65,8 +87,20 @@ public final class StudioServer {
 
     /** ffmpeg: the one that makes a video's .mp4, or null for none (a video then fails, saying where its frames are). */
     StudioServer(Studio studio, int port, String ffmpeg) throws IOException {
+        this(studio, port, ffmpeg, Pulls.standard(studio.catalog()));
+    }
+
+    /** pulls: where models are got from (a test's hub on localhost). */
+    StudioServer(Studio studio, int port, String ffmpeg, Pulls pulls) throws IOException {
+        this(studio, port, ffmpeg, pulls, System.getenv("FORNAX_STUDIO_SECRET"));
+    }
+
+    /** secret: what every request but health must carry in {@link #SECRET_HEADER}, or null or blank for none. */
+    StudioServer(Studio studio, int port, String ffmpeg, Pulls pulls, String secret) throws IOException {
         this.studio = studio;
         this.ffmpeg = ffmpeg;
+        this.pulls = pulls;
+        this.secret = secret == null || secret.isBlank() ? null : secret.strip().getBytes(StandardCharsets.UTF_8);
         this.http = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), port), 0);
         // Platform threads: a generation is one long native call, which would pin a virtual thread's carrier throughout.
         http.setExecutor(Executors.newCachedThreadPool(r -> {
@@ -85,13 +119,34 @@ public final class StudioServer {
         route("/api/video", "POST", this::video);
         route("/api/inspect", "POST", this::inspect);
         http.createContext("/api/outputs/", ex -> handle(ex, "GET", this::output));
+        route("/api/catalogue", "GET", ex -> json(ex, 200, Json.obj("models", pulls.catalogue())));
+        route("/api/models/plan", "POST", ex -> {
+            var b = body(ex);
+            String id = Json.str(b, "id", null);
+            try { json(ex, 200, pulls.plan(id, token(b))); }
+            catch (HubException e) {   // the Hub's answer (a gated repo, say) is the page's to show, not the server's failure
+                var f = pulls.failure(pulls.set(id).id(), e);
+                f.put("error", f.get("message"));
+                json(ex, e.reason() == HubException.Reason.ACCESS_DENIED ? 403 : 502, f);
+            }
+        });
+        route("/api/models/pull", "POST", this::pull);
+        route("/api/hub", "GET", ex -> json(ex, 200, Json.obj("tokenSet", pulls.hasToken())));
+        route("/api/hub/token", "POST", ex -> {
+            pulls.token(token(body(ex)));
+            json(ex, 200, Json.obj("tokenSet", pulls.hasToken()));
+        });
+        route("/api/models/pull/cancel", "POST", ex -> json(ex, 200, Json.obj("cancelled", pulls.cancel(Json.str(body(ex), "id", null)))));
     }
 
     int port() { return http.getAddress().getPort(); }
 
     void start() { http.start(); }
 
-    void stop() { http.stop(0); }
+    void stop() {
+        http.stop(0);
+        pulls.cancelAll();   // what has arrived stays, for the next pull to resume
+    }
 
     public static void main(String[] args) throws Exception {
         int port = Integer.parseInt(setting("fornax.studio.port", "FORNAX_STUDIO_PORT", "5191"));
@@ -632,7 +687,24 @@ public final class StudioServer {
         }
     }
 
+    private void pull(HttpExchange ex) throws IOException {
+        var b = body(ex);
+        String id = Json.str(b, "id", null), token = token(b);
+        pulls.set(id);   // an unknown id, or a token that isn't one, is a 400, before the stream begins
+        try (var sse = new Sse(ex)) {
+            try { pulls.pull(id, token, sse); }
+            catch (RuntimeException e) { sse.send("error", Json.obj("id", id, "message", message(e), "reason", "IO")); }
+        }
+    }
+
     // ---- helpers ----
+
+    /** A request's {@code token}, stripped, or null for none; one that isn't a string or a token is refused, unechoed. */
+    private static String token(Map<String, Object> body) {
+        Object t = body.get("token");
+        if (t != null && !(t instanceof String)) throw new IllegalArgumentException("token is a string");
+        return Pulls.checked((String) t);
+    }
 
     /** Borrows the model, saying first when it has to be loaded, and how long that took. */
     private <M extends AutoCloseable> org.liberationdata.fornax.ModelPool.Lease<M> leaseSaying(Sse sse, Catalog.Model m, Class<M> type) {
@@ -683,8 +755,31 @@ public final class StudioServer {
         });
     }
 
-    private static void handle(HttpExchange ex, String method, Handler h) throws IOException {
+    /**
+     * Why the request is refused, or null: a Host that isn't this server's loopback address (DNS rebinding), an Origin
+     * (a web page), or a missing or wrong secret. The reasons are generic, and never repeat what was sent.
+     */
+    String refusal(HttpExchange ex) {
+        int port = http.getAddress().getPort();
+        String host = ex.getRequestHeaders().getFirst("Host");
+        if (host == null || !Set.of("127.0.0.1:" + port, "localhost:" + port, "[::1]:" + port).contains(host.toLowerCase(java.util.Locale.ROOT)))
+            return "only Fornax Studio may call this server (wrong Host)";
+        if (ex.getRequestHeaders().containsKey("Origin")) return "only Fornax Studio may call this server (a web page's Origin)";
+        if (secret != null && !ex.getRequestURI().getPath().equals("/api/health")) {
+            String given = ex.getRequestHeaders().getFirst(SECRET_HEADER);
+            if (given == null || !java.security.MessageDigest.isEqual(secret, given.getBytes(StandardCharsets.UTF_8)))
+                return "only Fornax Studio may call this server (no studio secret)";
+        }
+        return null;
+    }
+
+    private void handle(HttpExchange ex, String method, Handler h) throws IOException {
         try {
+            String refused = refusal(ex);
+            if (refused != null) {
+                json(ex, 403, Json.obj("error", refused));
+                return;
+            }
             String m = ex.getRequestMethod();
             if (!m.equals(method) && !(method.equals("GET") && m.equals("HEAD"))) {
                 json(ex, 405, Json.obj("error", "method not allowed"));

@@ -85,14 +85,69 @@ public final class ModelReferences {
         if (!isPath(s)) check(s, engine, FornaxHub.standard());
     }
 
-    static void check(String s, Engine engine, FornaxHub hub) {
+    /** {@link #check(String, Engine)} with the given hub. */
+    public static void check(String s, Engine engine, FornaxHub hub) {
         Objects.requireNonNull(s, "model");
         if (ModelRef.urlHint(s).isPresent()) ModelRef.parse(s);   // throws, naming the reference to use instead
         if (!hub.isReference(s)) return;
         var alias = hub.alias(s);   // refused before fetching: an image model's files are gigabytes
         if (alias.isPresent() && !engine.kinds().contains(alias.get().kind()))
-            throw new IllegalArgumentException(s + " is a " + alias.get().kind().name().toLowerCase(Locale.ROOT) + " model ("
-                    + alias.get().engine() + "); " + engine.name() + " loads " + engine.loads());
+            throw new IllegalArgumentException(s + " is " + aKind(alias.get()) + "; " + engine.name() + " loads " + engine.loads());
+    }
+
+    /**
+     * For an engine that takes one file per argument: s as given when it is a path, else the one file the reference
+     * names, downloaded if it isn't in the cache yet. With an engine whose {@link Engine#kinds} is empty, an alias
+     * (which names a whole set) is refused.
+     *
+     * @throws IllegalArgumentException and {@link UncheckedIOException} as {@link #locate} throws
+     */
+    public static String path(String s, Engine engine) {
+        return locate(s, engine).map(f -> file(f, engine).toString()).orElse(s);
+    }
+
+    /** {@link #path(String, Engine)} with the given hub. */
+    public static String path(String s, Engine engine, FornaxHub hub) {
+        return locate(s, engine, hub).map(f -> file(f, engine).toString()).orElse(s);
+    }
+
+    /**
+     * For an engine that loads several files from one name: the files of the catalogue set with that name, by role,
+     * downloaded if they aren't in the cache yet.
+     *
+     * @param runs the native engine the set must be for ({@link ModelSet#engine()}, such as {@code "acestep.cpp"}), or
+     *             null for any of the engine's kinds
+     * @throws IllegalArgumentException for a name that isn't a set in the catalogue (a path or a reference names one
+     *         file, for the engine's per-file arguments), or a set of another kind or native engine; before any request
+     * @throws UncheckedIOException when the download fails, as {@link FornaxHub#pull} throws
+     */
+    public static Map<String, Path> set(String name, Engine engine, String runs) {
+        return set(name, engine, runs, FornaxHub.standard());
+    }
+
+    /** {@link #set(String, Engine, String)} with the given hub. */
+    public static Map<String, Path> set(String name, Engine engine, String runs, FornaxHub hub) {
+        Objects.requireNonNull(name, "model");
+        var found = hub.alias(name);
+        if (found.isEmpty())
+            throw new IllegalArgumentException(name + " isn't a model set Fornax knows; " + engine.name() + " loads "
+                    + engine.loads() + " by name (" + String.join(", ", hub.catalogue().stream().filter(m -> fits(m, engine, runs))
+                    .map(ModelSet::id).toList()) + "), or each file by path or reference");
+        ModelSet set = found.get();
+        if (!fits(set, engine, runs))
+            throw new IllegalArgumentException(name + " is " + aKind(set) + "; " + engine.name() + " loads " + engine.loads());
+        try { return hub.pull(set, PullListener.logging()); }
+        catch (IOException e) { throw new UncheckedIOException(name + ": " + e.getMessage(), e); }
+    }
+
+    /** "a song model (acestep.cpp)", "an image model (stable-diffusion.cpp)". */
+    private static String aKind(ModelSet set) {
+        String kind = set.kind().name().toLowerCase(Locale.ROOT);
+        return ("aeiou".indexOf(kind.charAt(0)) >= 0 ? "an " : "a ") + kind + " model (" + set.engine() + ")";
+    }
+
+    private static boolean fits(ModelSet set, Engine engine, String runs) {
+        return engine.kinds().contains(set.kind()) && (runs == null || runs.equals(set.engine()));
     }
 
     /** The model's file among what {@link #locate} found: the first of the engine's roles that's there. */

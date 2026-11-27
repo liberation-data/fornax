@@ -43,12 +43,11 @@ Images and songs work the same way, and a vision language model takes images in:
 
 <!-- snippet: Readme#models -->
 ```java
-try (var songs = new AceStepModel(lm, textEncoder, dit, vae, true)) {
+try (var songs = new AceStepModel("ace-step")) {   // a catalogue set: its four files, downloaded on first use
     songs.generate(requestJson).audio().writeWav(new File("song.wav"));
 }
 
-try (var images = new DiffusionModel(DiffusionModel.Config.builder()
-        .diffusionModel(flux).vae(vae).llm(textEncoder).build())) {
+try (var images = new DiffusionModel(DiffusionModel.Config.builder().model("flux2-klein").build())) {
     BufferedImage img = images.generate(new DiffusionModel.Request("a neon sign", 1024, 1024, 20, 4.0, 7)).get(0);
 }
 
@@ -141,20 +140,17 @@ Vulkan. For ROCm (HIP), CUDA or anything else, build the libraries yourself (see
 
 ## Quick start (from source)
 
-The fastest way to see Fornax work: build the engines, fetch three models, and run the demo. One Java program
-has Qwen3 4B write a country song, ACE-Step 1.5 sing it and FLUX.2 [klein] paint its cover, all in one JVM.
+The fastest way to see Fornax work: build the engines and run the demo. One Java program has Qwen3 4B write a
+country song, ACE-Step 1.5 sing it and FLUX.2 [klein] paint its cover, all in one JVM.
 
 ```sh
 native/build.sh vulkan            # or hip | cuda | metal | cpu (see Building)
-./gradlew :fornax-cli:installDist   # the fornax command (see The fornax command)
-export PATH="$PWD/fornax-cli/build/install/fornax-cli/bin:$PATH"
-fornax pull qwen3-4b                # Qwen3 4B Instruct
-fornax pull ace-step                # ACE-Step 1.5 turbo with its 4B lyric LM: four files
-fornax pull flux2-klein             # FLUX.2 [klein]: three files, from three repos
 ./gradlew single                  # writes single/single.wav, single/cover.png and single/lyrics.txt
 ```
 
-`hf download` works too (the files are listed under [Models](#models)); both use the Hugging Face cache.
+The first run downloads the three models into the Hugging Face cache, logging each file; later runs need no network.
+To fetch them ahead of time, run `fornax pull qwen3-4b`, `fornax pull ace-step-turbo` and `fornax pull flux2-klein`,
+or `hf download` (the files are listed under [Models](#models)).
 To try models without writing code, use [Fornax Studio](https://github.com/liberation-data/fornax-studio).
 
 ## Status
@@ -331,10 +327,17 @@ fornax list                                       # the catalogue, what is downl
 fornax rm flux2-klein                             # delete a model's files from the cache
 fornax chat qwen3-4b "Write a haiku about a fornax"
 fornax chat qwen3-4b                              # interactive; /reset, /exit
+fornax image flux2-klein "a brick kiln at dusk"   # -> image.png; --width --height --steps --cfg --seed --out
+fornax song ace-step-turbo "acoustic folk, warm vocal" --lyrics words.txt --seconds 60   # -> song.wav
+fornax speak "Hello from Fornax"                  # kokoro -> speech.wav; --voice, --list-voices
+fornax transcribe speech.wav                      # whisper-base.en; --words for each word's times
+fornax see qwen3-vl-4b image.png "What is by the door?"
 fornax test flux2-klein                           # load, generate a little, report speed
 fornax info                                       # Java, native libraries, cache, token
 ```
 
+`image`, `song`, `speak`, `transcribe` and `see` download a model that isn't in the cache yet, as `fornax pull` would,
+and write to `--out` (else `image.png`, `song.wav` or `speech.wav` here, numbered rather than overwrite one).
 A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--think` shows them. A gated repo
 (LTX-2.5) needs its terms accepted on huggingface.co and `HF_TOKEN` (or `hf auth login`); the error says so.
 
@@ -387,15 +390,20 @@ second argument. The request formats are the engines' own (see
 
 `fornax-studio-server` is the backend of [Fornax Studio](https://github.com/liberation-data/fornax-studio), a desktop app for
 trying models: a JDK-only HTTP server on localhost (`com.sun.net.httpserver`, replies streamed as server-sent events)
-that lists what in the Hugging Face cache Fornax can run, keeps models in a `ModelPool`, and serves chat (with a
-tool-calling demo through `chatJson`), images, songs (ACE-Step and YuE2), video clips with sound (LTX-2.5, whose .mp4
-needs ffmpeg) and questions about an image for a vision model (Qwen3-VL, PaddleOCR-VL, MedGemma), as text or held to a
-JSON schema. The app starts it; to run it on its own:
+that lists what in the Hugging Face cache Fornax can run, downloads Fornax's model sets into it (`FornaxHub`), keeps
+models in a `ModelPool`, and serves chat (with a tool-calling demo through `chatJson`), images, songs (ACE-Step and
+YuE2), video clips with sound (LTX-2.5, whose .mp4 needs ffmpeg) and questions about an image for a vision model
+(Qwen3-VL, PaddleOCR-VL, MedGemma), as text or held to a JSON schema. The app starts it; to run it on its own:
 
 ```sh
 ./gradlew studioServer                    # http://127.0.0.1:5191; -Pport=, -Pbudget=<GB>, -Pstub=image,song,video
 ./gradlew :fornax-studio-server:studioJar   # one runnable jar, which the app ships
 ```
+
+It answers only its own callers: a request whose `Host` isn't `127.0.0.1`, `localhost` or `[::1]` at its port (DNS
+rebinding), or that carries an `Origin` (a web page in the browser), is refused with a 403. When `FORNAX_STUDIO_SECRET`
+is set in its environment (the app makes one each launch), every route but `/api/health` also needs it in the
+`X-Fornax-Studio-Secret` header.
 
 On Linux, as with every Fornax engine, a GPU build refuses to load a model on a machine with no usable GPU (the request's
 error says what to install) unless `FORNAX_ALLOW_CPU=true` is set in the server's environment.

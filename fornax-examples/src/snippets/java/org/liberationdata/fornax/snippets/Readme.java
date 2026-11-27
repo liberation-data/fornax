@@ -25,15 +25,13 @@ class Readme {
         // --8<-- [end:chat]
     }
 
-    void models(String lm, String textEncoder, String dit, String vae, String flux, String requestJson,
-                String invoiceSchema) throws Exception {
+    void models(String requestJson, String invoiceSchema) throws Exception {
         // --8<-- [start:models]
-        try (var songs = new AceStepModel(lm, textEncoder, dit, vae, true)) {
+        try (var songs = new AceStepModel("ace-step")) {   // a catalogue set: its four files, downloaded on first use
             songs.generate(requestJson).audio().writeWav(new File("song.wav"));
         }
 
-        try (var images = new DiffusionModel(DiffusionModel.Config.builder()
-                .diffusionModel(flux).vae(vae).llm(textEncoder).build())) {
+        try (var images = new DiffusionModel(DiffusionModel.Config.builder().model("flux2-klein").build())) {
             BufferedImage img = images.generate(new DiffusionModel.Request("a neon sign", 1024, 1024, 20, 4.0, 7)).get(0);
         }
 

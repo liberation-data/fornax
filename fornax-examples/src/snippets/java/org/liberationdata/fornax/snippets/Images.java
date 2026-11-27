@@ -35,6 +35,14 @@ class Images {
         // --8<-- [end:flux]
     }
 
+    void fluxByName() {
+        // --8<-- [start:flux-by-name]
+        try (var images = new DiffusionModel(DiffusionModel.Config.builder().model("flux2-klein").build())) {
+            BufferedImage img = images.generate(new DiffusionModel.Request("a neon sign that says FORNAX", 768, 768, 12, 4.0, 7)).get(0);
+        }
+        // --8<-- [end:flux-by-name]
+    }
+
     void qwenImage() {
         // --8<-- [start:qwen-image]
         String repo = "Comfy-Org/Qwen-Image_ComfyUI";

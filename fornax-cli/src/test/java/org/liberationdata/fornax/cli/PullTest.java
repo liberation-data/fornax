@@ -149,6 +149,34 @@ class PullTest {
     }
 
     @Test
+    void theCommandsThatMakeThingsPullAReferenceFirst() throws Exception {
+        out = new ByteArrayOutputStream();
+        var ps = new PrintStream(out, true, StandardCharsets.UTF_8);
+        var m = Models.fetch(REPO + ":Q8_0", org.liberationdata.fornax.hub.ModelSet.Kind.VISION, "see", true, hub(), ps, false);
+        assertEquals(snapshot("tiny-Q8_0.gguf"), m.file("gguf"));
+        assertTrue(out.toString().contains("[fornax] downloading " + REPO + ":Q8_0\n"), out.toString());
+        assertTrue(out.toString().contains("tiny-Q8_0.gguf  100%"), out.toString());   // fornax pull's progress line
+
+        out.reset();   // then from the cache: no Hub, nothing said
+        requests.clear();
+        assertEquals(snapshot("tiny-Q8_0.gguf"), Models.fetch(REPO + ":Q8_0", org.liberationdata.fornax.hub.ModelSet.Kind.VISION, "see",
+                true, hub(), ps, false).file("gguf"));
+        assertEquals("", out.toString());
+        assertEquals(List.of(), requests);
+    }
+
+    @Test
+    void aReferenceToTheWrongKindOfFileIsRefusedBeforeItsDownload() throws Exception {
+        out = new ByteArrayOutputStream();
+        var ps = new PrintStream(out, true, StandardCharsets.UTF_8);
+        var e = assertThrows(Main.Failure.class, () -> Models.fetch(REPO + ":tiny-Q8_0.gguf",
+                org.liberationdata.fornax.hub.ModelSet.Kind.TRANSCRIPTION, "transcribe", true, hub(), ps, false));
+        assertTrue(e.getMessage().contains("not a whisper.cpp model"), e.getMessage());
+        assertEquals(List.of("API /api/models/" + REPO + "/revision/main"), requests);   // the file list only
+        assertEquals("", out.toString());
+    }
+
+    @Test
     void withoutFilesListsTheModelsAndAsksOnATerminal() throws Exception {
         assertEquals(0, pull(null, REPO));
         assertTrue(out.toString().contains("tiny-Q8_0.gguf"), out.toString());

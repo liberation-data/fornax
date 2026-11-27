@@ -28,8 +28,10 @@ per file, into the same cache. The rest of this page is the Java API.
 ## By reference
 
 `fetch` takes a model by name, downloads whatever of it is missing, and returns its files by role. This is what
-`new LlamaModel("owner/repo:Q4_K_M")` does, and `WhisperModel`, `TtsModel` and `DemucsModel` too. Each refuses an
-alias or file it can't load before downloading it:
+`new LlamaModel("owner/repo:Q4_K_M")` does, and `WhisperModel`, `TtsModel` and `DemucsModel` too. The engines that
+load several files take a catalogue set's name (`new AceStepModel("ace-step")`, `new Yue2Model("yue2")`,
+`DiffusionModel.Config.builder().model("flux2-klein")`), and a reference for each file. Each refuses an alias or file
+it can't load before downloading it:
 
 <!-- snippet: Models#fetch -->
 ```java

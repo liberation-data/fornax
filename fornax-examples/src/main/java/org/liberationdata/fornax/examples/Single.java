@@ -1,6 +1,5 @@
 package org.liberationdata.fornax.examples;
 
-import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.acestep.AceStepModel;
 import org.liberationdata.fornax.llama.LlamaModel;
 import org.liberationdata.fornax.llama.LlamaModel.Message;
@@ -26,8 +25,7 @@ public class Single {
         long t0 = System.nanoTime();
 
         String title, lyrics, cover;
-        try (var llm = new LlamaModel(HfCache.require("unsloth/Qwen3-4B-Instruct-2507-GGUF",
-                "Qwen3-4B-Instruct-2507-Q4_K_M.gguf").toString())) {
+        try (var llm = new LlamaModel("qwen3-4b")) {   // each model by its catalogue name, downloaded on first use
             String song = llm.chat(List.of(Message.system("You are a Nashville songwriter. Be concise."),
                     Message.user("Write a short country song about " + idea + ". Reply in exactly this format:\n"
                             + "TITLE: <title>\nCOVER: <one-sentence description of the single's cover art>\n"
@@ -40,9 +38,7 @@ public class Single {
         System.out.printf("[fornax] llama.cpp wrote \"%s\" (%.1fs)%n%s%n", title, secs(t0), lyrics);
 
         long s0 = System.nanoTime();
-        String ace = "Serveurperso/ACE-Step-1.5-GGUF";
-        try (var singer = new AceStepModel(null, HfCache.require(ace, "Qwen3-Embedding-0.6B-Q8_0.gguf").toString(),
-                HfCache.require(ace, "acestep-v15-turbo-Q8_0.gguf").toString(), HfCache.require(ace, "vae-BF16.gguf").toString(), false)) {
+        try (var singer = new AceStepModel("ace-step-turbo", false)) {   // the DiT alone: caption and lyrics drive it
             String request = "{\"caption\": \"modern country, male vocal with a southern twang, telecaster, pedal steel, "
                     + "driving drums, big singalong chorus\", \"lyrics\": " + json(lyrics) + ", \"bpm\": 100, "
                     + "\"duration\": 75, \"keyscale\": \"A major\", \"timesignature\": \"4\", \"vocal_language\": \"en\", "
@@ -53,11 +49,7 @@ public class Single {
         }
 
         long i0 = System.nanoTime();
-        var cfg = DiffusionModel.Config.builder()
-                .diffusionModel(HfCache.require("black-forest-labs/FLUX.2-klein-base-4b-fp8", "flux-2-klein-base-4b-fp8.safetensors").toString())
-                .vae(HfCache.require("Comfy-Org/flux2-dev", "split_files/vae/flux2-vae.safetensors").toString())
-                .llm(HfCache.require("Comfy-Org/z_image_turbo", "split_files/text_encoders/qwen_3_4b.safetensors").toString())
-                .build();
+        var cfg = DiffusionModel.Config.builder().model("flux2-klein").build();
         int steps = Integer.getInteger("steps", 12), size = Integer.getInteger("width", 768);
         try (var painter = new DiffusionModel(cfg)) {
             String prompt = "Country music single cover art. " + cover + " The title \"" + title + "\" in vintage lettering.";

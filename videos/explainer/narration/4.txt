@@ -1,2 +1,2 @@
 aura-2-hyperion-en
-Try a model in Kiln Studio before you write any code: read an invoice into JSON, spot a defect on a part, or flag an X-ray for a doctor's review. Or chat, paint an image, write a song, or render a clip. On our test laptop, Kiln made a one-minute song up to twice as fast as Comfy U.I., on the same GPU.
+Try a model in Fornax Studio before you write any code: read an invoice into JSON, spot a defect on a part, or flag an X-ray for a doctor's review. Or chat, paint an image, write a song, or render a clip. On our test laptop, Fornax made a one-minute song up to twice as fast as Comfy U.I., on the same GPU.
