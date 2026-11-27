@@ -97,7 +97,9 @@ public final class WorkerMain {
             try {
                 WorkerService s = create(f.name(), f.payload());
                 String name = f.name().substring(f.name().lastIndexOf('.') + 1) + "-" + f.ref();
-                Hosted h = new Hosted(s, new ModelThread(name, s::close, s::cancel, null));
+                int lanes = s.lanes();
+                Hosted h = new Hosted(s, lanes > 1 ? new ModelThread(name, lanes, s::close)
+                        : new ModelThread(name, s::close, s::cancel, null));
                 instances.put(f.ref(), h);
                 reply(f.id(), null, null);
             } catch (Throwable t) {

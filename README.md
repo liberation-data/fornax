@@ -214,7 +214,9 @@ private. The engines pin different ggml versions, so this is what lets several o
 Engine quirks and how to debug them: [docs/engine-notes.md](docs/engine-notes.md).
 
 Every model class is `AutoCloseable`; weights are freed on `close()`, which is idempotent and safe while a call runs.
-A model takes calls from any thread and runs them one at a time. The blocking methods run on your thread; the
+A model takes calls from any thread and runs them one at a time (a language model loaded with
+[slots](https://fornax4j.org/docs/guides/language-models/#many-requests-at-once-slots) runs several together, in one
+batch). The blocking methods run on your thread; the
 `...Async` ones (`chatAsync`, `speakAsync`, `generateAsync`, ...) run on the model's own platform thread and return a
 `CompletableFuture`, so virtual threads never pin a carrier through a generation, and streaming goes to a
 `Flow.Subscriber` through a bounded buffer. `cancel()` works for every engine, and a callback that throws stops the
@@ -228,7 +230,7 @@ costs about 15 µs a call and a microsecond a streamed token. See [Isolation](ht
 
 `ModelPool` keeps models resident between uses, the way ComfyUI does: it unloads idle models least recently used
 first to stay within a memory budget, optionally unloads after an idle timeout, and gives each model one user at a
-time.
+time (or as many as its slots).
 
 For servers, `Dispatch` serves many models from a few worker processes: it routes each request to the worker that
 already has its model loaded, loads models on demand within one memory budget (least recently used out first), queues

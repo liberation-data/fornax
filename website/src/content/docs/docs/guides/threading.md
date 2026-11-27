@@ -13,7 +13,7 @@ model while one is running.
   (a language model with [slots](/docs/guides/language-models/#many-requests-at-once-slots) runs that many at once).
   Different models run in parallel.
 - **The blocking methods** (`chat`, `chatJson`, `extract`, `speak`, `generate`, ...) run on the calling thread, and so
-  do their callbacks (a language model with slots runs callbacks on its batch thread). They behave as they always have.
+  do their callbacks (an in-process language model with slots runs callbacks on its batch thread). They behave as they always have.
 - **The `...Async` methods** (`chatAsync`, `chatJsonAsync`, `extractAsync`, `speakAsync`, `generateAsync`, ...) run the
   native call on the model's own platform thread and return a `CompletableFuture`. Use them from virtual threads.
 - **Streaming** goes to a `java.util.concurrent.Flow.Subscriber` through a bounded buffer, delivered on virtual
@@ -130,8 +130,8 @@ is still working through the buffer. `onComplete` arrives after the last piece.
 
 The blocking methods' callbacks (`Consumer<String> onPiece`, `Consumer<Audio> onChunk`, and stable-diffusion.cpp's log
 and progress sinks) run on the thread that made the call, between tokens or steps. Keep them quick: append to a buffer,
-push to a queue, write to a socket. A language model with [slots](/docs/guides/language-models/#many-requests-at-once-slots)
-runs them on its batch thread instead, between the steps that every slot shares, so one that blocks holds up them all;
+push to a queue, write to a socket. An in-process language model with [slots](/docs/guides/language-models/#many-requests-at-once-slots)
+(not an [isolated](/docs/guides/isolation/) one) runs them on its batch thread instead, between the steps that every slot shares, so one that blocks holds up them all;
 there `cancel()` stops every running request, not only the callback's own.
 
 A callback may call `cancel()`, but not the same model's other blocking methods, and not `close()`. Both throw an

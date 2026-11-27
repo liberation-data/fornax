@@ -117,6 +117,24 @@ class BenchmarksTest {
     }
 
     @Test
+    void aServingSideSetsItsIsolationAndPutsTheOldOneBack() throws Exception {
+        String before = System.getProperty("fornax.isolation");
+        try {
+            System.clearProperty("fornax.isolation");
+            assertEquals("process", Benchmarks.withIsolation(true, () -> System.getProperty("fornax.isolation")));
+            assertNull(System.getProperty("fornax.isolation"), "an isolated side doesn't leak into the next");
+            // started isolated, an in-process side is still in-process, and the setting comes back after it, even on a throw
+            System.setProperty("fornax.isolation", "process");
+            assertEquals("inprocess", Benchmarks.withIsolation(false, () -> System.getProperty("fornax.isolation")));
+            assertThrows(IllegalStateException.class, () -> Benchmarks.withIsolation(false, () -> { throw new IllegalStateException(); }));
+            assertEquals("process", System.getProperty("fornax.isolation"));
+        } finally {
+            if (before == null) System.clearProperty("fornax.isolation");
+            else System.setProperty("fornax.isolation", before);
+        }
+    }
+
+    @Test
     void casesDefaultToAllAndAnUnknownOneFailsBeforeAnyRuns() {
         assertEquals(List.of("chat", "image", "serving"), Benchmarks.cases(new String[]{"out"}));
         assertEquals(List.of("image"), Benchmarks.cases(new String[]{"out", "image"}));

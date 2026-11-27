@@ -31,6 +31,22 @@ class LlamaIsolationSettingIT {
         assertFalse(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false), "the worker stopped with the model");
     }
 
+    /** The slots constructor too: the worker batches, rather than the setting being refused. */
+    @Test
+    void theSettingIsolatesAModelWithSlotsToo() {
+        var path = LlamaIsolatedIT.gguf();
+        assumeTrue(path.isPresent(), "model not downloaded");
+        System.setProperty("fornax.isolation", "process");
+        try (var model = new LlamaModel(path.get().toString(), -1, 2048, 2)) {
+            assertTrue(model.isIsolated());
+            assertEquals(2, model.slots());
+            String reply = model.chat(LlamaIsolatedIT.FORNAX, LlamaIsolatedIT.GREEDY.withMaxTokens(32)).text();
+            assertTrue(reply.toLowerCase().contains("fornax"), reply);
+        } finally {
+            System.clearProperty("fornax.isolation");
+        }
+    }
+
     @Test
     void theSettingIsolatesAnEmbeddingModelToo() {
         var w = LlamaModel.Weights.QWEN3_EMBEDDING_0_6B;

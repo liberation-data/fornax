@@ -39,7 +39,8 @@ into the worker the dispatch picked for it. `LlamaModel.isolated(worker, ...)` i
 must load into the worker it is given: the dispatch can't tell if it doesn't, and an in-process model runs in your JVM,
 where a crash takes the JVM with it and its memory is still counted against the budget.
 
-A request gets the model to itself. The worker runs nothing else meanwhile.
+A request gets the model to itself. The worker runs nothing else meanwhile (unless the model has
+[slots](#a-model-with-slots)).
 
 - **`submit(qos, body)`** runs `body` with the model once the request is granted. The dispatch holds the model until
   the future that `body` returns completes, and then gives the model back. Use the model's async methods in the body,
@@ -64,7 +65,8 @@ model's own API, and the dispatch decides only when and where it runs.
 ## How requests are scheduled
 
 - **A worker runs one request at a time.** The GPU is the scarce resource, so the number of workers is the number of
-  requests that run at once. A model is loaded in one worker at a time, and a worker can hold several models.
+  requests that run at once (a model with [slots](#a-model-with-slots) runs several in its worker). A model is loaded
+  in one worker at a time, and a worker can hold several models.
 - **Affinity.** A request for a loaded model waits for that model's worker, even if another worker is idle. Moving the
   model would cost a reload.
 - **Placement.** A request for a model that isn't loaded takes an idle worker. The dispatch skips one that crashed
@@ -107,6 +109,30 @@ the GPU's budget, or the part of it that its models may use.
 - **Back-pressure.** At most `maxQueued` requests (10,000 by default) wait in each class. One more fails at once with
   a `RejectedExecutionException`, so a flood of batch work doesn't stop interactive requests from queueing.
 
+## A model with slots
+
+A [language model with slots](/docs/guides/language-models/#many-requests-at-once-slots) decodes several requests
+together in one batch. Register it with its slots as its concurrency, and that many requests for it run at once in its
+worker, instead of queueing for it:
+
+<!-- snippet: DispatchGuide#slots -->
+```java
+int slots = 4, context = 4096;
+long size = ModelPool.sizeOf(gguf) + LlamaModel.kvCacheBytes(gguf.toString(), slots * context);
+var qwen = dispatch.register("qwen3-4b", size, slots,
+        worker -> LlamaModel.isolated(worker, gguf.toString(), -1, context, slots));
+// up to four of these decode together in qwen's worker; more wait for a free slot
+qwen.submit(QoS.INTERACTIVE, llm -> llm.chatAsync(messages, LlamaModel.Options.DEFAULT));
+```
+
+- Requests join the model while it has a free slot, once it has loaded. A model loads once, however many requests
+  arrive for it together.
+- Priority still holds. A request ranked above them that is waiting for a worker (for another model), or for room in
+  the budget, stops more requests joining, so the worker drains and the waiting request goes next. A stream of chats
+  can't hold the worker, or its memory, for good.
+- Count the slots' KV cache in the size, as above: each slot has its own context.
+- A crash fails every request in flight on that worker, and the next request loads the model again.
+
 ## Crashes
 
 A worker that crashes during a request (an abort, a segfault, or a kill) fails that request with a
@@ -144,10 +170,8 @@ miss. Each call also pays isolation's overhead, about 15 µs.
 
 ## Not yet
 
-- **Continuous batching.** llama.cpp can decode several sequences in one batch, sharing one context and its KV cache,
-  as `llama-server`'s parallel slots do. Many chats on one loaded model would then share its worker, instead of
-  queueing for it. That is the next step. stable-diffusion.cpp, ACE-Step and YuE2 run one job at a time, so for them
-  the worker stays the unit.
+- **Batching for other engines.** stable-diffusion.cpp, ACE-Step and YuE2 run one job at a time, so for them the
+  worker stays the unit.
 - **Replicas.** A model is loaded in one worker at a time. A hot model doesn't get a second copy in an idle worker.
 - **Preemption.** An interactive request waits for a running batch request to finish. It doesn't pause the batch
   request, or cancel it.

@@ -16,12 +16,17 @@ import static java.lang.foreign.ValueLayout.JAVA_LONG;
  */
 public final class TestService implements WorkerService {
     private static final Linker LINKER = Linker.nativeLinker();
+    private final int lanes;
 
+    /** config: a mode, "fail", "abort" or "lanes:N" (N calls at once, as a model with slots runs them), or nothing. */
     public TestService(byte[] config) {
         String mode = config.length == 0 ? "" : new Wire.In(config).string();
+        lanes = mode.startsWith("lanes:") ? Integer.parseInt(mode.substring(6)) : 1;
         if (mode.equals("fail")) throw new IllegalStateException("bad config");
         if (mode.equals("abort")) abort();  // a model that crashes its engine as it loads
     }
+
+    @Override public int lanes() { return lanes; }
 
     @Override public byte[] call(String method, byte[] args, Call call, Consumer<byte[]> events) {
         return switch (method) {

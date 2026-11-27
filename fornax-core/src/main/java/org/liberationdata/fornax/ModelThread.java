@@ -62,6 +62,7 @@ public final class ModelThread implements AutoCloseable {
 
     private final String name;
     private final Runnable destroy, nativeCancel, nativeReset;
+    private final Consumer<Call> cancelOne;
     private final int lanes;
     private final Semaphore engine;                               // fair: calls run in arrival order
     /** Threads inside a call (or running its callbacks), where waiting for a lane would wait for themselves. */
@@ -86,16 +87,26 @@ public final class ModelThread implements AutoCloseable {
      * @param nativeReset  clears that request before each call (null if not needed)
      */
     public ModelThread(String name, Runnable destroy, Runnable nativeCancel, Runnable nativeReset) {
-        this(name, 1, destroy, nativeCancel, nativeReset);
+        this(name, 1, destroy, nativeCancel, nativeReset, null);
     }
 
     /**
      * For an engine that runs up to {@code lanes} calls at once (see the class doc), whose calls stop through
      * {@link Call#stopRequested()}.
      */
-    public ModelThread(String name, int lanes, Runnable destroy) { this(name, lanes, destroy, null, null); }
+    public ModelThread(String name, int lanes, Runnable destroy) { this(name, lanes, destroy, null, null, null); }
 
-    private ModelThread(String name, int lanes, Runnable destroy, Runnable nativeCancel, Runnable nativeReset) {
+    /**
+     * For an engine that runs up to {@code lanes} calls at once and stops one of them from outside its upcalls (a
+     * model in a worker process, whose calls wait on the worker's replies).
+     * @param cancelOne asks the engine to stop that call, from any thread; only ever called while it is running
+     */
+    public ModelThread(String name, int lanes, Runnable destroy, Consumer<Call> cancelOne) {
+        this(name, lanes, destroy, null, null, Objects.requireNonNull(cancelOne));
+    }
+
+    private ModelThread(String name, int lanes, Runnable destroy, Runnable nativeCancel, Runnable nativeReset,
+                        Consumer<Call> cancelOne) {
         if (lanes < 1) throw new IllegalArgumentException("lanes must be at least 1");
         this.name = name;
         this.lanes = lanes;
@@ -103,6 +114,7 @@ public final class ModelThread implements AutoCloseable {
         this.destroy = Objects.requireNonNull(destroy);
         this.nativeCancel = nativeCancel;
         this.nativeReset = nativeReset;
+        this.cancelOne = cancelOne;
     }
 
     /** How many calls can run at once. */
@@ -208,7 +220,9 @@ public final class ModelThread implements AutoCloseable {
      */
     private void stop(Call call) {
         call.markStopped();
-        if (nativeCancel != null && current.contains(call)) nativeCancel.run();
+        if (!current.contains(call)) return;
+        if (nativeCancel != null) nativeCancel.run();
+        if (cancelOne != null) cancelOne.accept(call);
     }
 
     /** Whether {@link #close()} has been called. */
