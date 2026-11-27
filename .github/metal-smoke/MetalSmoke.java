@@ -1,4 +1,4 @@
-// Chats a few tokens from Qwen3 0.6B through Fornax's LlamaModel with the released Metal natives. The workflow then
+// Chats a few tokens from Qwen3 0.6B through Fornax's LlamaModel on the Metal natives it's given. check.sh then
 // checks llama.cpp's log (stderr) for the model's layers offloaded to Metal, not left on the CPU.
 import java.util.List;
 import org.liberationdata.fornax.llama.LlamaModel;
