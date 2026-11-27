@@ -15,6 +15,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=$ROOT/engines-src
 OS=$(uname -s | tr A-Z a-z); ARCH=$(uname -m)
 [ "$OS" = darwin ] && OS=macos
+case $OS in mingw*|msys*|cygwin*) OS=windows ;; esac  # MSYS2's MinGW-w64 shell (UCRT64), on Windows
 OUT=$ROOT/build/native/$OS-$ARCH-$BACKEND
 JOBS=${JOBS:-$(getconf _NPROCESSORS_ONLN)}
 mkdir -p "$SRC" "$OUT"
@@ -45,7 +46,7 @@ fetch() {  # fetch <dir-name>
 
 # ggml backend switches, plus the system libraries a static ggml backend needs at link time.
 case $BACKEND in
-    vulkan) GGML="-DGGML_VULKAN=ON"; SD="-DSD_VULKAN=ON"; LIBS="-lvulkan" ;;
+    vulkan) GGML="-DGGML_VULKAN=ON"; SD="-DSD_VULKAN=ON"; LIBS="-lvulkan"; [ "$OS" = windows ] && LIBS="-lvulkan-1" ;;
     hip)    GGML="-DGGML_HIP=ON -DGPU_TARGETS=${HIP_ARCH:-gfx1151}"; SD="-DSD_HIPBLAS=ON -DGPU_TARGETS=${HIP_ARCH:-gfx1151}"
             # /opt/rocm from AMD's packages; Fedora's own ROCm lives in /usr (libraries in /usr/lib64).
             ROCM_LIB=${ROCM_PATH:-/opt/rocm}/lib; [ -d "$ROCM_LIB" ] || ROCM_LIB=/usr/lib64
@@ -57,10 +58,20 @@ case $BACKEND in
     *) echo "unknown backend: $BACKEND" >&2; exit 1 ;;
 esac
 
-COMMON="-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF ${CMAKE_EXTRA:-}"
+COMMON="-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF ${COMMON_OS:-} ${CMAKE_EXTRA:-}"
 CXX=${CXX:-c++}
 
-if [ "$OS" = macos ]; then
+PRE=lib   # Java's System.mapLibraryName: libNAME.so and libNAME.dylib, but NAME.dll
+if [ "$OS" = windows ]; then
+    # A DLL exports nothing from a static archive (--exclude-libs), so each engine's ggml stays its own, as on Linux;
+    # the GCC runtime is linked in, so a DLL needs nothing from MinGW beside it. No OpenMP: ggml's own thread pool.
+    SHARED="-shared"; EXT=dll; PRE=""; OMP=""
+    PRIVATE="-Wl,--exclude-libs,ALL -Wl,--no-undefined -static-libgcc -static-libstdc++"
+    COMMON_OS="-DGGML_OPENMP=OFF"
+    SD_LINK="-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++ -static"  # sd.cpp links its own DLL
+    whole() { printf -- '-Wl,--whole-archive %s -Wl,--no-whole-archive ' "$*"; }
+    group() { printf -- '-Wl,--start-group %s -Wl,--end-group ' "$*"; }
+elif [ "$OS" = macos ]; then
     SHARED="-dynamiclib"; EXT=dylib; PRIVATE="-Wl,-undefined,error"; OMP=""
     whole() { for a in "$@"; do printf -- '-Wl,-force_load,%s ' "$a"; done; }
     group() { printf -- '%s ' "$@"; }  # ld64 resolves archives in any order
@@ -69,6 +80,10 @@ else
     whole() { printf -- '-Wl,--whole-archive %s -Wl,--no-whole-archive ' "$*"; }
     group() { printf -- '-Wl,--start-group %s -Wl,--end-group ' "$*"; }
 fi
+
+# winpthread linked in on Windows, like the GCC runtime; dlopen is POSIX only.
+THREADS=-lpthread; DL=-ldl
+[ "$OS" = windows ] && { THREADS="-Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"; DL=""; }
 
 ggml_archives() {  # every static ggml lib under a build dir, as one link group (they reference each other)
     group $(find "$1" -name 'libggml*.a' | sort)
@@ -86,11 +101,11 @@ build_llama() {  # text and vision: links libmtmd (images in, through an mmproj)
     mkdir -p "$b"
     cmake_build "$s" "$b" "llama llama-common mtmd" $GGML -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF \
         -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_MTMD=ON
-    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libfornax_llama.$EXT" "$ROOT/fornax-llama/native/fornax_llama.cpp" \
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_llama.$EXT" "$ROOT/fornax-llama/native/fornax_llama.cpp" \
         -I"$s/include" -I"$s/ggml/include" -I"$s/common" -I"$s/vendor" -I"$s/tools/mtmd" \
         $(group "$(find "$b" -name libmtmd.a)" "$(find "$b" -name libllama-common.a)" "$(find "$b" -name libllama-common-base.a)" \
                 $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(find "$b" -name libllama.a)") $(ggml_archives "$b") \
-        $PRIVATE $OMP $LIBS -lpthread
+        $PRIVATE $OMP $LIBS $THREADS
 }
 
 build_tts() {  # llama.cpp's text to speech (libmtmd's audio generation), in the same build tree as llama
@@ -99,11 +114,11 @@ build_tts() {  # llama.cpp's text to speech (libmtmd's audio generation), in the
     mkdir -p "$b"
     cmake_build "$s" "$b" "llama llama-common mtmd" $GGML -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF \
         -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_MTMD=ON
-    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libfornax_tts.$EXT" "$ROOT/fornax-tts/native/fornax_tts.cpp" \
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_tts.$EXT" "$ROOT/fornax-tts/native/fornax_tts.cpp" \
         -I"$s/include" -I"$s/ggml/include" -I"$s/common" -I"$s/vendor" -I"$s/tools/mtmd" \
         $(group "$(find "$b" -name libmtmd.a)" "$(find "$b" -name libllama-common.a)" "$(find "$b" -name libllama-common-base.a)" \
                 $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(find "$b" -name libllama.a)") $(ggml_archives "$b") \
-        $PRIVATE $OMP $LIBS -lpthread
+        $PRIVATE $OMP $LIBS $THREADS
 }
 
 build_sd() {
@@ -111,8 +126,8 @@ build_sd() {
     local s=$SRC/stable-diffusion.cpp b=$SRC/stable-diffusion.cpp/build-$BACKEND
     mkdir -p "$b"
     # sd.cpp's own shared library already links ggml statically.
-    cmake_build "$s" "$b" stable-diffusion $SD -DSD_BUILD_SHARED_LIBS=ON -DSD_BUILD_EXAMPLES=OFF
-    cp "$(find "$b" -name "libstable-diffusion.$EXT" | head -1)" "$OUT/"
+    cmake_build "$s" "$b" stable-diffusion $SD -DSD_BUILD_SHARED_LIBS=ON -DSD_BUILD_EXAMPLES=OFF ${SD_LINK:+"$SD_LINK"}
+    cp "$(find "$b" -name "libstable-diffusion.$EXT" | head -1)" "$OUT/${PRE}stable-diffusion.$EXT"  # MinGW names it libstable-diffusion.dll too
 }
 
 build_acestep() {
@@ -120,10 +135,10 @@ build_acestep() {
     local s=$SRC/acestep.cpp b=$SRC/acestep.cpp/build-$BACKEND
     mkdir -p "$b"
     cmake_build "$s" "$b" "acestep-core yyjson" $GGML
-    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libfornax_acestep.$EXT" "$ROOT/fornax-acestep/native/fornax_acestep.cpp" \
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_acestep.$EXT" "$ROOT/fornax-acestep/native/fornax_acestep.cpp" \
         -I"$s/src" -I"$s" -I"$s/ggml/include" -I"$s/vendor/yyjson" \
         $(whole "$(find "$b" -name libacestep-core.a)") "$(find "$b" -name libyyjson.a)" $(ggml_archives "$b") \
-        $PRIVATE $OMP $LIBS -lpthread
+        $PRIVATE $OMP $LIBS $THREADS
 }
 
 build_yue2() {
@@ -131,10 +146,10 @@ build_yue2() {
     local s=$SRC/yue2.cpp b=$SRC/yue2.cpp/build-$BACKEND
     mkdir -p "$b"
     cmake_build "$s" "$b" ggml $GGML
-    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libfornax_yue2.$EXT" "$ROOT/fornax-yue2/native/fornax_yue2.cpp" \
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_yue2.$EXT" "$ROOT/fornax-yue2/native/fornax_yue2.cpp" \
         "$s/src/request.cpp" "$s/src/model-store.cpp" "$s/vendor/yyjson/yyjson.c" \
         -I"$s/src" -I"$s" -I"$b" -I"$s/ggml/include" -I"$s/vendor/yyjson" -I"$s/vendor" \
-        $(ggml_archives "$b") $PRIVATE $OMP $LIBS -lpthread
+        $(ggml_archives "$b") $PRIVATE $OMP $LIBS $THREADS
 }
 
 build_whisper() {
@@ -142,9 +157,9 @@ build_whisper() {
     local s=$SRC/whisper.cpp b=$SRC/whisper.cpp/build-$BACKEND
     mkdir -p "$b"
     cmake_build "$s" "$b" whisper $GGML -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=OFF -DWHISPER_BUILD_SERVER=OFF
-    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libfornax_whisper.$EXT" "$ROOT/fornax-whisper/native/fornax_whisper.cpp" \
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_whisper.$EXT" "$ROOT/fornax-whisper/native/fornax_whisper.cpp" \
         -I"$s/include" -I"$s/ggml/include" \
-        "$(find "$b" -name libwhisper.a)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS -lpthread
+        "$(find "$b" -name libwhisper.a)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS $THREADS
 }
 
 build_demucs() {  # stems.cpp's HTDemucs, through its libstems C ABI (src/libstems.cpp), compiled into the shim
@@ -152,10 +167,10 @@ build_demucs() {  # stems.cpp's HTDemucs, through its libstems C ABI (src/libste
     local s=$SRC/stems.cpp b=$SRC/stems.cpp/build-$BACKEND
     mkdir -p "$b"
     cmake_build "$s" "$b" stems $GGML -DSTEMS_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF
-    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/libfornax_demucs.$EXT" "$ROOT/fornax-demucs/native/fornax_demucs.cpp" \
+    $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_demucs.$EXT" "$ROOT/fornax-demucs/native/fornax_demucs.cpp" \
         "$s/src/libstems.cpp" -DSTEMS_VERSION_STRING="\"$(sed -n 's/^project(stems_cpp VERSION \([^ ]*\).*/\1/p' "$s/CMakeLists.txt")\"" \
         -I"$s/src" -I"$s/ggml/include" \
-        "$(find "$b" -name libstems_core.a)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS -ldl -lpthread
+        "$(find "$b" -name libstems_core.a)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS $DL $THREADS
 }
 
 for e in $ENGINES; do
