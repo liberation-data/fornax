@@ -798,13 +798,13 @@ const theme = 'vitesse-dark';
                             <p>Backends:</p>
                             <div class="backends">
                                 <span class="ok">Vulkan <small>tested</small></span>
-                                <span>ROCm (HIP) <small>builds</small></span>
+                                <span class="ok">ROCm (HIP) <small>tested</small></span>
                                 <span class="ok">Metal <small>tested</small></span>
                                 <span>CUDA <small>untested</small></span>
                             </div>
                             <p style="font-size: 16px">
-                                The build script knows the ROCm, CUDA and Metal backends of the underlying engines. HIP has run LTX video
-                                on the same machine, faster than Vulkan. Metal passes the test suite on an Apple M2 Max (songs, video and
+                                The build script knows the ROCm, CUDA and Metal backends of the underlying engines. HIP passes the test
+                                suite on the same machine, and runs LTX video faster than Vulkan. Metal passes the test suite on an Apple M2 Max (songs, video and
                                 Intel Macs not run yet); the CUDA build hasn’t been tested yet. Reports and fixes welcome.
                             </p>
                         </div>
