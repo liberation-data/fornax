@@ -51,6 +51,16 @@ class SnippetsTest {
     }
 
     @Test
+    void aRegionThatNeverEndsIsAnError() {
+        var e = assertThrows(IllegalArgumentException.class,
+                () -> Snippets.regions(List.of("// --8<-- [start:a]", "int x;", "// --8<-- [end:b]", "}")));
+        assertEquals("1: [start:a] has no [end:a]", e.getMessage());
+        e = assertThrows(IllegalArgumentException.class,
+                () -> Snippets.regions(List.of("x", "// --8<-- [start:a]", "// --8<-- [start:a]", "// --8<-- [end:a]")));
+        assertEquals("2: [start:a] has no [end:a]", e.getMessage());
+    }
+
+    @Test
     void aMarkedBlockGetsItsRegion() throws Exception {
         assertEquals("<!-- snippet: A#b -->\n```java\nint y = 2;\n```\n", fill("<!-- snippet: A#b -->\n```java\nold\n```\n"));
         assertEquals("{/* snippet: A#b */}\n\n```java title=\"A.java\"\nint y = 2;\n```",
@@ -156,6 +166,16 @@ class SnippetsTest {
         assertEquals(0, run(repo, elsewhere));
         assertEquals("<!-- snippet: A#b -->\n```java\nint y = 2;\n```\n", Files.readString(repo.resolve("README.md")));
         assertEquals(0, run(repo, elsewhere, "--check"));
+    }
+
+    @Test
+    void aSourceWithARegionThatNeverEndsFailsWithoutWritingTheDoc(@TempDir Path dir) throws Exception {
+        String stale = "<!-- snippet: A#b -->\n```java\nold\n```\n";
+        Path repo = repo(dir, stale);
+        Path a = repo.resolve("fornax-examples/src/snippets/java/org/liberationdata/fornax/snippets/A.java");
+        Files.writeString(a, SOURCE.replace("[end:b]", "[end:B]"));
+        assertEquals(1, run(repo, repo));
+        assertEquals(stale, Files.readString(repo.resolve("README.md")));
     }
 
     @Test

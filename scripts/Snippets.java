@@ -31,7 +31,8 @@ import java.util.stream.Stream;
  * java scripts/Snippets.java --check    fail, listing them, instead (the build runs this)
  * java scripts/Snippets.java FILE...    only these docs
  * </pre>
- * Either way it fails for a marker whose region isn't there, and for a Java block with no marker.
+ * Either way it fails for a marker whose region isn't there, for a Java block with no marker, and for a region that
+ * never ends.
  */
 public class Snippets {
     /** The repository: the script's parent's parent when run as {@code java scripts/Snippets.java}, so any directory works. */
@@ -51,12 +52,17 @@ public class Snippets {
         if (docs.isEmpty()) docs = allDocs();
         List<String> problems = new ArrayList<>(), stale = new ArrayList<>();
         Map<String, Map<String, String>> sources = new LinkedHashMap<>();
-        for (Path doc : docs) {
-            String text = Files.readString(doc);
-            String filled = fill(doc, text, sources, problems);
-            if (filled.equals(text)) continue;
-            if (check) stale.add(doc.toString());
-            else { Files.writeString(doc, filled); System.out.println("updated " + doc); }
+        try {
+            for (Path doc : docs) {
+                String text = Files.readString(doc);
+                String filled = fill(doc, text, sources, problems);
+                if (filled.equals(text)) continue;
+                if (check) stale.add(doc.toString());
+                else { Files.writeString(doc, filled); System.out.println("updated " + doc); }
+            }
+        } catch (IllegalArgumentException e) {   // a snippet source with a region that never ends: no doc is safe to fill
+            System.err.println(e.getMessage());
+            System.exit(1);
         }
         for (String p : problems) System.err.println(p);
         if (!stale.isEmpty())
@@ -153,22 +159,33 @@ public class Snippets {
         Map<String, String> regions = sources.get(file);
         if (regions == null) {
             Path p = SOURCES.resolve(file + ".java");
-            regions = Files.isRegularFile(p) ? regions(Files.readAllLines(p)) : Map.of();
+            try {
+                regions = Files.isRegularFile(p) ? regions(Files.readAllLines(p)) : Map.of();
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(p + ":" + e.getMessage(), e);
+            }
             sources.put(file, regions);
         }
         return regions.get(tag);
     }
 
-    /** Every region in a source, by tag: its stretches dedented and joined by a blank line. */
+    /**
+     * Every region in a source, by tag: its stretches dedented and joined by a blank line. Throws for a start whose region
+     * is already open or never ends (a mistyped end tag), which would otherwise copy the rest of the file into the doc.
+     */
     static Map<String, String> regions(List<String> lines) {
         Map<String, List<List<String>>> parts = new LinkedHashMap<>();
         Map<String, List<String>> open = new LinkedHashMap<>();
-        for (String line : lines) {
+        Map<String, Integer> openedAt = new LinkedHashMap<>();
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
             Matcher m = REGION.matcher(line);
             if (m.find()) {
                 if (m.group(1).equals("start")) {
+                    if (open.containsKey(m.group(2))) throw unended(m.group(2), openedAt);
                     List<String> part = new ArrayList<>();
                     open.put(m.group(2), part);
+                    openedAt.put(m.group(2), i + 1);
                     parts.computeIfAbsent(m.group(2), k -> new ArrayList<>()).add(part);
                 } else open.remove(m.group(2));
                 continue;
@@ -176,6 +193,7 @@ public class Snippets {
             if (line.stripTrailing().endsWith(SKIP)) continue;
             for (List<String> part : open.values()) part.add(line);
         }
+        if (!open.isEmpty()) throw unended(open.keySet().iterator().next(), openedAt);
         Map<String, String> out = new LinkedHashMap<>();
         parts.forEach((tag, ps) -> {
             List<String> joined = new ArrayList<>();
@@ -186,6 +204,10 @@ public class Snippets {
             out.put(tag, String.join("\n", joined));
         });
         return out;
+    }
+
+    static IllegalArgumentException unended(String tag, Map<String, Integer> openedAt) {
+        return new IllegalArgumentException(openedAt.get(tag) + ": [start:" + tag + "] has no [end:" + tag + "]");
     }
 
     static List<String> dedent(List<String> lines) {
