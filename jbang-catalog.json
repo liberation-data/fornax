@@ -3,7 +3,7 @@
   "aliases": {
     "fornax": {
       "script-ref": "org.fornax4j:fornax-cli:0.2.0",
-      "description": "Fornax: open models in-process on your GPU, from Java. jbang fornax@fornax4j chat qwen3-4b; also image, song, speak, transcribe, see, pull, list, server",
+      "description": "Fornax: open models in-process on your GPU, from Java. jbang fornax@fornax4j chat qwen3-4b; also image, song, speak, transcribe, see, pull, list",
       "java": "22+",
       "java-options": [
         "--enable-native-access=ALL-UNNAMED"
@@ -69,17 +69,6 @@
       "description": "Ask a vision model about an image: jbang see@fornax4j qwen3-vl-4b photo.jpg",
       "arguments": [
         "see"
-      ],
-      "java": "22+",
-      "java-options": [
-        "--enable-native-access=ALL-UNNAMED"
-      ]
-    },
-    "server": {
-      "script-ref": "org.fornax4j:fornax-cli:0.2.0",
-      "description": "An OpenAI-compatible HTTP API over resident models: jbang server@fornax4j",
-      "arguments": [
-        "server"
       ],
       "java": "22+",
       "java-options": [

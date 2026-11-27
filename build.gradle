@@ -248,6 +248,10 @@ project(':fornax-cli') {
     ext.hostNatives = { Node pom ->
         def deps = pom.dependencies[0]
         deps.dependency.findAll { it.artifactId.text().startsWith('fornax-natives-') }.each { deps.remove(it) }
+        // A module of this build that isn't published would be a dependency nobody (JBang, Maven) can resolve
+        def unpublished = deps.dependency.findAll { it.groupId.text() == 'org.fornax4j' }*.artifactId*.text()
+                .findAll { !rootProject.ext.published.containsKey(it) }
+        if (unpublished) throw new GradleException("fornax-cli depends on $unpublished, which aren't published: add them to published")
         def n = deps.appendNode('dependency')
         n.appendNode('groupId', 'org.fornax4j')
         n.appendNode('artifactId', 'fornax-natives')
@@ -271,6 +275,8 @@ project(':fornax-cli') {
     tasks.named('test') {
         dependsOn 'installDist'
         systemProperty 'fornax.cli.install', layout.buildDirectory.dir('install/fornax-cli').get().asFile.absolutePath
+        systemProperty 'fornax.jbang.catalog', rootProject.file('jbang-catalog.json').absolutePath
+        inputs.file(rootProject.file('jbang-catalog.json'))
     }
 }
 

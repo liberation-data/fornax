@@ -11,8 +11,8 @@ Try it with one line, with nothing installed but [JBang](https://www.jbang.dev) 
 jbang fornax@fornax4j chat qwen3-4b "Write a haiku about a kiln"   # downloads the model on first use
 ```
 
-`jbang image@fornax4j flux2-klein "a brick kiln at dusk"`, `song@`, `speak@`, `transcribe@`, `see@` and `server@` work the
-same way: they are the [`fornax` command](https://fornax4j.org/docs/guides/cli/), run from Maven Central.
+`jbang image@fornax4j flux2-klein "a brick kiln at dusk"`, `song@`, `speak@`, `transcribe@` and `see@` work the same
+way: they are the [`fornax` command](https://fornax4j.org/docs/guides/cli/), run from Maven Central.
 
 > Fornax was called **Kiln** until 0.1.0. Here's what changed:
 > - **Maven:** `org.kiln4j:kiln-*` is now `org.fornax4j:fornax-*`.

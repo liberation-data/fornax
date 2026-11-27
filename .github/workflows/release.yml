@@ -217,6 +217,10 @@ jobs:
           set -euo pipefail
           ./gradlew --no-daemon publishToMavenLocal -Pversion="$VERSION" -Pfornax.natives.require=true -Dmaven.repo.local="$RUNNER_TEMP/m2"
           repo="$RUNNER_TEMP/m2/org/fornax4j"
+          # jbang-catalog.json (copied to the fornax4j/jbang-catalog repo after the release) runs this release's CLI.
+          if [ "$VERSION" != 0.0.0-dryrun ] && grep '"script-ref"' jbang-catalog.json | grep -qv "org.fornax4j:fornax-cli:$VERSION\""; then
+            echo "::error::jbang-catalog.json's aliases don't all run org.fornax4j:fornax-cli:$VERSION"; exit 1
+          fi
           for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs fornax-cli \
                    fornax-natives-linux-x86_64-vulkan fornax-natives-macos-aarch64-metal fornax-natives-macos-x86_64-metal; do
             for f in "$a-$VERSION.pom" "$a-$VERSION.jar" "$a-$VERSION-sources.jar" "$a-$VERSION-javadoc.jar"; do
