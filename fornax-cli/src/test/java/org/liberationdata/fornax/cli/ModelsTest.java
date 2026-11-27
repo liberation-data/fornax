@@ -114,6 +114,16 @@ class ModelsTest {
     }
 
     @Test
+    void aNameThatCannotBeAPathIsStillAName() {
+        // On Windows a reference's ':' is no path at all (InvalidPathException); a NUL is the same on every OS.
+        String notAPath = "acme/x\0y";
+        assertFalse(Models.withoutMmproj(notAPath));
+        var ps = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+        var e = assertThrows(Main.Failure.class, () -> Models.fetch(notAPath, Kind.SPEECH, "speak", true, hub(), ps, false));
+        assertTrue(e.getMessage().startsWith("No such file or model"), e.getMessage());
+    }
+
+    @Test
     void aSplitModelMissingAPartIsIncomplete() throws Exception {
         var hub = hub();
         put(hub.cacheRoot(), "some/Split-GGUF", "s-Q4_K_M-00001-of-00002.gguf");   // part 2 never arrived

@@ -48,9 +48,9 @@ final class See {
         LlamaModel.Image picture = read(Path.of(image));
         var o = Chat.options(a);
         String mmprojSpec = a.option("mmproj", null);
-        var m = Models.fetch(spec, Kind.VISION, "see", true, hub, err, Main.terminal());
-        if (m.set() == null && mmprojSpec == null)
+        if (mmprojSpec == null && Models.withoutMmproj(spec))
             throw new UsageException(spec + " needs its mmproj (the vision encoder): --mmproj org/name:mmproj-file.gguf or a path");
+        var m = Models.fetch(spec, Kind.VISION, "see", true, hub, err, Main.terminal());
         Path mmproj = mmprojSpec != null ? Models.fetch(mmprojSpec, Kind.VISION, "see --mmproj", true, hub, err, Main.terminal()).file("gguf")
                 : m.file("mmproj");
 

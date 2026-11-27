@@ -114,6 +114,20 @@ class CommandsTest {
     }
 
     @Test
+    void aModelWithoutItsMmprojIsRefusedBeforeItDownloads() throws Exception {
+        assertEquals(2, run("speak", "--model", "acme/No-Such-TTS-GGUF:Q8_0", "hello", "--out", tmp.toString()));
+        assertTrue(err.toString().contains("needs its mmproj (its voices and audio decoder)"), err.toString());
+        assertFalse(err.toString().contains("downloading"), err.toString());
+        Path png = tmp.resolve("a.png");
+        ImageIO.write(new BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB), "png", png.toFile());
+        assertEquals(2, run("see", "acme/No-Such-VL-GGUF:Q8_0", png.toString()));
+        assertTrue(err.toString().contains("needs its mmproj (the vision encoder)"), err.toString());
+        Path gguf = Files.writeString(tmp.resolve("local.gguf"), "x");
+        assertEquals(2, run("see", gguf.toString(), png.toString()));
+        assertTrue(err.toString().contains("needs its mmproj"), err.toString());
+    }
+
+    @Test
     void notAWavSaysHowToConvert() throws Exception {
         Path mp3 = Files.writeString(tmp.resolve("a.mp3"), "ID3 not really");
         assertEquals(1, run("transcribe", mp3.toString()));
@@ -145,6 +159,17 @@ class CommandsTest {
         String yue = Song.request(ModelCatalog.require("yue2"), "folk", null, 20, 3);
         assertTrue(yue.contains("\"style\": \"folk\"") && yue.contains("\"lyrics\": \"\"") && yue.contains("\"duration\": 20"), yue);
         assertFalse(yue.contains("caption"), yue);
+    }
+
+    @Test
+    void pullSaysWhichCommandRunsTheModel() {
+        assertEquals("Try it: fornax see qwen3-vl-4b picture.png", Pull.tryIt(ModelCatalog.require("qwen3-vl-4b")));
+        assertEquals("Try it: fornax speak --model kokoro \"Hello from Fornax\"", Pull.tryIt(ModelCatalog.require("kokoro")));
+        assertEquals("Try it: fornax transcribe --model whisper-base.en speech.wav", Pull.tryIt(ModelCatalog.require("whisper-base.en")));
+        assertEquals("Try it: fornax image flux2-klein \"a brick kiln at dusk\"", Pull.tryIt(ModelCatalog.require("flux2-klein")));
+        assertTrue(Pull.tryIt(ModelCatalog.require("qwen-image-edit")).contains("--ref"));   // it refuses to run without one
+        assertEquals("Try it: fornax song yue2 \"acoustic folk, warm male vocal\"", Pull.tryIt(ModelCatalog.require("yue2")));
+        assertTrue(Pull.tryIt(ModelCatalog.require("ltx-2.5-distilled")).contains("doesn't make video yet"));
     }
 
     @Test

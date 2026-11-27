@@ -12,6 +12,7 @@ import org.liberationdata.fornax.hub.ModelStatus;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
@@ -94,7 +95,7 @@ final class Models {
     static Fetched fetch(String spec, Kind kind, String command, boolean oneFile, FornaxHub hub, PrintStream err,
                          boolean terminal) throws IOException {
         String role = kind == Kind.TRANSCRIPTION ? "model" : "gguf";
-        if (oneFile && Files.isRegularFile(Path.of(spec))) return new Fetched(spec, null, Map.of(role, Path.of(spec)));
+        if (oneFile && isFile(spec)) return new Fetched(spec, null, Map.of(role, Path.of(spec)));
         var alias = ModelCatalog.byName(spec);
         if (alias.isPresent()) {
             ModelSet m = alias.get();
@@ -104,15 +105,29 @@ final class Models {
         var ref = ModelRef.tryParse(spec);
         if (ref.isPresent() && oneFile) {
             ModelSet m = hub.resolve(ref.get());   // from the cache when it's there, else the repo's file list
-            Map<String, Path> files = pulled(m, spec, hub, err, terminal);
-            if (!files.containsKey(role)) throw new Main.Failure(spec + " names " + m.parts().get(0).primary().file() + ", not "
-                    + (kind == Kind.TRANSCRIPTION ? "a whisper.cpp model" : "a GGUF model"));
-            return new Fetched(spec, null, files);
+            if (m.part(role).isEmpty()) throw new Main.Failure(spec + " names " + m.parts().get(0).primary().file() + ", not "
+                    + (kind == Kind.TRANSCRIPTION ? "a whisper.cpp model" : "a GGUF model"));   // checked before the download
+            return new Fetched(spec, null, pulled(m, spec, hub, err, terminal));
         }
         if (ref.isPresent()) throw new Main.Failure(spec + ": " + command + " loads a model set from the catalogue (its files "
                 + "come from several repos), not a reference; " + command + " takes " + kinds(kind));
         throw new Main.Failure("No such " + (oneFile ? "file or " : "") + "model: " + spec + "\n  " + command + " takes " + kinds(kind)
                 + (oneFile ? ", org/name[:TAG] or a path" : ""));
+    }
+
+    /**
+     * Whether {@code spec} is a path or a reference that {@link #fetch} would take for a one-file command: one GGUF,
+     * without the mmproj an alias brings along. Asked before fetching, so a missing {@code --mmproj} is said before the
+     * model downloads.
+     */
+    static boolean withoutMmproj(String spec) {
+        return ModelCatalog.byName(spec).isEmpty() && (isFile(spec) || ModelRef.tryParse(spec).isPresent());
+    }
+
+    /** Whether s is a file that exists; false for what can't be a path at all, such as a reference's ':' on Windows. */
+    private static boolean isFile(String s) {
+        try { return Files.isRegularFile(Path.of(s)); }
+        catch (InvalidPathException notAPath) { return false; }
     }
 
     /** The set's files, pulled first (after {@code header}, with fornax pull's progress line) if any is missing. */

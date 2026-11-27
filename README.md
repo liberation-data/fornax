@@ -387,15 +387,20 @@ second argument. The request formats are the engines' own (see
 
 `fornax-studio-server` is the backend of [Fornax Studio](https://github.com/liberation-data/fornax-studio), a desktop app for
 trying models: a JDK-only HTTP server on localhost (`com.sun.net.httpserver`, replies streamed as server-sent events)
-that lists what in the Hugging Face cache Fornax can run, keeps models in a `ModelPool`, and serves chat (with a
-tool-calling demo through `chatJson`), images, songs (ACE-Step and YuE2), video clips with sound (LTX-2.5, whose .mp4
-needs ffmpeg) and questions about an image for a vision model (Qwen3-VL, PaddleOCR-VL, MedGemma), as text or held to a
-JSON schema. The app starts it; to run it on its own:
+that lists what in the Hugging Face cache Fornax can run, downloads Fornax's model sets into it (`FornaxHub`), keeps
+models in a `ModelPool`, and serves chat (with a tool-calling demo through `chatJson`), images, songs (ACE-Step and
+YuE2), video clips with sound (LTX-2.5, whose .mp4 needs ffmpeg) and questions about an image for a vision model
+(Qwen3-VL, PaddleOCR-VL, MedGemma), as text or held to a JSON schema. The app starts it; to run it on its own:
 
 ```sh
 ./gradlew studioServer                    # http://127.0.0.1:5191; -Pport=, -Pbudget=<GB>, -Pstub=image,song,video
 ./gradlew :fornax-studio-server:studioJar   # one runnable jar, which the app ships
 ```
+
+It answers only its own callers: a request whose `Host` isn't `127.0.0.1`, `localhost` or `[::1]` at its port (DNS
+rebinding), or that carries an `Origin` (a web page in the browser), is refused with a 403. When `FORNAX_STUDIO_SECRET`
+is set in its environment (the app makes one each launch), every route but `/api/health` also needs it in the
+`X-Fornax-Studio-Secret` header.
 
 On Linux, as with every Fornax engine, a GPU build refuses to load a model on a machine with no usable GPU (the request's
 error says what to install) unless `FORNAX_ALLOW_CPU=true` is set in the server's environment.
