@@ -172,6 +172,10 @@ can't fill the heap, the bodies held at once are limited to 256 MB in all (`maxB
 `maxBodyBytes`): past that, a request is answered 503 (`server_busy`, with `Retry-After: 1`) rather than queued, and
 the OpenAI clients retry it.
 
+A refused request's body (a 413, a 503, a 403) is read to its end first, up to 64 KB more of it, so that the client
+gets the error rather than a reset connection. Past that, the error says `Connection: close`, and a client still
+sending a large body may see the connection reset instead of the reply.
+
 A client that sends its request slowly, a byte at a time, would hold a connection and a thread for as long as it
 liked. `fornax server` gives a client 120 seconds to send its request, headers and body, and takes 512 connections at
 once. These are the JDK HTTP server's own settings, which it reads once per JVM, so `FornaxServer` doesn't set them

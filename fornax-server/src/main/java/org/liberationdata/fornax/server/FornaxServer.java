@@ -72,7 +72,8 @@ import java.util.function.Consumer;
  * {@code Host} isn't its own address (DNS rebinding); it refuses a request from a web page (an {@code Origin}) unless
  * that origin is allowed with {@link Builder#corsOrigin}; and with an {@link Builder#apiKey}, it refuses a request
  * without {@code Authorization: Bearer <key>}. Errors are OpenAI's: {@code {"error": {"message", "type", "param",
- * "code"}}} with the HTTP status.
+ * "code"}}} with the HTTP status. A refused request's body is read first, up to 64 KB more of it, so that its client
+ * gets the error rather than a reset; past that, the error says {@code Connection: close}.
  *
  * <p>Slow clients: the JDK HTTP server never times out a client that sends its request a byte at a time. Its limits
  * are JVM-wide system properties, read when its classes load, so this class leaves them to the application: pass
@@ -288,7 +289,6 @@ public final class FornaxServer implements AutoCloseable {
         engines.checkChat(req.model(), req.images());   // a name it won't serve is still an error status, not a stream
         Stopper stopper = new Stopper();
         generating.add(stopper);
-        release(ex);   // the request is parsed: its body's room is free before the stream starts
         Sse sse = new Sse(ex, stopper::stop);
         boolean[] roleSent = {false};
         Consumer<Map<String, Object>> delta = d -> {
@@ -323,6 +323,7 @@ public final class FornaxServer implements AutoCloseable {
             if (req.includeUsage())
                 sse.data(Json.obj("id", id, "object", "chat.completion.chunk", "created", created, "model", req.model(),
                         "choices", List.of(), "usage", usage(r.get("usage"))));
+            release(ex);   // held while it was generated (req holds the body still); free before the client has its end
             sse.done();
         } catch (ApiError | CancellationException e) {
             if (!sse.abandon()) streamError(sse, e);
@@ -332,6 +333,7 @@ public final class FornaxServer implements AutoCloseable {
             else throw e;
         } finally {
             generating.remove(stopper);
+            release(ex);
             sse.close();
         }
     }
@@ -589,20 +591,20 @@ public final class FornaxServer implements AutoCloseable {
             catch (NumberFormatException e) { throw ApiError.badRequest("a bad Content-Length", null); }
             if (declared > maxBody) throw tooLarge();
         }
-        try (InputStream in = ex.getRequestBody()) {
-            if (declared >= 0) {   // the room for it all, before a byte is read
-                hold(ex, declared);
-                return in.readNBytes((int) declared);
-            }
-            var out = new ByteArrayOutputStream();   // chunked: the room for each piece as it comes
-            byte[] buf = new byte[64 << 10];
-            for (int n; (n = in.read(buf)) != -1; ) {
-                if (out.size() + (long) n > maxBody) throw tooLarge();
-                hold(ex, out.size() + (long) n);
-                out.write(buf, 0, n);
-            }
-            return out.toByteArray();
+        InputStream in = ex.getRequestBody();   // left open when refused, for error() to read what is left of it
+        if (declared >= 0) {   // the room for it all, before a byte is read
+            hold(ex, declared);
+            try (in) { return in.readNBytes((int) declared); }
         }
+        var out = new ByteArrayOutputStream();   // chunked: the room for each piece as it comes
+        byte[] buf = new byte[64 << 10];
+        for (int n; (n = in.read(buf)) != -1; ) {
+            if (out.size() + (long) n > maxBody) throw tooLarge();
+            hold(ex, out.size() + (long) n);
+            out.write(buf, 0, n);
+        }
+        in.close();
+        return out.toByteArray();
     }
 
     /** Takes room for {@code total} bytes of this request's body in all, or refuses it (503) when the server holds its fill. */
@@ -673,7 +675,7 @@ public final class FornaxServer implements AutoCloseable {
             }
             return true;
         } catch (IOException e) {
-            return true;   // already closed (the JDK drained it then) or the client has gone: nothing to wait for
+            return true;   // read whole already (and closed), or the client has gone: nothing to wait for
         }
     }
 

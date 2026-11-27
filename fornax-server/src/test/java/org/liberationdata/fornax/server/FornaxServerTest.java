@@ -254,8 +254,13 @@ class FornaxServerTest {
         var wrong = getPath("/v1/chat/completions");
         assertEquals(405, wrong.statusCode());
         assertEquals("POST", wrong.headers().firstValue("Allow").orElseThrow());
-        var big = post("/v1/chat/completions", "{\"messages\": \"" + "x".repeat(2 << 20) + "\"}");
-        assertEquals(413, big.statusCode());
+        // past the drain, a client still sending its body can lose the 413 to the reset as the connection closes
+        int big = 0;
+        for (int i = 0; i < 10 && big != 413; i++) {
+            try { big = post("/v1/chat/completions", "{\"messages\": \"" + "x".repeat(2 << 20) + "\"}").statusCode(); }
+            catch (java.io.IOException reset) { /* again */ }
+        }
+        assertEquals(413, big);
     }
 
     /** Before JDK 25, without TCP_NODELAY each reply's body waited on the client's delayed ACK of its headers: 40 ms a reply. */
@@ -593,6 +598,58 @@ class FornaxServerTest {
             }
             assertThrows(IllegalArgumentException.class, () -> FornaxServer.builder().port(0).engines(engines).maxBodyBytes(2L * mb)
                     .maxBufferedBytes(mb).build(), "a body the limit allows must fit");
+        }
+    }
+
+    /** A stream's body holds its room while it is generated (its images and messages are still held), not just until it starts. */
+    @Test void aStreamHoldsItsBodysRoomUntilItEnds() throws Exception {
+        int mb = 1 << 20;
+        engines.pieceDelayMillis = 300;
+        try (var small = FornaxServer.builder().port(0).engines(engines).log(s -> {}).maxBodyBytes(mb).maxBufferedBytes(mb).build().start();
+             Socket s = new Socket(InetAddress.getLoopbackAddress(), small.port())) {
+            int port = small.port();
+            s.setSoTimeout(5000);
+            byte[] body = ("{\"stream\": true, \"messages\": [{\"role\": \"user\", \"content\": \"" + "a".repeat(700_000) + "\"}]}")
+                    .getBytes(StandardCharsets.UTF_8);
+            OutputStream out = s.getOutputStream();
+            out.write(("POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:" + port + "\r\nContent-Length: " + body.length + "\r\n\r\n")
+                    .getBytes(StandardCharsets.UTF_8));
+            out.write(body);
+            out.flush();
+            var in = new java.io.BufferedInputStream(s.getInputStream());
+            assertTrue(line(in).contains(" 200 "));   // the stream has started: its first piece is out, two to come
+            String big = "{\"input\": \"a\"" + " ".repeat(600_000) + "}";
+            var r = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v1/embeddings"))
+                    .POST(HttpRequest.BodyPublishers.ofString(big)).build(), HttpResponse.BodyHandlers.discarding());
+            assertEquals(503, r.statusCode(), "the stream's 700 KB is still held: 600 KB more is past 1 MB");
+            while (!line(in).isEmpty()) continue;   // the headers
+            for (int n; (n = Integer.parseInt(line(in).strip(), 16)) > 0; line(in)) in.readNBytes(n);   // to the stream's end
+            assertEquals(200, http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v1/embeddings"))
+                    .POST(HttpRequest.BodyPublishers.ofString(big)).build(), HttpResponse.BodyHandlers.discarding()).statusCode(),
+                    "the stream has ended: its room is free");
+        }
+    }
+
+    /** A body refused part way through (chunked, past the limit) is read on before the 413, and the 413 says the connection closes. */
+    @Test void aChunkedBodyRefusedPartWayIsDrainedAndClosesTheConnection() throws Exception {
+        int mb = 1 << 20;
+        try (Socket s = new Socket(InetAddress.getLoopbackAddress(), server.port())) {
+            s.setSoTimeout(5000);
+            OutputStream out = s.getOutputStream();
+            out.write(("POST /v1/embeddings HTTP/1.1\r\nHost: 127.0.0.1:" + server.port() + "\r\nTransfer-Encoding: chunked\r\n\r\n")
+                    .getBytes(StandardCharsets.UTF_8));
+            byte[] piece = new byte[16 << 10];
+            for (int sent = 0; sent < mb + (256 << 10); sent += piece.length) {   // past the 1 MB limit; no last chunk yet
+                out.write((Integer.toHexString(piece.length) + "\r\n").getBytes(StandardCharsets.UTF_8));
+                out.write(piece);
+                out.write("\r\n".getBytes(StandardCharsets.UTF_8));
+            }
+            out.flush();
+            var in = new java.io.BufferedInputStream(s.getInputStream());
+            assertTrue(line(in).contains(" 413 "));
+            boolean close = false;
+            for (String h; !(h = line(in)).isEmpty(); ) close |= h.equalsIgnoreCase("Connection: close");
+            assertTrue(close, "more than the drain was left: the connection closes after the reply");
         }
     }
 
