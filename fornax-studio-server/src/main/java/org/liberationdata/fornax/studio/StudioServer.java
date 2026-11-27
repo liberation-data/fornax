@@ -777,12 +777,12 @@ public final class StudioServer {
         try {
             String refused = refusal(ex);
             if (refused != null) {
-                json(ex, 403, Json.obj("error", refused));
+                error(ex, 403, Json.obj("error", refused));
                 return;
             }
             String m = ex.getRequestMethod();
             if (!m.equals(method) && !(method.equals("GET") && m.equals("HEAD"))) {
-                json(ex, 405, Json.obj("error", "method not allowed"));
+                error(ex, 405, Json.obj("error", "method not allowed"));
                 return;
             }
             h.handle(ex);
@@ -798,7 +798,37 @@ public final class StudioServer {
 
     // A failure before a reply has begun is sent as JSON; after (a stream under way), there is nothing more to send.
     private static void tryJson(HttpExchange ex, int status, Throwable e) {
-        try { json(ex, status, Json.obj("error", message(e))); } catch (IOException | RuntimeException ignored) {}
+        try { if (ex.getResponseCode() == -1) error(ex, status, Json.obj("error", message(e))); } catch (IOException | RuntimeException ignored) {}
+    }
+
+    /** The most of an unread request body read (and dropped) before an error reply; the JDK's own drain is the same. */
+    static final int DRAIN_BYTES = 64 << 10;
+
+    /**
+     * Sends an error reply once the request's unread body has been read, up to {@link #DRAIN_BYTES}: a reply sent over
+     * unread bytes can be lost to the reset the connection's close then sends, so the caller would see a reset instead
+     * of the 403. Past that, the connection closes after the reply ({@code Connection: close}), and a caller still
+     * sending may see the reset. (FornaxServer does the same.)
+     */
+    private static void error(HttpExchange ex, int status, Object body) throws IOException {
+        if (!drained(ex)) ex.getResponseHeaders().set("Connection", "close");
+        json(ex, status, body);
+    }
+
+    /** Reads what is left of the request body, up to {@link #DRAIN_BYTES}; whether it all was. */
+    static boolean drained(HttpExchange ex) {
+        try {
+            InputStream in = ex.getRequestBody();
+            byte[] buf = new byte[8192];
+            long read = 0;
+            for (int n; (n = in.read(buf)) != -1; ) {
+                read += n;
+                if (read > DRAIN_BYTES) return false;
+            }
+            return true;
+        } catch (IOException e) {
+            return true;   // read whole already (and closed), or the caller has gone: nothing to wait for
+        }
     }
 
     private static Map<String, Object> body(HttpExchange ex) throws IOException {
