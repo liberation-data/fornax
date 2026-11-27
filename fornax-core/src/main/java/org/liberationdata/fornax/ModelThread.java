@@ -2,8 +2,10 @@ package org.liberationdata.fornax;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -11,8 +13,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.SubmissionPublisher;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -33,6 +35,11 @@ import java.util.function.Function;
  * <h2>One call at a time</h2>
  * Engine instances aren't thread-safe. Calls from any thread, blocking or async, queue for one lock (fair, so in
  * arrival order) and run one after another; the async ones queue in submission order on the thread.
+ *
+ * <p>An engine that runs several calls together (a language model with slots, which decodes them in one batch) takes
+ * {@code lanes} calls at once instead: as many threads, and up to that many calls running, the rest queued in order.
+ * Its calls hand their work to the engine's own loop and wait for it, and its callbacks run on that loop's thread,
+ * which {@link #markCallbackThread} tells this class about.
  *
  * <h2>Streaming</h2>
  * {@link #submit(BiFunction, Flow.Subscriber)} streams a call's items (tokens, audio chunks) to a
@@ -55,13 +62,17 @@ public final class ModelThread implements AutoCloseable {
 
     private final String name;
     private final Runnable destroy, nativeCancel, nativeReset;
-    private final ReentrantLock engine = new ReentrantLock(true);
+    private final int lanes;
+    private final Semaphore engine;                               // fair: calls run in arrival order
+    /** Threads inside a call (or running its callbacks), where waiting for a lane would wait for themselves. */
+    private final ThreadLocal<Boolean> inside = ThreadLocal.withInitial(() -> false);
     private final Object state = new Object();
     private final ArrayDeque<Job<?>> queue = new ArrayDeque<>();  // guarded by state
     private final CountDownLatch destroyed = new CountDownLatch(1);
-    private Call current;                                         // guarded by state
+    private final Set<Call> current = new HashSet<>();            // guarded by state: the calls running
     private boolean closed;                                       // guarded by state
-    private Thread worker;                                        // guarded by state
+    private int busy;                                             // guarded by state: workers running a job
+    private final List<Thread> workers = new ArrayList<>();       // guarded by state
     private Thread closer;                                        // guarded by state: the thread doing the first close
     private volatile Executor streamExecutor = VIRTUAL;
     private volatile int streamBuffer = DEFAULT_BUFFER;
@@ -75,11 +86,33 @@ public final class ModelThread implements AutoCloseable {
      * @param nativeReset  clears that request before each call (null if not needed)
      */
     public ModelThread(String name, Runnable destroy, Runnable nativeCancel, Runnable nativeReset) {
+        this(name, 1, destroy, nativeCancel, nativeReset);
+    }
+
+    /**
+     * For an engine that runs up to {@code lanes} calls at once (see the class doc), whose calls stop through
+     * {@link Call#stopRequested()}.
+     */
+    public ModelThread(String name, int lanes, Runnable destroy) { this(name, lanes, destroy, null, null); }
+
+    private ModelThread(String name, int lanes, Runnable destroy, Runnable nativeCancel, Runnable nativeReset) {
+        if (lanes < 1) throw new IllegalArgumentException("lanes must be at least 1");
         this.name = name;
+        this.lanes = lanes;
+        this.engine = new Semaphore(lanes, true);
         this.destroy = Objects.requireNonNull(destroy);
         this.nativeCancel = nativeCancel;
         this.nativeReset = nativeReset;
     }
+
+    /** How many calls can run at once. */
+    public int lanes() { return lanes; }
+
+    /**
+     * Marks the calling thread as one that runs this model's callbacks (an engine's own loop): a blocking call or
+     * {@link #close()} from it would wait for itself, so they throw instead, as they do from inside a call.
+     */
+    public void markCallbackThread() { inside.set(true); }
 
     /**
      * Where streamed items are delivered (and async futures completed), and how many items a subscriber may fall
@@ -98,13 +131,15 @@ public final class ModelThread implements AutoCloseable {
      *         callback), which would wait for itself. An async call made there is queued instead: it runs after.
      */
     public <T> T run(Function<Call, T> body) {
-        if (engine.isHeldByCurrentThread())
+        if (inside.get())
             throw new IllegalStateException("a call to " + name + " was made from inside one of its own callbacks");
-        engine.lock();
+        engine.acquireUninterruptibly();
+        inside.set(true);
         try {
             return runLocked(new Call(this), body, false);
         } finally {
-            engine.unlock();
+            inside.set(false);
+            engine.release();
         }
     }
 
@@ -154,10 +189,10 @@ public final class ModelThread implements AutoCloseable {
         return subscriber -> submit(body, subscriber);
     }
 
-    /** Stops the call in progress, if any (from any thread). Queued calls still run. */
+    /** Stops the calls in progress, if any (from any thread). Queued calls still run. */
     public void cancel() {
         synchronized (state) {
-            if (current != null) stop(current);
+            for (Call c : current) stop(c);
         }
     }
 
@@ -173,7 +208,7 @@ public final class ModelThread implements AutoCloseable {
      */
     private void stop(Call call) {
         call.markStopped();
-        if (call == current && nativeCancel != null) nativeCancel.run();
+        if (nativeCancel != null && current.contains(call)) nativeCancel.run();
     }
 
     /** Whether {@link #close()} has been called. */
@@ -190,11 +225,11 @@ public final class ModelThread implements AutoCloseable {
      *         instance under the native call that is running the callback
      */
     @Override public void close() {
-        if (engine.isHeldByCurrentThread())
+        if (inside.get())
             throw new IllegalStateException("close() was called from inside a call to " + name + "; close it after the call returns");
         boolean first;
         List<Job<?>> abandoned;
-        Thread w;
+        List<Thread> ws;
         synchronized (state) {
             // Nested in the first close, on its thread (a queued call's dependent, failed below, closing the model):
             // waiting here would wait for itself, so leave the freeing to the outer close.
@@ -202,25 +237,25 @@ public final class ModelThread implements AutoCloseable {
             first = !closed;
             if (first) closer = Thread.currentThread();
             closed = true;
-            if (current != null) stop(current);
+            for (Call c : current) stop(c);
             abandoned = new ArrayList<>(queue);
             queue.clear();
-            w = worker;
+            ws = new ArrayList<>(workers);
             state.notifyAll();
         }
         for (Job<?> j : abandoned) j.future.completeExceptionally(new CancellationException(name + " was closed"));
         if (first) {
-            engine.lock();  // the call in progress returns first
+            engine.acquireUninterruptibly(lanes);  // the calls in progress return first
             try {
                 destroy.run();
             } finally {
-                engine.unlock();
+                engine.release(lanes);
                 destroyed.countDown();
             }
         } else {
             awaitUninterruptibly(destroyed);
         }
-        if (w != null && w != Thread.currentThread()) joinUninterruptibly(w);
+        for (Thread w : ws) if (w != Thread.currentThread()) joinUninterruptibly(w);
     }
 
     // ---- internals ----
@@ -231,14 +266,14 @@ public final class ModelThread implements AutoCloseable {
             if (closed) throw queued ? new CancellationException(name + " was closed") : new IllegalStateException(name + " is closed");
             if (call.stopRequested()) throw new CancellationException("cancelled before it started");
             if (nativeReset != null) nativeReset.run();
-            current = call;
+            current.add(call);
         }
         try {
             T result = body.apply(call);
             call.rethrow();  // a callback failed and the binding didn't check
             return result;
         } finally {
-            synchronized (state) { current = null; }
+            synchronized (state) { current.remove(call); }
         }
     }
 
@@ -251,9 +286,11 @@ public final class ModelThread implements AutoCloseable {
                 return f;
             }
             queue.add(new Job<>(call, body, f));
-            if (worker == null) {
-                worker = Thread.ofPlatform().name("fornax-" + name).daemon(true).stackSize(8L << 20).unstarted(this::work);
-                worker.start();
+            if (workers.size() < Math.min(lanes, queue.size() + busy)) {
+                Thread w = Thread.ofPlatform().name(lanes == 1 ? "fornax-" + name : "fornax-" + name + "-" + workers.size())
+                        .daemon(true).stackSize(8L << 20).unstarted(this::work);
+                workers.add(w);
+                w.start();
             }
             state.notifyAll();
         }
@@ -269,8 +306,9 @@ public final class ModelThread implements AutoCloseable {
                 }
                 if (queue.isEmpty()) return;
                 job = queue.poll();
+                busy++;
             }
-            job.run();
+            try { job.run(); } finally { synchronized (state) { busy--; } }
         }
     }
 
@@ -286,14 +324,16 @@ public final class ModelThread implements AutoCloseable {
         void run() {
             if (future.isDone()) return;  // cancelled while queued
             T result;
-            engine.lock();
+            engine.acquireUninterruptibly();
+            inside.set(true);
             try {
                 result = runLocked(call, body, true);
             } catch (Throwable t) {
                 complete(() -> future.completeExceptionally(t));
                 return;
             } finally {
-                engine.unlock();
+                inside.set(false);
+                engine.release();
             }
             complete(() -> future.complete(result));
         }
