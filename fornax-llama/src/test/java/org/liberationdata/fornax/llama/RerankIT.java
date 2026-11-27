@@ -71,8 +71,16 @@ class RerankIT {
      */
     @Test
     void oneDocumentAtATimeScoresNearlyTheSame() {
+        // A decided document (p near 0 or 1) scores the same alone as in a batch; a sequence-handling bug would move
+        // it. A borderline one (doc 3, p about 0.5 to 0.6) sits where the sigmoid is steepest, and llama.cpp's own
+        // llama-embedding moves it by more than 0.05 between a batch and a single sequence on HIP (0.589 vs 0.525),
+        // and between backends (CPU 0.634): #80.
         List<Scored> all = model.rerank(QUERY, DOCS);
-        for (Scored s : all) assertEquals(s.score(), model.rerank(QUERY, List.of(DOCS.get(s.index()))).get(0).score(), 0.05);
+        for (Scored s : all) {
+            double alone = model.rerank(QUERY, List.of(DOCS.get(s.index()))).get(0).score();
+            boolean decided = s.score() < 0.1 || s.score() > 0.9;
+            assertEquals(s.score(), alone, decided ? 0.01 : 0.1, "doc " + s.index());
+        }
     }
 
     @Test
