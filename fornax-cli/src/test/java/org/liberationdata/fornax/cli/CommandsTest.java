@@ -162,6 +162,17 @@ class CommandsTest {
     }
 
     @Test
+    void pullSaysWhichCommandRunsTheModel() {
+        assertEquals("Try it: fornax see qwen3-vl-4b picture.png", Pull.tryIt(ModelCatalog.require("qwen3-vl-4b")));
+        assertEquals("Try it: fornax speak --model kokoro \"Hello from Fornax\"", Pull.tryIt(ModelCatalog.require("kokoro")));
+        assertEquals("Try it: fornax transcribe --model whisper-base.en speech.wav", Pull.tryIt(ModelCatalog.require("whisper-base.en")));
+        assertEquals("Try it: fornax image flux2-klein \"a brick kiln at dusk\"", Pull.tryIt(ModelCatalog.require("flux2-klein")));
+        assertTrue(Pull.tryIt(ModelCatalog.require("qwen-image-edit")).contains("--ref"));   // it refuses to run without one
+        assertEquals("Try it: fornax song yue2 \"acoustic folk, warm male vocal\"", Pull.tryIt(ModelCatalog.require("yue2")));
+        assertTrue(Pull.tryIt(ModelCatalog.require("ltx-2.5-distilled")).contains("doesn't make video yet"));
+    }
+
+    @Test
     void aVoiceTheModelHas() {
         assertEquals("af_heart", Speak.voice(null, List.of("af_heart", "am_michael"), "kokoro"));
         assertEquals("am_michael", Speak.voice("am_michael", List.of("af_heart", "am_michael"), "kokoro"));
