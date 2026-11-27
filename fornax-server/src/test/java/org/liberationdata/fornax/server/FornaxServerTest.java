@@ -264,6 +264,8 @@ class FornaxServerTest {
         assertEquals(400, post("/v1/embeddings", "{\"input\": \"a\", \"dimensions\": 99}").statusCode());
         assertEquals(400, post("/v1/embeddings", "{\"input\": [[1, 2, 3]]}").statusCode(), "token arrays");
         assertEquals(400, post("/v1/embeddings", "{\"input\": []}").statusCode());
+        for (String empty : List.of("\"\"", "[\"a\", \"\"]"))   // OpenAI refuses an empty string, which has no embedding
+            assertEquals(400, post("/v1/embeddings", "{\"input\": " + empty + "}").statusCode(), empty);
         assertEquals(400, post("/v1/embeddings", "{\"input\": \"a\", \"encoding_format\": \"int8\"}").statusCode());
     }
 
@@ -430,5 +432,14 @@ class FornaxServerTest {
     @Test void closingUnloadsTheModels() {
         server.close();
         assertTrue(engines.closed);
+    }
+
+    @Test void theBuilderRefusesSettingsThatCouldNotWork() {
+        var b = FornaxServer.builder();
+        assertThrows(IllegalArgumentException.class, () -> b.budgetBytes(0));
+        assertThrows(IllegalArgumentException.class, () -> b.contextSize(-1));
+        assertThrows(IllegalArgumentException.class, () -> b.maxBodyBytes(0));
+        assertThrows(IllegalArgumentException.class, () -> b.idleTimeout(java.time.Duration.ZERO));
+        b.idleTimeout(null).contextSize(0).budgetBytes(1).maxBodyBytes(1);   // never unload; the model's own context
     }
 }

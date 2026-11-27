@@ -370,6 +370,7 @@ public final class FornaxServer implements AutoCloseable {
             }
         }
         if (texts.isEmpty()) throw ApiError.badRequest("input must be a string or a non-empty array of strings", "input");
+        if (texts.contains("")) throw ApiError.badRequest("input can't be an empty string", "input");   // as OpenAI: it has no tokens to embed
         Object format = body.getOrDefault("encoding_format", "float");
         if (!"float".equals(format) && !"base64".equals(format)) throw ApiError.badRequest("encoding_format must be float or base64", "encoding_format");
         Object dims = body.get("dimensions");
@@ -593,14 +594,27 @@ public final class FornaxServer implements AutoCloseable {
             return this;
         }
 
-        /** The model pool's budget: loaded models' sizes, in bytes (default 24 GB). */
-        public Builder budgetBytes(long bytes) { this.budgetBytes = bytes; return this; }
+        /** The model pool's budget: loaded models' sizes, in bytes (default 24 GB; more than 0). */
+        public Builder budgetBytes(long bytes) {
+            if (bytes <= 0) throw new IllegalArgumentException("budgetBytes must be more than 0, not " + bytes);
+            this.budgetBytes = bytes;
+            return this;
+        }
 
         /** How long an unused model stays loaded (default 15 minutes; null keeps it until the budget needs the room). */
-        public Builder idleTimeout(Duration timeout) { this.idleTimeout = timeout; return this; }
+        public Builder idleTimeout(Duration timeout) {
+            if (timeout != null && !timeout.isPositive())
+                throw new IllegalArgumentException("idleTimeout must be more than 0 (null never unloads an idle model), not " + timeout);
+            this.idleTimeout = timeout;
+            return this;
+        }
 
         /** Context size in tokens for language and embedding models (default 8192; 0 for the model's own). */
-        public Builder contextSize(int tokens) { this.contextSize = tokens; return this; }
+        public Builder contextSize(int tokens) {
+            if (tokens < 0) throw new IllegalArgumentException("contextSize must be 0 or more, not " + tokens);
+            this.contextSize = tokens;
+            return this;
+        }
 
         /** Where models are found and downloaded (default {@link FornaxHub#standard()}). */
         public Builder hub(FornaxHub hub) { this.hub = hub; return this; }
@@ -626,7 +640,11 @@ public final class FornaxServer implements AutoCloseable {
         public Builder allowDownloads(boolean allow) { this.allowDownloads = allow; return this; }
 
         /** The largest request body taken (default 64 MB: an image or a WAV file in it). */
-        public Builder maxBodyBytes(long bytes) { this.maxBodyBytes = bytes; return this; }
+        public Builder maxBodyBytes(long bytes) {
+            if (bytes <= 0) throw new IllegalArgumentException("maxBodyBytes must be more than 0, not " + bytes);
+            this.maxBodyBytes = bytes;
+            return this;
+        }
 
         /** A test's engines instead of Fornax's. */
         Builder engines(Engines engines) { this.engines = engines; return this; }

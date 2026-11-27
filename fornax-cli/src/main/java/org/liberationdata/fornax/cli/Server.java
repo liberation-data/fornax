@@ -71,14 +71,10 @@ final class Server {
         for (String origin : a.all("cors")) b.corsOrigin(origin);
         for (String spec : a.all("model")) {
             var set = ModelCatalog.byName(spec);
-            if (set.isPresent()) {
-                Kind kind = set.get().kind();
-                if (kind == Kind.SONG || kind == Kind.VIDEO)
-                    throw new Main.Failure(set.get().id() + " is " + Models.aKind(kind) + "; fornax server serves chat, vision, "
-                            + "embedding, image, speech and speech-to-text models");
-                Models.fetch(spec, kind, "server", kind != Kind.IMAGE, hub, err, terminal);   // downloaded first, with its notes
-            }
-            b.model(spec);   // anything else is fetched as the server loads it
+            if (set.isPresent() && (set.get().kind() == Kind.SONG || set.get().kind() == Kind.VIDEO))
+                throw new Main.Failure(set.get().id() + " is " + Models.aKind(set.get().kind()) + "; fornax server serves chat, "
+                        + "vision, embedding, image, speech and speech-to-text models");
+            b.model(spec);
         }
         boolean loopback;
         try { loopback = InetAddress.getByName(host).isLoopbackAddress(); }
@@ -86,9 +82,17 @@ final class Server {
         if (!loopback && (key == null || key.isBlank()))
             err.println("[fornax] warning: listening on " + host + " without an API key: anyone who can reach it can use it (--api-key)");
 
+        // every mistake above, and a port in use, is said before any model is downloaded
         FornaxServer server;
         try { server = b.build(); }
         catch (BindException e) { throw new Main.Failure("can't listen on " + host + ":" + port + " (" + e.getMessage() + "); try another --port"); }
+        try {
+            for (String spec : a.all("model")) {
+                var set = ModelCatalog.byName(spec);   // downloaded first, with its notes; anything else as the server loads it
+                if (set.isPresent())
+                    Models.fetch(spec, set.get().kind(), "server", set.get().kind() != Kind.IMAGE, hub, err, terminal);
+            }
+        } catch (IOException | RuntimeException e) { server.close(); throw e; }
         server.start();
         Runtime.getRuntime().addShutdownHook(new Thread(server::close, "fornax-server-shutdown"));
         err.println("[fornax] serving an OpenAI-compatible API at " + server.url() + (key != null && !key.isBlank() ? " (API key required)" : "")

@@ -76,7 +76,7 @@ non-streaming request runs to the end.
 
 ### Embeddings
 
-`input` is a string or a list of them (token arrays aren't taken). The model is `qwen3-embedding-0.6b` (Qwen3-Embedding
+`input` is a string or a list of them, none empty (token arrays aren't taken). The model is `qwen3-embedding-0.6b` (Qwen3-Embedding
 0.6B, 1024 dimensions) unless a request names another embedding GGUF by `org/name:TAG` or path (one the server was
 started with, or any with `--allow-downloads`). `dimensions` keeps
 the first n and normalises them again, which Qwen3-Embedding is trained for. `encoding_format: "base64"`, which the
@@ -120,7 +120,8 @@ A model is loaded on first use and kept loaded in a [`ModelPool`](/docs/guides/m
 unloaded to make room, and a model unused for `--idle-minutes` is unloaded. A model answers one request at a time;
 others wait for it.
 
-The `-m` models are downloaded first if need be and loaded before the server starts answering. The first chat model
+The `-m` models are downloaded first if need be (after the port is taken, so a port in use or a bad `--host` is said
+before any download) and loaded before the server starts answering. The first chat model
 answers a request that names none. A reference or path whose name has "embed" in it is loaded for embeddings; any
 other for chat.
 

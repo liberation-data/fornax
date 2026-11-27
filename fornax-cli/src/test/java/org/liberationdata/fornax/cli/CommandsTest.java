@@ -234,4 +234,21 @@ class CommandsTest {
         assertEquals(1, run("server", "--host", "no-such-host.invalid", "--port", "0"));
         assertTrue(err.toString().contains("no such address"), err.toString());
     }
+
+    @Test
+    void serverChecksItsAddressAndPortBeforeDownloading() throws Exception {
+        // offline, with an empty cache: a model fetched first would fail as missing, not with the address's mistake
+        var hub = org.liberationdata.fornax.hub.FornaxHub.builder().cacheRoot(tmp.resolve("hub")).offline(true).build();
+        var e = assertThrows(Main.Failure.class, () -> Server.run(args(Set.of("model", "host", "port"), "--model", "qwen3-4b",
+                "--host", "no-such-host.invalid", "--port", "0"), hub, System.out, System.err));
+        assertTrue(e.getMessage().contains("no such address"), e.getMessage());
+        try (var taken = new java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress())) {
+            e = assertThrows(Main.Failure.class, () -> Server.run(args(Set.of("model", "port"), "--model", "qwen3-4b",
+                    "--port", String.valueOf(taken.getLocalPort())), hub, System.out, System.err));
+            assertTrue(e.getMessage().startsWith("can't listen on 127.0.0.1:" + taken.getLocalPort()), e.getMessage());
+        }
+        e = assertThrows(Main.Failure.class, () -> Server.run(args(Set.of("model", "port"), "--model", "qwen3-4b", "--model",
+                "ace-step-turbo", "--port", "0"), hub, System.out, System.err));
+        assertTrue(e.getMessage().contains("ace-step-turbo is a song model"), e.getMessage());
+    }
 }
