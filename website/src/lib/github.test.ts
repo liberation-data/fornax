@@ -43,7 +43,7 @@ test('a public repository with a release offers each platform its installer', as
     const studio = await studioRelease();
     assert.equal(studio?.version, '0.3.1');
     assert.equal(studio?.mac.appleSilicon?.url, 'https://example.test/fornax-studio-mac-arm64.dmg');
-    assert.equal(studio?.mac.intel?.url, 'https://example.test/fornax-studio-mac-x64.dmg');
+    assert.equal('intel' in (studio?.mac ?? {}), false, 'an x64 dmg is not offered: no Intel Macs (#123)');
     assert.equal(studio?.mac.appleSilicon?.size, '123 MB');
     assert.deepEqual(studio?.linux.map((d) => d.label), ['Debian / Ubuntu', 'Fedora / RHEL']);
 });
@@ -99,7 +99,7 @@ test('a release with only a Linux installer offers no Mac download', async () =>
     const { studioRelease } = await load();
     const studio = await studioRelease();
     assert.equal(studio?.version, '0.3.1');
-    assert.deepEqual(studio?.mac, { appleSilicon: undefined, intel: undefined });
+    assert.deepEqual(studio?.mac, { appleSilicon: undefined });
     assert.deepEqual(studio?.linux.map((d) => d.label), ['Fedora / RHEL']);
 });
 

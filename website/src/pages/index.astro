@@ -901,18 +901,13 @@ const theme = 'vitesse-dark';
                                 <span class="get-studio-sub">Alpha {studio.version}. Models are not included: fetch them with <code>fornax pull</code> or the Hugging Face CLI, as in Getting started.</span>
                             </p>
                             <div class="downloads">
-                                {(studio.mac.appleSilicon || studio.mac.intel) && (
+                                {studio.mac.appleSilicon && (
                                     <div class="platform">
                                         <h3>macOS <span class="arch">(Metal)</span></h3>
                                         <div class="dl-buttons">
                                             {studio.mac.appleSilicon && (
                                                 <a class="dl-button primary" href={studio.mac.appleSilicon.url} data-thanks>
                                                     Apple&nbsp;Silicon <span class="dl-meta">.dmg · {studio.mac.appleSilicon.size}</span>
-                                                </a>
-                                            )}
-                                            {studio.mac.intel && (
-                                                <a class="dl-button" href={studio.mac.intel.url} data-thanks>
-                                                    Intel <span class="dl-meta">.dmg · {studio.mac.intel.size}</span>
                                                 </a>
                                             )}
                                         </div>
@@ -952,7 +947,7 @@ const theme = 'vitesse-dark';
                         </div>
                     ) : (
                         <p class="note">
-                            Builds for macOS (Apple silicon and Intel) and Linux are on their way with the first release.
+                            Builds for macOS (Apple silicon) and Linux are on their way with the first release.
                             {studioPublic && <Fragment> Until then, <a href={`${studioUrl}#running-it`}>build it from source</a>.</Fragment>}
                         </p>
                     )}

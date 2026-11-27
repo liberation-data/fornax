@@ -34,7 +34,7 @@ export interface Download {
 export interface StudioRelease {
     version: string;
     url: string;
-    mac: { appleSilicon?: Download; intel?: Download };
+    mac: { appleSilicon?: Download };
     linux: Download[];
 }
 
@@ -64,10 +64,10 @@ async function fetchStudioRelease(): Promise<StudioRelease | undefined> {
         const asset = assets.find((a) => match(a.name));
         return asset ? { label, url: asset.browser_download_url, size: megabytes(asset.size) } : undefined;
     };
-    // fornax-studio-mac-arm64.dmg, fornax-studio-mac-x64.dmg: package.json's mac.artifactName.
+    // fornax-studio-mac-arm64.dmg: package.json's mac.artifactName. Older releases' x64 dmg isn't offered: Intel Macs
+    // aren't supported (#123).
     const mac = {
         appleSilicon: download((name) => name.endsWith('.dmg') && name.includes('arm64'), 'Apple Silicon'),
-        intel: download((name) => name.endsWith('.dmg') && name.includes('x64'), 'Intel'),
     };
     // The two native installers, labelled by the distros that use them. A software-centre can't open a local package on
     // current Fedora/GNOME, so the page's install hint gives the terminal command for each.
@@ -76,7 +76,7 @@ async function fetchStudioRelease(): Promise<StudioRelease | undefined> {
         download((name) => name.endsWith('.rpm'), 'Fedora / RHEL'),
     ].filter((d): d is Download => d !== undefined);
     // A release with no installer for any platform is no download.
-    if (!mac.appleSilicon && !mac.intel && linux.length === 0) {
+    if (!mac.appleSilicon && linux.length === 0) {
         return undefined;
     }
     return { version, url: release.html_url, mac, linux };
