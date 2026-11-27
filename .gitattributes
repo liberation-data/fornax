@@ -1,0 +1,4 @@
+# Shell scripts and the patches to the engines stay LF on every checkout (Git for Windows would make them CRLF, and
+# then bash fails and the patches do not apply).
+*.sh text eol=lf
+*.patch text eol=lf

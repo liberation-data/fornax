@@ -15,7 +15,7 @@ import java.util.Optional;
 /**
  * Finds and binds one of Fornax's native libraries.
  *
- * <p>Search order for {@code libNAME.so} (or {@code .dylib}):
+ * <p>Search order for {@code libNAME.so} ({@code libNAME.dylib} on macOS, {@code NAME.dll} on Windows):
  * <ol>
  *   <li>system property {@code fornax.NAME.lib}: an exact file path</li>
  *   <li>each directory in system property {@code fornax.library.path}</li>
@@ -23,7 +23,8 @@ import java.util.Optional;
  *   <li>a Fornax natives jar on the classpath ({@code org.fornax4j:fornax-natives-<os>-<arch>-<backend>}), extracted to
  *   a per-version cache directory; with several backends there, {@code -Dfornax.backend} or {@code FORNAX_BACKEND}
  *   picks one, else Metal, CUDA, HIP, Vulkan, CPU in that order. Set {@code -Dfornax.cache.dir} (or
- *   {@code FORNAX_CACHE_DIR}) to move the cache; by default it is {@code ~/.cache/fornax} or {@code ~/Library/Caches/fornax}</li>
+ *   {@code FORNAX_CACHE_DIR}) to move the cache; by default it is {@code ~/.cache/fornax}, {@code ~/Library/Caches/fornax} or
+ *   {@code %LOCALAPPDATA%\fornax\cache}</li>
  *   <li>the platform loader (LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, system dirs)</li>
  * </ol>
  *

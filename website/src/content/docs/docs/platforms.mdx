@@ -148,3 +148,11 @@ There's no Windows natives jar yet, but `native/build.sh` builds the engines as 
 UCRT64 shell (experimental: CI builds the CPU and Vulkan backends, and loads the CPU build from Java). Load them with
 `-Dfornax.library.path=build/native/windows-x86_64-<backend>`. Published natives follow in
 [#83](https://github.com/liberation-data/fornax/issues/83).
+
+Set `git config --global core.autocrlf false` before cloning, in Git for Windows and in MSYS2's git (which clones
+the engines): with Windows line endings, Fornax's patches to the engines don't apply. Then, in the UCRT64 shell:
+
+```sh
+pacman -S git mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,vulkan-devel,shaderc,spirv-headers}
+native/build.sh vulkan
+```
