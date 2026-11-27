@@ -43,9 +43,9 @@ final class Speak {
         }
         Path file = list ? null : OutFile.choose(a.option("out", null), Path.of(""), "speech.wav", ".wav");
         String spec = a.option("model", MODEL), mmprojSpec = a.option("mmproj", null);
-        var m = Models.fetch(spec, Kind.SPEECH, "speak", true, hub, err, Main.terminal());
-        if (m.set() == null && mmprojSpec == null)
+        if (mmprojSpec == null && Models.withoutMmproj(spec))
             throw new UsageException(spec + " needs its mmproj (its voices and audio decoder): --mmproj org/name:mmproj-file.gguf or a path");
+        var m = Models.fetch(spec, Kind.SPEECH, "speak", true, hub, err, Main.terminal());
         Path mmproj = mmprojSpec != null ? Models.fetch(mmprojSpec, Kind.SPEECH, "speak --mmproj", true, hub, err, Main.terminal()).file("gguf")
                 : m.file("mmproj");
 

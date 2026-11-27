@@ -114,6 +114,20 @@ class CommandsTest {
     }
 
     @Test
+    void aModelWithoutItsMmprojIsRefusedBeforeItDownloads() throws Exception {
+        assertEquals(2, run("speak", "--model", "acme/No-Such-TTS-GGUF:Q8_0", "hello", "--out", tmp.toString()));
+        assertTrue(err.toString().contains("needs its mmproj (its voices and audio decoder)"), err.toString());
+        assertFalse(err.toString().contains("downloading"), err.toString());
+        Path png = tmp.resolve("a.png");
+        ImageIO.write(new BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB), "png", png.toFile());
+        assertEquals(2, run("see", "acme/No-Such-VL-GGUF:Q8_0", png.toString()));
+        assertTrue(err.toString().contains("needs its mmproj (the vision encoder)"), err.toString());
+        Path gguf = Files.writeString(tmp.resolve("local.gguf"), "x");
+        assertEquals(2, run("see", gguf.toString(), png.toString()));
+        assertTrue(err.toString().contains("needs its mmproj"), err.toString());
+    }
+
+    @Test
     void notAWavSaysHowToConvert() throws Exception {
         Path mp3 = Files.writeString(tmp.resolve("a.mp3"), "ID3 not really");
         assertEquals(1, run("transcribe", mp3.toString()));
