@@ -6,7 +6,7 @@
 #   ./gradlew testOnMac -Pfornax.macHost=<host>           the same, from Gradle (or set fornax.macHost in ~/.gradle/gradle.properties);
 #                                                         -Pfornax.macTestArgs='--tests *LlamaModelIT' passes Gradle args
 #
-# The Mac needs Xcode (or its command line tools), JDK 25 (SDKMAN's is found), CMake and Ninja on its PATH or in
+# The Mac needs Xcode (or its command line tools), JDK 25 (SDKMAN's newest 22+ is used when the PATH has none), CMake and Ninja on its PATH or in
 # ~/.local/bin. The integration tests skip any model that isn't in its Hugging Face cache; scripts/test-models.sh, run
 # on the Mac, fetches the ones they use, all small enough for a 32 GB Mac.
 #
@@ -37,8 +37,16 @@ ssh "$HOST" "cd $RDIR && bash -s -- $args" <<'REMOTE' || status=$?
 set -uo pipefail
 [ -s "$HOME/.sdkman/bin/sdkman-init.sh" ] && { set +u; source "$HOME/.sdkman/bin/sdkman-init.sh"; set -u; }
 export PATH="$HOME/.local/bin:$PATH"
+# No java 22+ on the PATH (SDKMAN with no default, or an older one): use the newest SDKMAN JDK 22+ for this run only,
+# leaving the Mac's default java as it is.
+major=$( (java -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1) || true)
+if [ "${major:-0}" -lt 22 ] 2>/dev/null || [ -z "${major:-}" ]; then
+    for jdk in $(ls -d "$HOME"/.sdkman/candidates/java/2[2-9]* "$HOME"/.sdkman/candidates/java/[3-9][0-9]* 2>/dev/null | sort -V -r); do
+        export JAVA_HOME=$jdk PATH="$jdk/bin:$PATH"; break
+    done
+fi
 for tool in java cmake ninja xcrun; do command -v "$tool" > /dev/null || { echo "missing on the Mac: $tool" >&2; exit 2; }; done
-echo "==> $(sw_vers -productName) $(sw_vers -productVersion), $(sysctl -n machdep.cpu.brand_string), $(( $(sysctl -n hw.memsize) / 1073741824 )) GB"
+echo "==> $(sw_vers -productName) $(sw_vers -productVersion), $(sysctl -n machdep.cpu.brand_string), $(( $(sysctl -n hw.memsize) / 1073741824 )) GB, $(java -version 2>&1 | head -1)"
 echo "==> native/build.sh metal"
 native/build.sh metal > build-native.log 2>&1 || { tail -40 build-native.log; echo "native build failed (build-native.log on the Mac)" >&2; exit 3; }
 echo "==> ./gradlew test -Pfornax.backend=metal $*"
