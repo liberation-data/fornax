@@ -63,12 +63,13 @@ class IsolatedBatchedLlamaIT {
 
     @Test void cancellingOneStopsOnlyThatOne() throws Exception {
         CountDownLatch started = new CountDownLatch(5);
-        CompletableFuture<Result> cancelled = model.chatAsync(COUNT, GREEDY.withMaxTokens(200), new LlamaAsyncIT.Pieces());
+        // under 84 tokens: on Metal, Qwen3 0.6B's greedy count ends there on its own (#104)
+        CompletableFuture<Result> cancelled = model.chatAsync(COUNT, GREEDY.withMaxTokens(60), new LlamaAsyncIT.Pieces());
         CompletableFuture<Result> other = CompletableFuture.supplyAsync(() ->
-                model.chat(COUNT, GREEDY.withMaxTokens(200), p -> started.countDown()));
+                model.chat(COUNT, GREEDY.withMaxTokens(60), p -> started.countDown()));
         assertTrue(started.await(60, TimeUnit.SECONDS));
         cancelled.cancel(true);
-        assertEquals(200, other.join().generatedTokens(), "the other request ran to max_tokens");
+        assertEquals(60, other.join().generatedTokens(), "the other request ran to max_tokens");
         assertTrue(cancelled.isCancelled());
     }
 

@@ -84,7 +84,8 @@ class BatchedLlamaIT {
     }
 
     @Test void cancellingOneStopsOnlyThatOne() throws Exception {
-        Options longer = GREEDY.withMaxTokens(200);
+        // under 84 tokens: on Metal, Qwen3 0.6B's greedy count ends there on its own (#104)
+        Options longer = GREEDY.withMaxTokens(60);
         List<Message> count = ask("Count from 1 to 300, one number per line, nothing else. /no_think");
         CountDownLatch started = new CountDownLatch(5);
         CompletableFuture<Result> cancelled = batched.chatAsync(count, longer, new LlamaAsyncIT.Pieces());
@@ -92,7 +93,7 @@ class BatchedLlamaIT {
         assertTrue(started.await(60, TimeUnit.SECONDS));
         cancelled.cancel(true);
         Result r = other.join();
-        assertEquals(200, r.generatedTokens(), "the other request ran to max_tokens");
+        assertEquals(60, r.generatedTokens(), "the other request ran to max_tokens");
         assertTrue(cancelled.isCancelled());
     }
 
@@ -108,7 +109,9 @@ class BatchedLlamaIT {
         int during = pieces.get();
         assertTrue(longOne.promptTokens() > 1200, "prompt " + longOne.promptTokens());
         assertTrue(during > 3, "the stream went on while the long prompt went in");
-        assertEquals(400, stream.join().generatedTokens());
+        // the stream ends by itself (at 84 tokens on Metal, #104) or at max_tokens, but well past where the prefill came in
+        Result streamed = stream.join();
+        assertTrue(streamed.generatedTokens() > 50, streamed.generatedTokens() + " tokens: " + streamed.text());
     }
 
     /**
