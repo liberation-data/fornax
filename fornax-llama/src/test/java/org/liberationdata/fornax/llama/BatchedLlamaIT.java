@@ -199,4 +199,10 @@ class BatchedLlamaIT {
         e = assertThrows(IllegalStateException.class, () -> new LlamaModel(path, -1, 256, 257));   // refused before it loads
         assertTrue(e.getMessage().contains("slots must be 1 to 256"), e.getMessage());
     }
+
+    /** Qwen3 0.6B: 28 layers, 8 KV heads of 128 for keys and values, F16: 114,688 bytes a token. */
+    @Test void theKvCacheEstimateReadsTheHeader() {
+        assertEquals(28L * 8 * (128 + 128) * 2 * 4096, LlamaModel.kvCacheBytes(path, 4096));
+        assertThrows(IllegalStateException.class, () -> LlamaModel.kvCacheBytes(path + ".missing", 4096));
+    }
 }

@@ -6,6 +6,7 @@
 #include "mtmd.h"
 #include "mtmd-helper.h"
 #include "sampling.h"
+#include "gguf.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -1010,6 +1011,29 @@ int fornax_llama_batch_step(fornax_llama * h, fornax_llama_piece_cb on_piece, fo
     int busy = 0;
     for (const auto & s : h->slots) busy += s.busy ? 1 : 0;
     return busy;
+}
+
+int64_t fornax_llama_kv_bytes(const char * model_path, int n_ctx) {
+    gguf_init_params gp = {/*no_alloc*/ true, /*ctx*/ nullptr};
+    gguf_context * g = gguf_init_from_file(model_path, gp);
+    if (!g) { g_err = std::string("can't read the GGUF header of ") + model_path; return -1; }
+    auto u32 = [&](const std::string & key, int64_t dflt) -> int64_t {
+        int64_t id = gguf_find_key(g, key.c_str());
+        if (id < 0) return dflt;
+        switch (gguf_get_kv_type(g, id)) {
+            case GGUF_TYPE_UINT32: return gguf_get_val_u32(g, id);
+            case GGUF_TYPE_INT32:  return gguf_get_val_i32(g, id);
+            default: return dflt;   // per-layer arrays (some hybrid models): take the default
+        }
+    };
+    int64_t arch_id = gguf_find_key(g, "general.architecture");
+    std::string a = arch_id >= 0 ? gguf_get_val_str(g, arch_id) : "llama";
+    const int64_t n_layer = u32(a + ".block_count", 0), n_embd = u32(a + ".embedding_length", 0);
+    const int64_t n_head = u32(a + ".attention.head_count", 1), n_head_kv = u32(a + ".attention.head_count_kv", n_head);
+    const int64_t head = n_head > 0 ? n_embd / n_head : 0;
+    const int64_t k_len = u32(a + ".attention.key_length", head), v_len = u32(a + ".attention.value_length", head);
+    gguf_free(g);
+    return n_layer * (int64_t) n_ctx * n_head_kv * (k_len + v_len) * 2;   // F16 keys and values, as llama.cpp's default
 }
 
 void fornax_llama_free(void * p) { free(p); }

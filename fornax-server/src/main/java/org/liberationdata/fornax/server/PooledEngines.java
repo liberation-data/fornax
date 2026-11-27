@@ -26,7 +26,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Flow;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -35,7 +39,9 @@ import java.util.regex.Pattern;
  * The server's engines: a model named by a request is found with {@link FornaxHub} (downloaded the first time, when
  * downloads are allowed; otherwise it must be one the server was started with, or a catalogue model already
  * downloaded), and kept loaded in a {@link ModelPool}, which unloads the least recently used to stay within its budget, and idle
- * ones after its timeout. A model has one request at a time; others wait for it.
+ * ones after its timeout. A model has one request at a time; others wait for it. With {@code parallel} above 1, a language
+ * model is loaded with that many slots and has that many requests at once ({@link #chatInSlot}), its KV cache counted
+ * in its size.
  *
  * <p>A name is a catalogue alias ({@code qwen3-4b}, {@code flux2-klein}, {@code kokoro}, {@code whisper-base.en}), an
  * {@code org/name[:TAG]} reference to one GGUF (or whisper.cpp) file, or a path to one. Embeddings take
@@ -54,6 +60,9 @@ final class PooledEngines implements Engines {
     private final ModelPool pool;
     private final List<String> configured;
     private final int contextSize;
+    private final int parallel;   // chat requests at once per language model: its slots
+    /** Each model with slots' KV cache, by GGUF: read from its header once, not on every request. */
+    private final Map<String, Long> kvBytes = new java.util.concurrent.ConcurrentHashMap<>();
     private final PullListener pulls;
     private final Consumer<String> log;
     private final boolean allowDownloads;
@@ -69,8 +78,11 @@ final class PooledEngines implements Engines {
     }
 
     /** allowDownloads: whether a request may name a model the server wasn't started with that isn't downloaded. */
-    PooledEngines(FornaxHub hub, ModelPool pool, List<String> configured, int contextSize, PullListener pulls, Consumer<String> log,
-                  boolean allowDownloads) {
+    PooledEngines(FornaxHub hub, ModelPool pool, List<String> configured, int contextSize, int parallel, PullListener pulls,
+                  Consumer<String> log, boolean allowDownloads) {
+        if (parallel > 1 && contextSize <= 0)
+            throw new IllegalArgumentException("parallel needs each slot's context size: set contextSize (not 0)");
+        this.parallel = parallel;
         this.allowDownloads = allowDownloads;
         this.hub = hub;
         this.pool = pool;
@@ -119,11 +131,50 @@ final class PooledEngines implements Engines {
         check(f, images);
         try (ModelPool.Lease<LlamaModel> lease = lease(f)) {
             LlamaModel m = lease.model();
+            if (m.slots() > 1) return chatInSlot(sub -> m.chatJsonAsync(requestJson, List.of(), sub), onContent, stop);
             stop.attach(m::cancel);
             try { return m.chatJson(requestJson, onContent); }
             catch (IllegalStateException e) { throw engineError(e); }
             finally { stop.detach(); }
         }
+    }
+
+    /**
+     * A chat on a model with slots, where cancel() would stop every slot's request. This one is stopped through its
+     * subscription instead (a stop sequence, a client that has gone): the engine then ends just this request with the
+     * text so far, as {@code cancel()} ends a serial chat, so the callers see what they would there. The content
+     * pieces arrive through a buffer on another thread, so this returns only once the last of them has been
+     * delivered: the stream's final chunk must not overtake its content.
+     * @param start runs the chat, streaming its content to the subscriber ({@code LlamaModel.chatJsonAsync})
+     */
+    static String chatInSlot(Function<Flow.Subscriber<String>, CompletableFuture<String>> start, Consumer<String> onContent,
+                             Stopper stop) {
+        CompletableFuture<Flow.Subscription> subscribed = new CompletableFuture<>();
+        CompletableFuture<Void> delivered = new CompletableFuture<>();   // no more pieces will reach onContent
+        // attached first, so a stop asked for already cancels the subscription in onSubscribe, before any piece
+        stop.attach(() -> subscribed.thenAccept(s -> { s.cancel(); delivered.complete(null); }));
+        try {
+            var f = start.apply(new Flow.Subscriber<String>() {
+                @Override public void onSubscribe(Flow.Subscription s) {
+                    subscribed.complete(s);
+                    s.request(Long.MAX_VALUE);
+                }
+                @Override public void onNext(String piece) {
+                    if (onContent == null) return;
+                    try { onContent.accept(piece); }
+                    catch (RuntimeException | Error e) { delivered.complete(null); throw e; }   // cancels the subscription
+                }
+                @Override public void onError(Throwable t) { delivered.complete(null); }
+                @Override public void onComplete() { delivered.complete(null); }
+            });
+            String reply = f.join();
+            delivered.join();
+            return reply;
+        } catch (CompletionException e) {
+            if (e.getCause() instanceof IllegalStateException ise) throw engineError(ise);
+            if (e.getCause() instanceof RuntimeException re) throw re;
+            throw e;
+        } finally { stop.detach(); }
     }
 
     /**
@@ -336,15 +387,24 @@ final class PooledEngines implements Engines {
     @SuppressWarnings("unchecked")
     <M extends AutoCloseable> ModelPool.Lease<M> lease(Found f) {
         long size = ModelPool.sizeOf(f.files().values().toArray(Path[]::new));
+        int slots = slots(f);
+        if (slots > 1) size += kvBytes.computeIfAbsent(f.file("gguf").toString(), g -> LlamaModel.kvCacheBytes(g, contextSize * slots));
         Supplier<AutoCloseable> loader = () -> {
             log.accept("loading " + f.id() + " for " + what(f.use()));
             return load(f);
         };
-        try { return (ModelPool.Lease<M>) (ModelPool.Lease<?>) pool.acquire(f.key(), size, loader); }
+        try { return (ModelPool.Lease<M>) (ModelPool.Lease<?>) pool.acquire(f.key(), size, slots, loader); }
         catch (UncheckedIOException e) { throw ApiError.server(f.id() + ": " + e.getMessage()); }
     }
 
+    /** A language model's slots: {@link #parallel}, except for a vision model, whose images a model with slots can't take. */
+    int slots(Found f) {
+        return f.use() == Use.CHAT && !(f.set() != null && f.set().kind() == Kind.VISION) ? parallel : 1;
+    }
+
     private AutoCloseable load(Found f) {
+        int slots = slots(f);
+        if (slots > 1) return new LlamaModel(f.file("gguf").toString(), -1, contextSize, slots);
         return switch (f.use()) {
             case CHAT -> new LlamaModel(f.file("gguf").toString(),
                     f.set() != null && f.set().kind() == Kind.VISION ? f.file("mmproj").toString() : null, -1, contextSize);

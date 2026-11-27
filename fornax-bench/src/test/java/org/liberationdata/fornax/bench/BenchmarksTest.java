@@ -57,8 +57,68 @@ class BenchmarksTest {
     }
 
     @Test
+    void percentilesAreByNearestRank() {
+        assertEquals(2.0, Benchmarks.pct(List.of(3.0, 1.0, 2.0), 50));    // the median of three
+        assertEquals(3.0, Benchmarks.pct(List.of(3.0, 1.0, 2.0), 95));    // of three, the 95th is the largest
+        List<Double> twenty = new java.util.ArrayList<>();
+        for (int i = 20; i >= 1; i--) twenty.add((double) i);
+        assertEquals(10.0, Benchmarks.pct(twenty, 50));
+        assertEquals(19.0, Benchmarks.pct(twenty, 95));
+        assertEquals(7.0, Benchmarks.pct(List.of(7.0), 95));
+    }
+
+    /** A server answering every chat with {@code status} and these SSE lines; its base URL, until closed. */
+    static com.sun.net.httpserver.HttpServer sse(int status, String... lines) throws Exception {
+        var s = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), 0), 0);
+        s.createContext("/", ex -> {
+            byte[] b = String.join("\n\n", lines).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            ex.getRequestBody().readAllBytes();
+            ex.sendResponseHeaders(status, b.length == 0 ? -1 : b.length);
+            try (var o = ex.getResponseBody()) { o.write(b); }
+        });
+        s.start();
+        return s;
+    }
+
+    static String base(com.sun.net.httpserver.HttpServer s) { return "http://127.0.0.1:" + s.getAddress().getPort(); }
+
+    @Test
+    void aServingRequestTakesItsTokensFromTheUsageChunkAndFailsWithoutContentOrUsage() throws Exception {
+        var http = java.net.http.HttpClient.newHttpClient();
+        String role = "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\", \"content\": \"\"}}]}";
+        String content = "data: {\"choices\": [{\"delta\": {\"content\": \"Once\"}}]}";
+        String usage = "data: {\"choices\": [], \"usage\": {\"prompt_tokens\": 260, \"completion_tokens\": 7}}";
+        var ok = sse(200, role, content, usage, "data: [DONE]");
+        var noUsage = sse(200, role, content, "data: [DONE]");
+        var noContent = sse(200, role, usage, "data: [DONE]");   // an empty first delta is not the first token
+        var busy = sse(503);
+        try {
+            var t = Benchmarks.request(http, base(ok), 1);
+            assertEquals(7, t.tokens());
+            assertTrue(t.ttft() > 0 && t.ttft() <= t.latency(), t.toString());
+            for (var s : List.of(noUsage, noContent))
+                assertTrue(assertThrows(IllegalStateException.class, () -> Benchmarks.request(http, base(s), 2)).getMessage()
+                        .contains("streamed no content or no usage"));
+            assertTrue(assertThrows(IllegalStateException.class, () -> Benchmarks.request(http, base(busy), 3)).getMessage()
+                    .contains("answered 503"));
+        } finally { for (var s : List.of(ok, noUsage, noContent, busy)) s.stop(0); }
+    }
+
+    @Test
+    void waitingForLlamaServerFailsOnceItHasExitedAndReturnsWhenHealthy() throws Exception {
+        Process gone = new ProcessBuilder("true").start();
+        gone.waitFor();
+        var e = assertThrows(IllegalStateException.class, () -> Benchmarks.awaitHealthy("http://127.0.0.1:1", gone, dir.resolve("log")));
+        assertTrue(e.getMessage().contains("exited"), e.getMessage());
+        var healthy = sse(200, "ok");
+        Process alive = new ProcessBuilder("sleep", "30").start();
+        try { Benchmarks.awaitHealthy(base(healthy), alive, dir.resolve("log")); }
+        finally { healthy.stop(0); alive.destroy(); }
+    }
+
+    @Test
     void casesDefaultToAllAndAnUnknownOneFailsBeforeAnyRuns() {
-        assertEquals(List.of("chat", "image"), Benchmarks.cases(new String[]{"out"}));
+        assertEquals(List.of("chat", "image", "serving"), Benchmarks.cases(new String[]{"out"}));
         assertEquals(List.of("image"), Benchmarks.cases(new String[]{"out", "image"}));
         // A typo after "chat" fails now, not after the chat case has run and its results are lost.
         var e = assertThrows(IllegalArgumentException.class, () -> Benchmarks.cases(new String[]{"out", "chat", "imgae"}));
@@ -93,6 +153,9 @@ class BenchmarksTest {
         assertEquals(4, lines.size());
         assertEquals("| image | Fornax | DiffusionModel | coldSeconds 132.1, warmSeconds 130.5 | 12.7 GB |", lines.get(2));
         assertEquals("| image | sd-cli | sd.cpp | coldSeconds 1.0 | — |", lines.get(3));
+        String serving = Benchmarks.markdown(List.of(new Benchmarks.Row("serving", "Fornax", "fornax server", "qwen3-4b",
+                Map.of("clients", 4), Map.of("tokensPerSecond", 189.04), null, "z"))).lines().toList().get(2);
+        assertEquals("| serving | Fornax | fornax server | clients 4, tokensPerSecond 189.0 | — |", serving, "a serving row says its clients");
     }
 
     @Test

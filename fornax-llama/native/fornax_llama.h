@@ -133,6 +133,10 @@ void fornax_llama_batch_cancel(fornax_llama * h, int seq);
 // (the requests in that batch have each had on_done with the error).
 int fornax_llama_batch_step(fornax_llama * h, fornax_llama_piece_cb on_piece, fornax_llama_done_cb on_done, void * user);
 
+// An estimate of the KV cache n_ctx tokens of context take (F16 keys and values, every layer), from the GGUF's header
+// alone: no weights are loaded. -1 when the file can't be read.
+int64_t fornax_llama_kv_bytes(const char * model_path, int n_ctx);
+
 void fornax_llama_free(void * p);
 void fornax_llama_destroy(fornax_llama * h);
 

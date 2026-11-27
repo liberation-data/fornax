@@ -3,6 +3,7 @@ package org.liberationdata.fornax.server;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.liberationdata.fornax.Audio;
+import org.liberationdata.fornax.Isolation;
 import org.liberationdata.fornax.ModelPool;
 import org.liberationdata.fornax.hub.FornaxHub;
 import org.liberationdata.fornax.hub.PullListener;
@@ -138,7 +139,7 @@ public final class FornaxServer implements AutoCloseable {
             this.warm = () -> {};
         } else {
             var pooled = new PooledEngines(b.hub != null ? b.hub : FornaxHub.standard(), new ModelPool(b.budgetBytes, b.idleTimeout),
-                    b.models, b.contextSize, b.pulls, b.log, b.allowDownloads);
+                    b.models, b.contextSize, b.parallel, b.pulls, b.log, b.allowDownloads);
             this.engines = pooled;
             this.warm = pooled::warm;
         }
@@ -700,6 +701,7 @@ public final class FornaxServer implements AutoCloseable {
         private long budgetBytes = 24L << 30;
         private Duration idleTimeout = Duration.ofMinutes(15);
         private int contextSize = 8192;
+        private int parallel = 1;
         private FornaxHub hub;
         private PullListener pulls = PullListener.logging();
         private Consumer<String> log = logger();
@@ -757,6 +759,21 @@ public final class FornaxServer implements AutoCloseable {
             return this;
         }
 
+        /**
+         * How many chat requests each language model runs at once (default 1). More than 1 loads it with that many
+         * slots, which decode together in one batch (continuous batching), so concurrent clients share the GPU instead
+         * of queueing; each slot has {@link #contextSize} tokens of its own, so the context takes that many times the
+         * memory, and the pool's budget counts it (so {@code contextSize} must not be 0; {@link #build} refuses it).
+         * A streaming client that falls a whole buffer behind is stopped rather than waited for, which would stall
+         * every slot. Vision models, which a model with slots can't take images in yet, still run one request at a time.
+         * Not yet with {@code fornax.isolation=process}: {@link #build} refuses it.
+         */
+        public Builder parallel(int requests) {
+            if (requests < 1 || requests > 256) throw new IllegalArgumentException("parallel must be from 1 to 256, not " + requests);
+            this.parallel = requests;
+            return this;
+        }
+
         /** Where models are found and downloaded (default {@link FornaxHub#standard()}). */
         public Builder hub(FornaxHub hub) { this.hub = hub; return this; }
 
@@ -804,7 +821,15 @@ public final class FornaxServer implements AutoCloseable {
         Builder engines(Engines engines) { this.engines = engines; return this; }
 
         /** Binds the port (failing here if it is in use); {@link FornaxServer#start} downloads, loads and serves. */
-        public FornaxServer build() throws IOException { return new FornaxServer(this); }
+        public FornaxServer build() throws IOException {
+            // here, before the server makes its model pool, whose reaper thread a refused build would leave running
+            if (engines == null && parallel > 1 && contextSize == 0)
+                throw new IllegalArgumentException("parallel needs each slot's context size: set contextSize (not 0)");
+            // else every chat model's load would fail, on the first request for it
+            if (engines == null && parallel > 1 && Isolation.configured() == Isolation.PROCESS)
+                throw new IllegalArgumentException("parallel runs models in-process: fornax.isolation=process doesn't batch yet");
+            return new FornaxServer(this);
+        }
 
         private static Consumer<String> logger() {
             System.Logger l = System.getLogger("org.liberationdata.fornax.server");

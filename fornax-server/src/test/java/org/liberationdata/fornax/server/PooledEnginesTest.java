@@ -29,7 +29,7 @@ class PooledEnginesTest {
     }
 
     PooledEngines engines(boolean allowDownloads, String... models) {
-        return new PooledEngines(hub(), new ModelPool(1L << 30, null), List.of(models), 0, PullListener.NONE, s -> {}, allowDownloads);
+        return new PooledEngines(hub(), new ModelPool(1L << 30, null), List.of(models), 0, 1, PullListener.NONE, s -> {}, allowDownloads);
     }
 
     static ApiError notServed(org.junit.jupiter.api.function.Executable call) {
@@ -122,5 +122,37 @@ class PooledEnginesTest {
                     "listed by their ids");
         }
         assertEquals("/Models/My-Embed.gguf", PooledEngines.canonical("/Models/My-Embed.gguf", Use.EMBED));
+    }
+
+    @Test void withParallelAChatModelHasSlotsButAVisionModelAndEmbeddingsHaveOne() {
+        try (var e = new PooledEngines(hub(), new ModelPool(1L << 30, null), List.of("qwen3-4b", "qwen3-vl-4b", REF), 2048, 4,
+                PullListener.NONE, s -> {}, false)) {
+            assertEquals(4, e.slots(e.find("qwen3-4b", Use.CHAT, false)));
+            assertEquals(4, e.slots(e.find(REF, Use.CHAT, false)));
+            assertEquals(1, e.slots(e.find("qwen3-vl-4b", Use.CHAT, false)), "a model with slots takes no images");
+            assertEquals(1, e.slots(e.find(REF, Use.EMBED, false)));
+        }
+        assertThrows(IllegalArgumentException.class, () -> new PooledEngines(hub(), new ModelPool(1L << 30, null), List.of(), 0, 4,
+                PullListener.NONE, s -> {}, false), "slots need a context size each");
+        assertThrows(IllegalArgumentException.class, () -> FornaxServer.builder().parallel(0));
+        assertThrows(IllegalArgumentException.class, () -> FornaxServer.builder().parallel(257));
+    }
+
+    @Test void buildRefusesParallelWithoutAContextSizeBeforeStartingThePoolsReaper() {
+        // a refused build is not closed by anyone: a model pool made first would leave its reaper thread running
+        java.util.function.LongSupplier reapers = () -> Thread.getAllStackTraces().keySet().stream()
+                .filter(t -> t.getName().equals("fornax-model-pool-reaper")).count();
+        long before = reapers.getAsLong();
+        var e = assertThrows(IllegalArgumentException.class, () -> FornaxServer.builder().port(0).hub(hub()).log(s -> {})
+                .parallel(4).contextSize(0).build());
+        assertTrue(e.getMessage().contains("contextSize"), e.getMessage());
+        assertEquals(before, reapers.getAsLong(), "no model pool left behind");
+        System.setProperty("fornax.isolation", "process");   // a model with slots can't load isolated yet
+        try {
+            var iso = assertThrows(IllegalArgumentException.class, () -> FornaxServer.builder().port(0).hub(hub()).log(s -> {})
+                    .parallel(4).build());
+            assertTrue(iso.getMessage().contains("fornax.isolation=process"), iso.getMessage());
+            assertEquals(before, reapers.getAsLong(), "no model pool left behind");
+        } finally { System.clearProperty("fornax.isolation"); }
     }
 }

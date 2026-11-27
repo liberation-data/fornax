@@ -52,6 +52,11 @@ Closing the pool unloads everything.
   semaphore, which a virtual thread waits on without pinning its carrier). Different models can be used from different
   threads at once. From virtual threads, call the model's `...Async` methods and await them before closing the lease:
   see [Threading](/docs/guides/threading/#with-a-modelpool).
+- **Or several, for a model with slots.** `acquire(key, sizeBytes, concurrency, loader)` lets that many leases hold
+  the model at once: a [language model with slots](/docs/guides/language-models/#many-requests-at-once-slots), which
+  runs that many requests together. It loads once, for the first, and is unloaded (or evicted) only when no lease holds
+  it. A key keeps the concurrency it was first acquired with. Count its slots' context in `sizeBytes`
+  (`LlamaModel.kvCacheBytes(gguf, slots * contextSize)`).
 
 ## Sizes
 

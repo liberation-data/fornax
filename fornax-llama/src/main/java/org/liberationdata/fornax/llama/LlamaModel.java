@@ -44,6 +44,7 @@ import static java.lang.foreign.ValueLayout.ADDRESS;
 import static java.lang.foreign.ValueLayout.JAVA_BYTE;
 import static java.lang.foreign.ValueLayout.JAVA_FLOAT;
 import static java.lang.foreign.ValueLayout.JAVA_INT;
+import static java.lang.foreign.ValueLayout.JAVA_LONG;
 
 /**
  * A GGUF language model running in-process through llama.cpp (via libfornax_llama).
@@ -120,6 +121,7 @@ public final class LlamaModel implements AutoCloseable {
         static final MethodHandle BATCH_CANCEL = LIB.function("fornax_llama_batch_cancel", FunctionDescriptor.ofVoid(ADDRESS, JAVA_INT));
         static final MethodHandle BATCH_STEP = LIB.function("fornax_llama_batch_step", FunctionDescriptor.of(JAVA_INT,
                 ADDRESS, ADDRESS, ADDRESS, ADDRESS));
+        static final MethodHandle KV_BYTES = LIB.function("fornax_llama_kv_bytes", FunctionDescriptor.of(JAVA_LONG, ADDRESS, JAVA_INT));
         static final MethodHandle FREE = LIB.function("fornax_llama_free", FunctionDescriptor.ofVoid(ADDRESS));
         static final MethodHandle DESTROY = LIB.function("fornax_llama_destroy", FunctionDescriptor.ofVoid(ADDRESS));
     }
@@ -611,6 +613,20 @@ public final class LlamaModel implements AutoCloseable {
 
     /** What this model was loaded for. */
     public Mode mode() { return mode; }
+
+    /**
+     * About how much memory the KV cache of {@code contextTokens} tokens takes for this GGUF (F16 keys and values in
+     * every layer, as llama.cpp's default), read from its header without loading it: what a model with slots adds,
+     * {@code slots} times its context, besides its weights. Models with sliding-window or recurrent layers take less.
+     * @throws IllegalStateException if the file can't be read as a GGUF
+     */
+    public static long kvCacheBytes(String ggufPath, int contextTokens) {
+        try (Arena a = Arena.ofConfined()) {
+            long n = (long) N.KV_BYTES.invokeExact(a.allocateFrom(ggufPath), contextTokens);
+            if (n < 0) throw new IllegalStateException(error());
+            return n;
+        } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+    }
 
     /** How many requests run at once: more than 1 for a model loaded with slots, which batches them. */
     public int slots() { return slots; }

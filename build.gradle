@@ -330,6 +330,7 @@ project(':fornax-bench') {
         implementation project(':fornax-sd')
         implementation project(':fornax-yue2')
         implementation project(':fornax-llama')
+        implementation project(':fornax-server')
         implementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0'
     }
     // ./gradlew :fornax-bench:benchmarks --args='out/benchmarks chat image' -Pllama.bench=... -Psd.cli=...
@@ -345,7 +346,7 @@ project(':fornax-bench') {
         systemProperty 'fornax.backend', findProperty('fornax.backend')  // so results.json names the natives it ran
         workingDir = rootProject.projectDir
         def cli = gradle.startParameter.projectProperties
-        ['llama.bench', 'sd.cli'].each { p -> if (cli.containsKey(p)) systemProperty p, cli[p] }
+        ['llama.bench', 'sd.cli', 'llama.server'].each { p -> if (cli.containsKey(p)) systemProperty p, cli[p] }
     }
     // ./gradlew bench --args='out/bench acestep yue2 qwen-image'
     tasks.register('bench', JavaExec) {

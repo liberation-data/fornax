@@ -130,9 +130,23 @@ or a path to a GGUF, downloaded the first time it's asked for.
 An alias in any case (`QWEN3-4B`) is the same model as its catalogue id (`qwen3-4b`), loaded once; an
 `org/name:TAG` reference or a path is taken as given, as the Hub and the filesystem may care about its case.
 
-A model is loaded on first use and kept loaded in a [`ModelPool`](/docs/guides/model-pool/): within `--budget-gb` (models' file sizes), the least recently used are
+A model is loaded on first use and kept loaded in a [`ModelPool`](/docs/guides/model-pool/): within `--budget-gb` (models' file sizes, plus the KV cache of a model with slots), the least recently used are
 unloaded to make room, and a model unused for `--idle-minutes` is unloaded. A model answers one request at a time;
-others wait for it.
+others wait for it, unless it has slots (below).
+
+### Many clients at once: `--parallel`
+
+`--parallel N` (`.parallel(N)`) loads each language model with N
+[slots](/docs/guides/language-models/#many-requests-at-once-slots): it answers N chat requests at once, decoding them
+together in one batch (continuous batching, as llama-server's `-np` does), and more wait for a free slot. Each slot has
+its own `--ctx` tokens, so the context takes N times the memory, and `--budget-gb` counts it (the KV cache's size, from
+the model's header, besides its files). A client that hangs up, or whose deadline passes, stops only its own request.
+A streaming client that reads more slowly than the model generates is never waited for, which would hold up every
+slot: once it falls a whole buffer behind (1024 pieces), its request stops with an error event
+([overflow](/docs/guides/threading/#streaming)).
+Vision models still answer one request at a time, since a model with slots takes no images yet, and `--parallel`
+isn't taken with [`FORNAX_ISOLATION=process`](/docs/guides/isolation/) yet. The
+[benchmarks](/docs/benchmarks/) show what it buys: tokens a second across clients, and their wait for the first token.
 
 The `-m` models are downloaded first if need be (after the port is taken, so a port in use or a bad `--host` is said
 before any download) and loaded before the server starts answering. The first chat model
@@ -151,6 +165,8 @@ fornax server [-m MODEL]... [options]
   --budget-gb N        memory for loaded models, by their files' size (default 24)
   --idle-minutes N     unload a model unused this long (default 15; 0 = never)
   --ctx N              context size for language and embedding models (default 8192; 0 = the model's own)
+  --parallel N         chat requests each language model answers at once, decoded together in one batch
+                       (default 1); each gets its own --ctx, which --budget-gb counts. Vision models: 1
   --allow-downloads    let a request name any model, downloading it on first use (default: only the -m
                        models and catalogue models already downloaded)
 ```
