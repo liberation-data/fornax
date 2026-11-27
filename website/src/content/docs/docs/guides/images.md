@@ -223,8 +223,8 @@ applies a LoRA to the diffusion model, the text encoder or both, whichever it ha
 have a trigger word, like `PXART4` above, which goes in the prompt.
 
 By default the engine merges a LoRA into the weights before sampling when it can, and applies it at run time
-for quantized or fp8 weights. `.set("lora_apply_mode", "at_runtime")` (or `"immediately"`) on the `Config`
-chooses for you.
+for quantized weights and for fp8 weights the backend can't merge into (E5M2 everywhere, E4M3 on Vulkan and
+Metal). `.set("lora_apply_mode", "at_runtime")` (or `"immediately"`) on the `Config` chooses for you.
 
 ### Qwen-Image-Edit with the Lightning LoRA
 
