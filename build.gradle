@@ -338,6 +338,18 @@ project(':fornax-bench') {
     }
 }
 
+// The tests on a Mac over SSH, against Metal: scripts/test-on-mac.sh, with the host from -Pfornax.macHost (or
+// ~/.gradle/gradle.properties). A Linux machine can't run the Metal build, so this is how it gets tested.
+tasks.register('testOnMac', Exec) {
+    group = 'verification'
+    description = 'Runs the tests on a Mac over SSH against the Metal backend (-Pfornax.macHost=<host>)'
+    def host = providers.gradleProperty('fornax.macHost')
+    def args = providers.gradleProperty('fornax.macTestArgs')
+    doFirst { if (!host.present) throw new GradleException('Set the Mac to test on: -Pfornax.macHost=<host>') }
+    executable = file('scripts/test-on-mac.sh')
+    argumentProviders.add({ [host.getOrElse('')] + (args.present ? args.get().tokenize(' ') : []) } as CommandLineArgumentProvider)
+}
+
 project(':fornax-studio-server') {
     apply plugin: 'application'
     dependencies {

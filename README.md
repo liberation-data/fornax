@@ -178,7 +178,9 @@ the command behind every figure.
 
 The build script also knows the **ROCm (HIP)**, **CUDA** and **Metal** backends of the underlying engines. HIP has
 run LTX-2.5 video on the same machine (about 2.7× faster per step than Vulkan, and the way to render long clips; see
-[engine notes](docs/engine-notes.md)), and Fornax Studio's CI builds Metal for macOS. CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
+[engine notes](docs/engine-notes.md)), and Metal passes the test suite on an Apple M2 Max with 32 GB (macOS 27.2: chat, vision, embeddings and reranking, speech,
+transcription, stem separation, FLUX.2 [klein] images and upscaling, isolated workers and Dispatch; songs and video
+haven't been run on a Mac yet, nor has an Intel Mac). CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
 build the native libraries. Reports and fixes welcome.
 
 ## How it works
@@ -264,6 +266,13 @@ The Gradle build points the examples and tests at that folder; pick another back
 Without it, `./gradlew build` still compiles every module and runs the tests that need no engine library and no
 model (the rest skip themselves): what CI runs on every pull request (`.github/workflows/ci.yml`), along with a
 canary that publishes to a local repository and builds `samples/hello-fornax` against it.
+The integration tests skip any model that isn't downloaded; `scripts/test-models.sh` fetches the ones they use
+(about 20 GB, small enough for a 32 GB machine).
+
+From Linux, `./gradlew testOnMac -Pfornax.macHost=<host>` (or `scripts/test-on-mac.sh <host>`) runs the tests on a Mac
+over SSH against Metal: it copies the working tree there, builds the Metal libraries, runs `./gradlew test` and brings
+the reports back to `build/mac-test/` (Gradle arguments go after the host, or in
+`-Pfornax.macTestArgs='--tests *LlamaModelIT'`). The Mac needs Xcode's command-line tools, JDK 25, CMake and Ninja.
 
 To use your own build in an application, put the libraries on `-Dfornax.library.path=<dir>` (or `FORNAX_LIBRARY_PATH`,
 or the platform loader path) and run with `--enable-native-access=ALL-UNNAMED`; an explicit path wins over a
@@ -367,6 +376,8 @@ CC BY-NC 4.0, for example.
 
 ## The OpenAI-compatible server
 
+*On `main`, shipping in 0.3.0; not in 0.2.0.*
+
 `fornax server` (or `FornaxServer`, in the `fornax-server` module, JDK only) serves Fornax's models over an
 OpenAI-compatible HTTP API, so any OpenAI client, agent framework or tool can use them with no Java code:
 
@@ -439,7 +450,7 @@ error says what to install) unless `FORNAX_ALLOW_CPU=true` is set in the server'
 
 ## Roadmap
 
-- Test and document the HIP, CUDA and Metal builds; natives jars for HIP and CUDA.
+- Test and document the HIP and CUDA builds, and songs and video on Metal; natives jars for HIP and CUDA.
 - Video through stable-diffusion.cpp (`sd_generate_video`: Wan, LTX).
 - `fornax-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `fornax-llama`).
 - An MLX module for Apple silicon, through `mlx-c`.
