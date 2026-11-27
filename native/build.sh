@@ -86,7 +86,11 @@ THREADS=-lpthread; DL=-ldl
 [ "$OS" = windows ] && { THREADS="-Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"; DL=""; }
 
 ggml_archives() {  # every static ggml lib under a build dir, as one link group (they reference each other)
-    group $(find "$1" -name 'libggml*.a' | sort)
+    group $(find "$1" \( -name 'libggml*.a' -o -name 'ggml*.a' \) | sort)   # ggml names them without lib on Windows
+}
+
+archive() {  # archive <build dir> <name>: the static library libNAME.a, or NAME.a as some CMake builds name it on Windows
+    find "$1" \( -name "lib$2.a" -o -name "$2.a" \) | head -1
 }
 
 cmake_build() {  # cmake_build <src> <build> <targets> <args...>
@@ -103,8 +107,8 @@ build_llama() {  # text and vision: links libmtmd (images in, through an mmproj)
         -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_MTMD=ON
     $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_llama.$EXT" "$ROOT/fornax-llama/native/fornax_llama.cpp" \
         -I"$s/include" -I"$s/ggml/include" -I"$s/common" -I"$s/vendor" -I"$s/tools/mtmd" \
-        $(group "$(find "$b" -name libmtmd.a)" "$(find "$b" -name libllama-common.a)" "$(find "$b" -name libllama-common-base.a)" \
-                $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(find "$b" -name libllama.a)") $(ggml_archives "$b") \
+        $(group "$(archive "$b" mtmd)" "$(archive "$b" llama-common)" "$(archive "$b" llama-common-base)" \
+                $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(archive "$b" llama)") $(ggml_archives "$b") \
         $PRIVATE $OMP $LIBS $THREADS
 }
 
@@ -116,8 +120,8 @@ build_tts() {  # llama.cpp's text to speech (libmtmd's audio generation), in the
         -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_MTMD=ON
     $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_tts.$EXT" "$ROOT/fornax-tts/native/fornax_tts.cpp" \
         -I"$s/include" -I"$s/ggml/include" -I"$s/common" -I"$s/vendor" -I"$s/tools/mtmd" \
-        $(group "$(find "$b" -name libmtmd.a)" "$(find "$b" -name libllama-common.a)" "$(find "$b" -name libllama-common-base.a)" \
-                $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(find "$b" -name libllama.a)") $(ggml_archives "$b") \
+        $(group "$(archive "$b" mtmd)" "$(archive "$b" llama-common)" "$(archive "$b" llama-common-base)" \
+                $(find "$b/vendor" -name '*.a' 2>/dev/null) "$(archive "$b" llama)") $(ggml_archives "$b") \
         $PRIVATE $OMP $LIBS $THREADS
 }
 
@@ -127,7 +131,7 @@ build_sd() {
     mkdir -p "$b"
     # sd.cpp's own shared library already links ggml statically.
     cmake_build "$s" "$b" stable-diffusion $SD -DSD_BUILD_SHARED_LIBS=ON -DSD_BUILD_EXAMPLES=OFF ${SD_LINK:+"$SD_LINK"}
-    cp "$(find "$b" -name "libstable-diffusion.$EXT" | head -1)" "$OUT/${PRE}stable-diffusion.$EXT"  # MinGW names it libstable-diffusion.dll too
+    cp "$(find "$b" \( -name "libstable-diffusion.$EXT" -o -name "stable-diffusion.$EXT" \) | head -1)" "$OUT/${PRE}stable-diffusion.$EXT"
 }
 
 build_acestep() {
@@ -137,7 +141,7 @@ build_acestep() {
     cmake_build "$s" "$b" "acestep-core yyjson" $GGML
     $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_acestep.$EXT" "$ROOT/fornax-acestep/native/fornax_acestep.cpp" \
         -I"$s/src" -I"$s" -I"$s/ggml/include" -I"$s/vendor/yyjson" \
-        $(whole "$(find "$b" -name libacestep-core.a)") "$(find "$b" -name libyyjson.a)" $(ggml_archives "$b") \
+        $(whole "$(archive "$b" acestep-core)") "$(archive "$b" yyjson)" $(ggml_archives "$b") \
         $PRIVATE $OMP $LIBS $THREADS
 }
 
@@ -159,7 +163,7 @@ build_whisper() {
     cmake_build "$s" "$b" whisper $GGML -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=OFF -DWHISPER_BUILD_SERVER=OFF
     $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_whisper.$EXT" "$ROOT/fornax-whisper/native/fornax_whisper.cpp" \
         -I"$s/include" -I"$s/ggml/include" \
-        "$(find "$b" -name libwhisper.a)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS $THREADS
+        "$(archive "$b" whisper)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS $THREADS
 }
 
 build_demucs() {  # stems.cpp's HTDemucs, through its libstems C ABI (src/libstems.cpp), compiled into the shim
@@ -170,7 +174,7 @@ build_demucs() {  # stems.cpp's HTDemucs, through its libstems C ABI (src/libste
     $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_demucs.$EXT" "$ROOT/fornax-demucs/native/fornax_demucs.cpp" \
         "$s/src/libstems.cpp" -DSTEMS_VERSION_STRING="\"$(sed -n 's/^project(stems_cpp VERSION \([^ ]*\).*/\1/p' "$s/CMakeLists.txt")\"" \
         -I"$s/src" -I"$s/ggml/include" \
-        "$(find "$b" -name libstems_core.a)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS $DL $THREADS
+        "$(archive "$b" stems_core)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS $DL $THREADS
 }
 
 for e in $ENGINES; do
