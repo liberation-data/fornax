@@ -108,6 +108,8 @@ jobs:
         if: matrix.backend == 'cpu'
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true   # a failing gradlew or java fails the step
           ./gradlew --no-daemon :fornax-core:jar :fornax-core:test --tests '*NativeLibraryTunablesTest' :fornax-acestep:test :fornax-yue2:test --tests '*BindingsTest' "-Pfornax.backend=cpu"
           $core = (Get-ChildItem fornax-core/build/libs/fornax-core-*.jar | Where-Object { $_.Name -notmatch 'sources|javadoc' } | Select-Object -First 1).FullName
           java --enable-native-access=ALL-UNNAMED "-Dfornax.library.path=$PWD/build/native/windows-x86_64-cpu" -cp $core .github/scripts/LoadEveryEngine.java

@@ -112,6 +112,9 @@ public final class NativeLibrary {
             try (Arena arena = Arena.ofConfined()) {
                 int rc;
                 if (WINDOWS) {
+                    // _putenv_s always overwrites (setenv's 0 doesn't), and System.getenv is the JVM's start-up copy:
+                    // ask the runtime itself whether a value is already there.
+                    if (nativeEnv(name) != null) return;
                     MethodHandle putenv = LINKER.downcallHandle(crt().find("_putenv_s").orElseThrow(),
                             FunctionDescriptor.of(java.lang.foreign.ValueLayout.JAVA_INT, java.lang.foreign.ValueLayout.ADDRESS,
                                     java.lang.foreign.ValueLayout.ADDRESS));
