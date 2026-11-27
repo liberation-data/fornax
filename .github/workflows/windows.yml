@@ -90,7 +90,7 @@ jobs:
             if objdump -p "$dll" | grep -iE 'DLL Name: (libgcc|libstdc|libwinpthread|libgomp)'; then
               echo "::error::$(basename "$dll") needs a MinGW runtime DLL"; exit 1
             fi
-            if objdump -p "$dll" | sed -n '/\[Ordinal\/Name Pointer\] Table/,/^$/p' | grep -qE '\bggml_'; then
+            if objdump -p "$dll" | sed -n '/\[Ordinal\/Name Pointer\] Table/,/^$/p' | grep -E '\bggml_'; then   # not -q: an early exit would fail sed with SIGPIPE, and pipefail would read that as no match
               echo "::error::$(basename "$dll") exports ggml's symbols, which would clash with another engine's ggml"; exit 1
             fi
           done
@@ -102,12 +102,13 @@ jobs:
           distribution: temurin
           java-version: 25
 
-      # Loads every engine's DLL through NativeLibrary, as an app would, and runs the binding tests that need no model.
+      # Loads every engine's DLL through NativeLibrary, as an app would, and runs the binding tests that need no model, and
+      # NativeLibraryTunablesTest (Windows sets the engines' variables with ucrtbase's _putenv_s, not setenv).
       - name: Load the DLLs from Java
         if: matrix.backend == 'cpu'
         shell: pwsh
         run: |
-          ./gradlew --no-daemon :fornax-core:jar :fornax-acestep:test :fornax-yue2:test --tests '*BindingsTest' "-Pfornax.backend=cpu"
+          ./gradlew --no-daemon :fornax-core:jar :fornax-core:test --tests '*NativeLibraryTunablesTest' :fornax-acestep:test :fornax-yue2:test --tests '*BindingsTest' "-Pfornax.backend=cpu"
           $core = (Get-ChildItem fornax-core/build/libs/fornax-core-*.jar | Where-Object { $_.Name -notmatch 'sources|javadoc' } | Select-Object -First 1).FullName
           java --enable-native-access=ALL-UNNAMED "-Dfornax.library.path=$PWD/build/native/windows-x86_64-cpu" -cp $core .github/scripts/LoadEveryEngine.java
 

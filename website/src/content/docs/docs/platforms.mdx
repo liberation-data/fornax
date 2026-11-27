@@ -14,7 +14,7 @@ and you're done. ROCm and CUDA mean building the engines once for your GPU.
 | [Linux, ROCm](#linux-amd-with-rocm) | AMD | build them yourself | tested nightly |
 | [macOS, Metal](#macos-with-metal) | Apple silicon, Intel Macs | published | tested on Apple silicon |
 | [NVIDIA, CUDA](#nvidia-with-cuda) | NVIDIA | build them yourself | not tested yet |
-| [Windows](#windows) | | | planned |
+| [Windows](#windows) | | build them yourself (experimental) | not tested on a GPU yet |
 
 Just want to try the models, with no code? [Fornax Studio](/docs/getting-started/#fornax-studio) installs on Linux
 and macOS.
@@ -144,5 +144,7 @@ A CUDA build is possible but hasn't been tested yet; reports are welcome.
 
 ## Windows
 
-Fornax doesn't run on Windows yet. The Java side is ready; the native build and a Windows natives jar are planned in
-[#83](https://github.com/liberation-data/fornax/issues/83), starting with Vulkan.
+There's no Windows natives jar yet, but `native/build.sh` builds the engines as DLLs in [MSYS2](https://www.msys2.org/)'s
+UCRT64 shell (experimental: CI builds the CPU and Vulkan backends, and loads the CPU build from Java). Load them with
+`-Dfornax.library.path=build/native/windows-x86_64-<backend>`. Published natives follow in
+[#83](https://github.com/liberation-data/fornax/issues/83).

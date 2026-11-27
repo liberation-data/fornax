@@ -87,6 +87,9 @@ The natives jars:
 | `fornax-natives-macos-aarch64-metal` | macOS 13.3+ on Apple silicon | Metal |
 | `fornax-natives-macos-x86_64-metal` | macOS 13.3+ on Intel | Metal |
 
+No Windows natives jar yet: `native/build.sh` builds the engines in MSYS2's UCRT64 shell, experimentally
+([#83](https://github.com/liberation-data/fornax/issues/83)).
+
 On Linux, the GPU's Vulkan driver must be installed (it usually is; if not, see
 [Installing GPU drivers](https://fornax4j.org/docs/gpu-drivers/)). With no GPU, Fornax stops rather than run on the CPU,
 unless `-Dfornax.allowCpu=true` (or `FORNAX_ALLOW_CPU=true`).

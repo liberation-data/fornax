@@ -6,6 +6,7 @@
 #   native/build.sh [vulkan|hip|cuda|metal|cpu] [engine...]
 #
 # Engines: llama tts sd acestep yue2 whisper demucs (default: all). Output: build/native/<os>-<arch>-<backend>/.
+# Runs on Linux, macOS, and (experimental) Windows in MSYS2's MinGW-w64 UCRT64 shell, where each engine is NAME.dll.
 # Env: JOBS, HIP_ARCH (default gfx1151), CMAKE_EXTRA (extra cmake args for every engine).
 set -euo pipefail
 
@@ -58,10 +59,10 @@ case $BACKEND in
     *) echo "unknown backend: $BACKEND" >&2; exit 1 ;;
 esac
 
-COMMON="-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF ${COMMON_OS:-} ${CMAKE_EXTRA:-}"
 CXX=${CXX:-c++}
 
 PRE=lib   # Java's System.mapLibraryName: libNAME.so and libNAME.dylib, but NAME.dll
+COMMON_OS=""; DEFS=""; SD_LINK=""   # set on Windows only
 if [ "$OS" = windows ]; then
     # A DLL exports nothing from a static archive (--exclude-libs), so each engine's ggml stays its own, as on Linux;
     # the GCC runtime is linked in, so a DLL needs nothing from MinGW beside it. No OpenMP: ggml's own thread pool.
@@ -69,8 +70,8 @@ if [ "$OS" = windows ]; then
     # --export-all-symbols: a source that marks its own API dllexport (stems.cpp) would otherwise turn off MinGW's
     # export of everything else, Fornax's fornax_* functions included. The archives stay out (--exclude-libs).
     PRIVATE="-Wl,--export-all-symbols -Wl,--exclude-libs,ALL -Wl,--no-undefined -static-libgcc -static-libstdc++"
-    COMMON_OS="-DGGML_OPENMP=OFF -DCMAKE_CXX_FLAGS=-D_USE_MATH_DEFINES"   # M_PI and friends (stems.cpp)
-    DEFS="-D_USE_MATH_DEFINES"
+    COMMON_OS="-DGGML_OPENMP=OFF"
+    DEFS="-D_USE_MATH_DEFINES"   # M_PI and friends (libstems.cpp); stems.cpp's own CMake build needs none
     SD_LINK="-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++ -static"  # sd.cpp links its own DLL
     whole() { printf -- '-Wl,--whole-archive %s -Wl,--no-whole-archive ' "$*"; }
     group() { printf -- '-Wl,--start-group %s -Wl,--end-group ' "$*"; }
@@ -83,6 +84,8 @@ else
     whole() { printf -- '-Wl,--whole-archive %s -Wl,--no-whole-archive ' "$*"; }
     group() { printf -- '-Wl,--start-group %s -Wl,--end-group ' "$*"; }
 fi
+
+COMMON="-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF $COMMON_OS ${CMAKE_EXTRA:-}"
 
 # winpthread linked in on Windows, like the GCC runtime; dlopen is POSIX only.
 THREADS=-lpthread; DL=-ldl
@@ -175,7 +178,7 @@ build_demucs() {  # stems.cpp's HTDemucs, through its libstems C ABI (src/libste
     mkdir -p "$b"
     cmake_build "$s" "$b" stems $GGML -DSTEMS_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF
     $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_demucs.$EXT" "$ROOT/fornax-demucs/native/fornax_demucs.cpp" \
-        "$s/src/libstems.cpp" ${DEFS:-} -DSTEMS_VERSION_STRING="\"$(sed -n 's/^project(stems_cpp VERSION \([^ ]*\).*/\1/p' "$s/CMakeLists.txt")\"" \
+        "$s/src/libstems.cpp" $DEFS -DSTEMS_VERSION_STRING="\"$(sed -n 's/^project(stems_cpp VERSION \([^ ]*\).*/\1/p' "$s/CMakeLists.txt")\"" \
         -I"$s/src" -I"$s/ggml/include" \
         "$(archive "$b" stems_core)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS $DL $THREADS
 }
