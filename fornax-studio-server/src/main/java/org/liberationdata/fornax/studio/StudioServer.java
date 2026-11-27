@@ -643,9 +643,9 @@ public final class StudioServer {
 
     private void output(HttpExchange ex) throws IOException {
         String name = ex.getRequestURI().getPath().substring("/api/outputs/".length());
-        if (!OUTPUT_NAME.matcher(name).matches()) { json(ex, 404, Json.obj("error", "not found")); return; }
+        if (!OUTPUT_NAME.matcher(name).matches()) { error(ex, 404, Json.obj("error", "not found")); return; }
         Path file = studio.outputs().resolve(name);
-        if (!Files.isRegularFile(file)) { json(ex, 404, Json.obj("error", "not found")); return; }
+        if (!Files.isRegularFile(file)) { error(ex, 404, Json.obj("error", "not found")); return; }
         String type = name.endsWith(".png") ? "image/png" : name.endsWith(".wav") ? "audio/wav"
                 : name.endsWith(".mp4") ? "video/mp4" : "application/json";
         long size = Files.size(file);
@@ -750,7 +750,7 @@ public final class StudioServer {
     private void route(String path, String method, Handler h) {
         // createContext matches by prefix; a route is its path alone.
         http.createContext(path, ex -> {
-            if (!ex.getRequestURI().getPath().equals(path)) { json(ex, 404, Json.obj("error", "not found")); return; }
+            if (!ex.getRequestURI().getPath().equals(path)) { error(ex, 404, Json.obj("error", "not found")); return; }
             handle(ex, method, h);
         });
     }
@@ -807,8 +807,8 @@ public final class StudioServer {
     /**
      * Sends an error reply once the request's unread body has been read, up to {@link #DRAIN_BYTES}: a reply sent over
      * unread bytes can be lost to the reset the connection's close then sends, so the caller would see a reset instead
-     * of the 403. Past that, the connection closes after the reply ({@code Connection: close}), and a caller still
-     * sending may see the reset. (FornaxServer does the same.)
+     * of the 403 (or 404, 405, 400, 500). Past that, the connection closes after the reply ({@code Connection: close}),
+     * and a caller still sending may see the reset. (FornaxServer does the same.)
      */
     private static void error(HttpExchange ex, int status, Object body) throws IOException {
         if (!drained(ex)) ex.getResponseHeaders().set("Connection", "close");

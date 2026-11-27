@@ -199,7 +199,7 @@ class CallerTest {
         return reply.substring(0, reply.indexOf("\r\n\r\n")).toLowerCase(java.util.Locale.ROOT).contains("\r\nconnection: close");
     }
 
-    /** A refused request's body is read before the 403 (or 405), so the reply arrives rather than a reset; every time. */
+    /** A refused request's body is read before the 403 (or 405, or 404), so the reply arrives rather than a reset; every time. */
     @Test void aRefusedRequestGetsItsReplyNotAReset() throws Exception {
         start(SECRET);
         int body = StudioServer.DRAIN_BYTES - 100;
@@ -211,11 +211,14 @@ class CallerTest {
             assertTrue(raw("POST", "/api/models/pull", body, host(), "Origin: https://evil.example").startsWith("HTTP/1.1 403"));
             assertTrue(raw("POST", "/api/models/pull", body, host()).startsWith("HTTP/1.1 403"), "no secret");
             assertTrue(raw("PUT", "/api/catalogue", body, host(), "X-Fornax-Studio-Secret: " + SECRET).startsWith("HTTP/1.1 405"));
+            // and the 404s: a path no route has, and an output that isn't there
+            assertTrue(raw("POST", "/api/models/pull/x", body, host(), "X-Fornax-Studio-Secret: " + SECRET).startsWith("HTTP/1.1 404"));
+            assertTrue(raw("GET", "/api/outputs/none.png", body, host(), "X-Fornax-Studio-Secret: " + SECRET).startsWith("HTTP/1.1 404"));
         }
         assertEquals(0, hubs.get());
     }
 
-    /** Past the drain, the 403 says the connection closes; a caller still sending may then see a reset instead. */
+    /** Past the drain, the 403 (or 404) says the connection closes; a caller still sending may then see a reset instead. */
     @Test void aRefusedBodyPastTheDrainClosesTheConnection() throws Exception {
         start(null);
         int replies = 0;
@@ -224,6 +227,8 @@ class CallerTest {
                 String reply = raw("POST", "/api/models/pull", StudioServer.DRAIN_BYTES * 2, "Host: attacker.example:" + server.port());
                 assertTrue(reply.startsWith("HTTP/1.1 403"), reply);
                 assertTrue(closes(reply), reply);
+                reply = raw("POST", "/api/models/pull/x", StudioServer.DRAIN_BYTES * 2, host());
+                assertTrue(reply.startsWith("HTTP/1.1 404") && closes(reply), reply);
                 replies++;
             } catch (java.net.SocketException reset) { /* accepted past the drain */ }
         }
