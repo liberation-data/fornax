@@ -43,7 +43,12 @@ jobs:
           java-version: |
             22
             25
-          cache: gradle
+
+      # Gradle's plugins and dependencies from earlier runs. Unlike setup-java's cache, which restores only on an exact
+      # match of the build files' hash, this restores the nearest earlier one, so a PR that changes a build file doesn't
+      # fetch everything again: cold fetches are what the Plugin Portal and Maven Central refuse runners (a plugin
+      # "not found", HTTP 429).
+      - uses: gradle/actions/setup-gradle@v6
 
       # Compiles every module, builds the jars, javadoc and the CLI's distributions, and runs the tests that need no
       # engine library and no model.
@@ -52,6 +57,15 @@ jobs:
 
       - name: Test on Java 22
         run: ./gradlew --no-daemon test -Pfornax.testJdk=22 -Porg.gradle.java.installations.fromEnv=JAVA_HOME_22_X64
+
+      # The throwaway repository below starts with the Maven plugins and third-party jars of earlier runs, so the sample's
+      # Maven build doesn't fetch them all from Central each time. Fornax's own artifacts are deleted before it's saved
+      # (last step), so the checks only ever see what this run published.
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/m2
+          key: m2-${{ hashFiles('samples/hello-fornax/pom.xml') }}
+          restore-keys: m2-
 
       # What release.yml signs and uploads, into a local repository: every module's pom, jar, sources and javadoc, and
       # a natives jar (empty here: settings.gradle includes a platform once its build/native directory exists).
@@ -94,3 +108,8 @@ jobs:
           # fornax-natives' OS profiles, not the sample's POM, bring in this machine's natives jar
           grep -q 'org.fornax4j:fornax-natives-linux-x86_64-vulkan:jar' "$RUNNER_TEMP/maven-deps.txt" \
             || { echo "::error::Maven took no natives jar from fornax-natives"; cat "$RUNNER_TEMP/maven-deps.txt"; exit 1; }
+
+      # Before the cache above is saved (after this job): only third-party files stay in it, never this run's Fornax.
+      - name: Keep Fornax out of the cached repository
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/m2/org/fornax4j"
