@@ -239,6 +239,7 @@ public final class FornaxServer implements AutoCloseable {
         } finally { generating.remove(stopper); }
         Map<String, Object> r = Json.map(org.liberationdata.fornax.Json.parse(res));
         Map<String, Object> message = Json.map(r.get("message"));
+        uniqueToolCallIds(message);
         Object finish = r.get("finish_reason");
         if (stops.stopped()) {
             message.put("content", stops.text());
@@ -270,6 +271,7 @@ public final class FornaxServer implements AutoCloseable {
             if (stopper.requested() && !stops.stopped()) throw new CancellationException("the client has gone");
             Map<String, Object> r = Json.map(org.liberationdata.fornax.Json.parse(res));
             Map<String, Object> message = Json.map(r.get("message"));
+            uniqueToolCallIds(message);
             if (message.get("reasoning_content") instanceof String s && !s.isEmpty()) delta.accept(Json.obj("reasoning_content", s));
             List<Object> calls = Json.list(message.get("tool_calls"));
             if (calls != null && !calls.isEmpty()) {
@@ -307,6 +309,23 @@ public final class FornaxServer implements AutoCloseable {
         try { sse.data(a.body()); } catch (CancellationException gone) { /* nobody to tell */ }
         log.accept("error mid-stream: " + e);
     }
+
+    /**
+     * The engine numbers the tool calls a template gives no id ({@code call_0}, {@code call_1}), the same in every reply,
+     * so a conversation's second round of calls would repeat its first's ids, which clients that key tool results by id
+     * across a conversation mix up. Such calls get a random id, as OpenAI's and llama-server's do.
+     */
+    static void uniqueToolCallIds(Map<String, Object> message) {
+        List<Object> calls = message == null ? null : Json.list(message.get("tool_calls"));
+        if (calls == null) return;
+        for (Object c : calls) {
+            Map<String, Object> call = Json.map(c);
+            if (call != null && !(call.get("id") instanceof String id && !id.isEmpty() && !ENGINE_CALL_ID.matcher(id).matches()))
+                call.put("id", "call_" + HexFormat.of().formatHex(randomBytes(12)));
+        }
+    }
+
+    private static final java.util.regex.Pattern ENGINE_CALL_ID = java.util.regex.Pattern.compile("call_\\d+");
 
     private static Map<String, Object> chunk(String id, long created, String model, Map<String, Object> delta, Object finish) {
         return Json.obj("id", id, "object", "chat.completion.chunk", "created", created, "model", model,

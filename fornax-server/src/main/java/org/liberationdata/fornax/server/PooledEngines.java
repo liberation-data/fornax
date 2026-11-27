@@ -126,12 +126,16 @@ final class PooledEngines implements Engines {
         }
     }
 
-    /** A failure the request caused (rc 2: the prompt is longer than the context; 6: a bad schema; 7: bad input) as a 400. */
-    private static RuntimeException engineError(IllegalStateException e) {
+    /**
+     * A failure the request caused (rc 2: the prompt is longer than the context; 6: a bad schema; 7: bad input) as a
+     * 400; a prompt too long has OpenAI's {@code context_length_exceeded} code, which clients check to trim a conversation.
+     */
+    static RuntimeException engineError(IllegalStateException e) {
         Matcher m = RC.matcher(String.valueOf(e.getMessage()));
         if (m.find() && Set.of("2", "6", "7").contains(m.group(1))) {
             String msg = e.getMessage().substring(e.getMessage().indexOf("): ") + 3);
-            return ApiError.badRequest(msg, null);
+            return m.group(1).equals("2") ? new ApiError(400, "invalid_request_error", msg, "messages", "context_length_exceeded")
+                    : ApiError.badRequest(msg, null);
         }
         return e;
     }

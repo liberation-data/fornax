@@ -152,6 +152,8 @@ project(':fornax-examples') {
     sourceSets { test { java { srcDir rootProject.file('scripts') } } }
     // the language-models guide's JSON examples use Jackson, as an app would
     dependencies { snippetsImplementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0' }
+    // the OpenAI-server guide starts a FornaxServer
+    dependencies { snippetsImplementation project(':fornax-server') }
     def snippetJava = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
     def docs = rootProject.fileTree(rootProject.projectDir) { include 'README.md', 'website/src/content/docs/**/*.md', 'website/src/content/docs/**/*.mdx' }
     def checkSnippets = tasks.register('checkSnippets', Exec) {

@@ -105,6 +105,12 @@ class FornaxServerTest {
         assertEquals("tool_calls", get(j, "choices", 0, "finish_reason"));
         assertEquals("weather", get(j, "choices", 0, "message", "tool_calls", 0, "function", "name"));
         assertEquals("{\"city\":\"Nashville\"}", get(j, "choices", 0, "message", "tool_calls", 0, "function", "arguments"));
+        // the engine's call_0 becomes an id of its own, so the next round of calls doesn't repeat it
+        String id = (String) get(j, "choices", 0, "message", "tool_calls", 0, "id");
+        assertTrue(id.matches("call_[0-9a-f]{24}"), id);
+        String again = (String) get(json(post("/v1/chat/completions", "{\"messages\": [{\"role\": \"user\", \"content\": \"Weather?\"}], \"tools\": " + tools + "}")),
+                "choices", 0, "message", "tool_calls", 0, "id");
+        assertNotEquals(id, again);
         assertEquals("weather", get(org.liberationdata.fornax.Json.parse(engines.requests.get(0)), "tools", 0, "function", "name"));
 
         // streamed: the calls come in one delta, indexed, before the finish
@@ -112,7 +118,8 @@ class FornaxServerTest {
         List<Object> ev = events(s.body());
         Object calls = ev.stream().filter(e -> get(e, "choices", 0, "delta", "tool_calls") != null).findFirst().orElseThrow();
         assertEquals(0L, get(calls, "choices", 0, "delta", "tool_calls", 0, "index"));
-        assertEquals("call_0", get(calls, "choices", 0, "delta", "tool_calls", 0, "id"));
+        assertTrue(((String) get(calls, "choices", 0, "delta", "tool_calls", 0, "id")).matches("call_[0-9a-f]{24}"));
+        assertEquals("function", get(calls, "choices", 0, "delta", "tool_calls", 0, "type"));
         assertEquals("weather", get(calls, "choices", 0, "delta", "tool_calls", 0, "function", "name"));
         assertEquals("tool_calls", get(ev.get(ev.size() - 1), "choices", 0, "finish_reason"));
     }
@@ -350,6 +357,74 @@ class FornaxServerTest {
         server.close();
         assertTrue(engines.stopped.await(3, TimeUnit.SECONDS), "closing stopped it, so unloading needn't wait for its end");
         reply.handle((r, e) -> null).get(5, TimeUnit.SECONDS);
+    }
+
+    /** Reads one HTTP/1.1 response (Content-Length or chunked) off a kept-alive connection: its status line and body. */
+    static String[] response(java.io.BufferedInputStream in) throws Exception {
+        String status = line(in), h;
+        int length = -1;
+        boolean chunked = false;
+        while (!(h = line(in)).isEmpty()) {
+            String lower = h.toLowerCase(java.util.Locale.ROOT);
+            if (lower.startsWith("content-length:")) length = Integer.parseInt(h.substring(15).strip());
+            if (lower.startsWith("transfer-encoding:") && lower.contains("chunked")) chunked = true;
+        }
+        var body = new java.io.ByteArrayOutputStream();
+        if (chunked) {
+            for (int n; (n = Integer.parseInt(line(in).strip(), 16)) > 0; line(in)) body.write(in.readNBytes(n));
+            line(in);
+        } else if (length > 0) body.write(in.readNBytes(length));
+        return new String[]{status, body.toString(StandardCharsets.UTF_8)};
+    }
+
+    private static String line(InputStream in) throws Exception {
+        var b = new StringBuilder();
+        for (int c; (c = in.read()) != '\n'; ) { if (c < 0) throw new java.io.EOFException(b.toString()); if (c != '\r') b.append((char) c); }
+        return b.toString();
+    }
+
+    @Test void aChunkedBodyAndRequestsOnOneKeptAliveConnection() throws Exception {
+        try (Socket s = new Socket(InetAddress.getLoopbackAddress(), server.port())) {
+            s.setSoTimeout(5000);
+            OutputStream out = s.getOutputStream();
+            var in = new java.io.BufferedInputStream(s.getInputStream());
+            String host = "Host: 127.0.0.1:" + server.port() + "\r\n";
+            // a body sent chunked, with no Content-Length, as a streaming client sends one
+            String json = "{\"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}";
+            String a = json.substring(0, 10), b = json.substring(10);
+            out.write(("POST /v1/chat/completions HTTP/1.1\r\n" + host + "Transfer-Encoding: chunked\r\n\r\n"
+                    + Integer.toHexString(a.length()) + "\r\n" + a + "\r\n" + Integer.toHexString(b.length()) + "\r\n" + b + "\r\n0\r\n\r\n")
+                    .getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            String[] r = response(in);
+            assertTrue(r[0].contains(" 200 "), r[0] + r[1]);
+            assertEquals("Hello!", get(org.liberationdata.fornax.Json.parse(r[1]), "choices", 0, "message", "content"));
+            // the same connection: an error whose body the server never reads, then a stream, then a plain request
+            String unread = "{\"x\": 1}";
+            out.write(("POST /v1/completions HTTP/1.1\r\n" + host + "Content-Length: " + unread.length() + "\r\n\r\n" + unread).getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            assertTrue(response(in)[0].contains(" 404 "));
+            String stream = "{\"stream\": true, \"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}";
+            out.write(("POST /v1/chat/completions HTTP/1.1\r\n" + host + "Content-Length: " + stream.length() + "\r\n\r\n" + stream).getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            String[] st = response(in);
+            assertTrue(st[0].contains(" 200 "), st[0]);
+            assertEquals(5, events(st[1]).size(), st[1]);
+            out.write(("GET /v1/models HTTP/1.1\r\n" + host + "\r\n").getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            String[] m = response(in);
+            assertTrue(m[0].contains(" 200 "), m[0]);
+            assertEquals("list", get(org.liberationdata.fornax.Json.parse(m[1]), "object"));
+        }
+    }
+
+    @Test void aModelsOwnToolCallIdIsKept() {
+        Map<String, Object> message = org.liberationdata.fornax.server.Json.map(org.liberationdata.fornax.Json.parse(
+                "{\"tool_calls\": [{\"id\": \"Ab3dE6gH9\"}, {\"id\": \"\"}, {\"id\": \"call_12\"}]}"));
+        FornaxServer.uniqueToolCallIds(message);
+        assertEquals("Ab3dE6gH9", get(message, "tool_calls", 0, "id"));
+        assertTrue(((String) get(message, "tool_calls", 1, "id")).matches("call_[0-9a-f]{24}"));
+        assertTrue(((String) get(message, "tool_calls", 2, "id")).matches("call_[0-9a-f]{24}"));
     }
 
     @Test void closingUnloadsTheModels() {

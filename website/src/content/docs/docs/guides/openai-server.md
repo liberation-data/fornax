@@ -23,6 +23,7 @@ print(reply.choices[0].message.content)
 It is the module `fornax-server`, JDK only (`com.sun.net.httpserver`, no framework), which an app can also start
 itself:
 
+<!-- snippet: OpenAiServer#start -->
 ```java
 import org.liberationdata.fornax.server.FornaxServer;
 
@@ -45,7 +46,8 @@ try (var server = FornaxServer.builder().port(54154).model("qwen3-4b").build().s
 
 `GET /health` answers `{"status": "ok"}`. Errors are OpenAI's: the HTTP status and
 `{"error": {"message": ..., "type": ..., "param": ..., "code": ...}}`, so a client's own exceptions work
-(`openai.NotFoundError` for a model that isn't there, for one).
+(`openai.NotFoundError` for a model that isn't there, for one). A prompt longer than the context (`--ctx`) is a 400
+with OpenAI's code, `context_length_exceeded`.
 
 ### Chat completions
 
@@ -65,7 +67,8 @@ tool-call format, with llama-server's templates and parsers. A request takes:
 - `chat_template_kwargs: {"enable_thinking": false}` turns a reasoning model's thinking off
 
 A reasoning model's thinking comes back in `reasoning_content`, apart from `content`. When streaming, the content
-arrives as it is generated; the tool calls and the thinking come in a chunk at the end, before the finish reason.
+arrives as it is generated; the thinking and the tool calls (each call with its `index`) come at the end, before the finish reason. A tool
+call's `id` is unique to it, for the `tool` message that answers it.
 `n` must be 1, and there are no logprobs.
 
 When a client disconnects mid-stream, the generation stops, so the model is free for the next request. A

@@ -372,6 +372,7 @@ fornax server -m qwen3-4b
 curl -s localhost:54154/v1/chat/completions -d '{"messages":[{"role":"user","content":"Hi"}]}'
 ```
 
+<!-- snippet: OpenAiServer#readme -->
 ```java
 try (var server = FornaxServer.builder().model("qwen3-4b").build().start()) {
     server.await();   // OpenAI base URL: server.url(), http://127.0.0.1:54154/v1

@@ -96,4 +96,17 @@ class PooledEnginesTest {
         assertTrue(e.getMessage().contains("HF_HUB_OFFLINE"), e.getMessage());
         FornaxServer.builder().port(port).hub(hub()).log(s -> {}).build().close();   // the port is free again
     }
+
+    @Test void aPromptLongerThanTheContextIsOpenAIsContextLengthError() {
+        var e = (ApiError) PooledEngines.engineError(new IllegalStateException("llama chat failed (rc=2): prompt (9000 tokens) exceeds context 8192"));
+        assertEquals(400, e.status);
+        assertEquals("context_length_exceeded", e.code);
+        assertEquals("messages", e.param);
+        assertEquals("prompt (9000 tokens) exceeds context 8192", e.getMessage());
+        var schema = (ApiError) PooledEngines.engineError(new IllegalStateException("llama chat failed (rc=6): bad schema"));
+        assertEquals(400, schema.status);
+        assertNull(schema.code);
+        var other = new IllegalStateException("llama chat failed (rc=3): llama_process failed: 1");
+        assertSame(other, PooledEngines.engineError(other));
+    }
 }
