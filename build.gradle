@@ -67,7 +67,8 @@ ext.published = [
     'fornax-yue2'   : 'Fornax YuE2: YuE2 songs through yue2.cpp, in-process via Java FFM',
     'fornax-whisper': 'Fornax Whisper: speech to text with word timings through whisper.cpp, in-process via Java FFM',
     'fornax-demucs' : 'Fornax Demucs: stem separation (vocals, drums, bass, ...) with HTDemucs through stems.cpp, in-process via Java FFM',
-    'fornax-cli'    : 'Fornax CLI: the fornax command (chat, image, song, speak, transcribe, see, pull), runnable with JBang: jbang fornax@fornax4j',
+    'fornax-server' : 'Fornax server: an OpenAI-compatible HTTP API (chat, embeddings, images, speech, transcription) over the Fornax engines, JDK only',
+    'fornax-cli'    : 'Fornax CLI: the fornax command (chat, image, song, speak, transcribe, see, pull, server), runnable with JBang: jbang fornax@fornax4j',
 ]
 configure(subprojects.findAll { published.containsKey(it.name) || it.name.startsWith('fornax-natives') || it.name == 'fornax-bom' }) { p ->
     if (p.name in pomOnly) apply plugin: 'java-platform'  // before the publishing plugin's configure below
@@ -153,6 +154,8 @@ project(':fornax-examples') {
     sourceSets { test { java { srcDir rootProject.file('scripts') } } }
     // the language-models guide's JSON examples use Jackson, as an app would
     dependencies { snippetsImplementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0' }
+    // the OpenAI-server guide starts a FornaxServer
+    dependencies { snippetsImplementation project(':fornax-server') }
     def snippetJava = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
     def docs = rootProject.fileTree(rootProject.projectDir) { include 'README.md', 'website/src/content/docs/**/*.md', 'website/src/content/docs/**/*.mdx' }
     def checkSnippets = tasks.register('checkSnippets', Exec) {
@@ -242,6 +245,15 @@ project(':fornax-demucs') {
     }
 }
 
+project(':fornax-server') {
+    dependencies {
+        api project(':fornax-llama')
+        implementation project(':fornax-sd')
+        implementation project(':fornax-tts')
+        implementation project(':fornax-whisper')
+    }
+}
+
 project(':fornax-cli') {
     apply plugin: 'application'
     // The natives, as the samples take them: a fornax-natives jar, here every one this build has (settings.gradle
@@ -258,6 +270,7 @@ project(':fornax-cli') {
         implementation project(':fornax-yue2')
         implementation project(':fornax-tts')
         implementation project(':fornax-whisper')
+        implementation project(':fornax-server')
         // 0.1.0's natives jar says Java 25 in its metadata (it holds no classes), so ask for it as 25
         natives.each { n -> runtimeOnly(n) { attributes { attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25) } } }
     }
@@ -316,7 +329,23 @@ project(':fornax-bench') {
         implementation project(':fornax-acestep')
         implementation project(':fornax-sd')
         implementation project(':fornax-yue2')
+        implementation project(':fornax-llama')
         implementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0'
+    }
+    // ./gradlew :fornax-bench:benchmarks --args='out/benchmarks chat image' -Pllama.bench=... -Psd.cli=...
+    // Fornax against llama.cpp's llama-bench and stable-diffusion.cpp's sd-cli, built from the pins in native/engines.properties.
+    tasks.register('benchmarks', JavaExec) {
+        group = 'fornax examples'
+        description = "Fornax against each engine's own command-line tool, on the same model files and settings"
+        classpath = sourceSets.main.runtimeClasspath
+        mainClass = 'org.liberationdata.fornax.bench.Benchmarks'
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+        systemProperty 'fornax.library.path', nativeDir.absolutePath
+        systemProperty 'fornax.backend', findProperty('fornax.backend')  // so results.json names the natives it ran
+        workingDir = rootProject.projectDir
+        def cli = gradle.startParameter.projectProperties
+        ['llama.bench', 'sd.cli'].each { p -> if (cli.containsKey(p)) systemProperty p, cli[p] }
     }
     // ./gradlew bench --args='out/bench acestep yue2 qwen-image'
     tasks.register('bench', JavaExec) {

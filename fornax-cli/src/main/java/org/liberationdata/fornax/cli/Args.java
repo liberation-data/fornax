@@ -9,9 +9,11 @@ import java.util.Set;
 
 /**
  * Command-line arguments: positionals plus {@code --name value}, {@code --name=value} and boolean {@code --flag}s.
- * {@code --} ends the options. {@code -h}/{@code --help} is always accepted.
+ * {@code --} ends the options. {@code -h}/{@code --help} is always accepted. A command may give an option a one-letter
+ * name too ({@code -m} for {@code --model}). An option given more than once has its last value in {@link #options},
+ * and every value, in order, in {@link #all}.
  */
-record Args(List<String> positional, Map<String, String> options, Set<String> flags) {
+record Args(List<String> positional, Map<String, String> options, Set<String> flags, Map<String, List<String>> values) {
 
     /** A mistake on the command line: printed with the command's usage, exit code 2. */
     static final class UsageException extends RuntimeException {
@@ -20,13 +22,20 @@ record Args(List<String> positional, Map<String, String> options, Set<String> fl
     }
 
     static Args parse(List<String> argv, Set<String> valueOptions, Set<String> flagOptions) {
+        return parse(argv, valueOptions, flagOptions, Map.of());
+    }
+
+    /** shortNames: one-letter names for options, {@code "m" -> "model"} for {@code -m}. */
+    static Args parse(List<String> argv, Set<String> valueOptions, Set<String> flagOptions, Map<String, String> shortNames) {
         List<String> pos = new ArrayList<>();
         Map<String, String> opts = new HashMap<>();
+        Map<String, List<String>> values = new HashMap<>();
         Set<String> flags = new HashSet<>();
         for (int i = 0; i < argv.size(); i++) {
             String a = argv.get(i);
             if (a.equals("--")) { pos.addAll(argv.subList(i + 1, argv.size())); break; }
             if (a.equals("-h") || a.equals("--help")) { flags.add("help"); continue; }
+            if (a.length() == 2 && a.charAt(0) == '-' && shortNames.containsKey(a.substring(1))) a = "--" + shortNames.get(a.substring(1));
             if (!a.startsWith("--") || a.length() == 2) { pos.add(a); continue; }
             String name = a.substring(2), value = null;
             int eq = name.indexOf('=');
@@ -37,6 +46,7 @@ record Args(List<String> positional, Map<String, String> options, Set<String> fl
                     value = argv.get(++i);
                 }
                 opts.put(name, value);
+                values.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
             } else if (flagOptions.contains(name)) {
                 if (value != null) throw new UsageException("--" + name + " doesn't take a value");
                 flags.add(name);
@@ -44,8 +54,13 @@ record Args(List<String> positional, Map<String, String> options, Set<String> fl
                 throw new UsageException("unknown option --" + name);
             }
         }
-        return new Args(List.copyOf(pos), Map.copyOf(opts), Set.copyOf(flags));
+        Map<String, List<String>> all = new HashMap<>();
+        values.forEach((k, v) -> all.put(k, List.copyOf(v)));
+        return new Args(List.copyOf(pos), Map.copyOf(opts), Set.copyOf(flags), Map.copyOf(all));
     }
+
+    /** Every value the option was given, in order; empty when it wasn't. */
+    List<String> all(String name) { return values.getOrDefault(name, List.of()); }
 
     boolean has(String flag) { return flags.contains(flag); }
 

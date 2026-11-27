@@ -1,6 +1,6 @@
 ---
 title: The fornax command
-description: Fetch models with fornax pull, see what is on disk, chat with a language model, make images, songs and speech, transcribe audio and ask about images from a terminal, and how fornax is installed and launched.
+description: Fetch models with fornax pull, see what is on disk, chat with a language model, make images, songs and speech, transcribe audio, ask about images and serve models over an OpenAI-compatible API from a terminal, and how fornax is installed and launched.
 ---
 
 `fornax` is Fornax's command-line tool. It fetches models into the Hugging Face cache and runs them without any code:
@@ -18,7 +18,7 @@ fornax image flux2-klein "a brick kiln at dusk"      # downloads the model first
 
   ```sh
   jbang fornax@fornax4j chat qwen3-4b "Write a haiku about a kiln"
-  jbang image@fornax4j flux2-klein "a brick kiln at dusk"      # also song@, speak@, transcribe@ and see@
+  jbang image@fornax4j flux2-klein "a brick kiln at dusk"      # also song@, speak@, transcribe@, see@ and server@
   ```
 
   `jbang app install fornax@fornax4j` puts it on your `PATH` as `fornax`. The aliases are in
@@ -152,6 +152,21 @@ there, fails before any model loads. Timings and other notes go to stderr; stdou
 transcript or the answer, for scripts.
 
 Set `FORNAX_VERBOSE=1` to see the engines' own logs.
+
+## Serving models
+
+```sh
+fornax server -m qwen3-4b                                 # http://127.0.0.1:54154/v1
+fornax server -m qwen3-4b -m qwen3-embedding-0.6b --port 8080 --budget-gb 32
+fornax server --host 0.0.0.0 --api-key "$KEY"             # reachable from other machines, with a key
+```
+
+`fornax server` serves models over an OpenAI-compatible HTTP API: chat completions (streaming, tool calls, JSON
+schemas, images for a vision model), models, embeddings, images, speech and transcription. Point an OpenAI client's
+base URL at it. The `-m` models are downloaded if need be and loaded first; a request may also name a catalogue
+model already downloaded, which is loaded on first use and kept loaded within `--budget-gb`. Any other is refused
+(404) unless `--allow-downloads` lets requests name any model, downloaded on first use. It listens on 127.0.0.1 only, and refuses web
+pages unless `--cors` allows their origin. See [OpenAI-compatible server](/docs/guides/openai-server/).
 
 ## The launcher
 

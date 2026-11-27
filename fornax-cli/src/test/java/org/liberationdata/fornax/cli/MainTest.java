@@ -27,6 +27,23 @@ class MainTest {
     }
 
     @Test
+    void theCommandSetsTheHttpServersSlowClientLimitsUnlessGiven() {
+        String req = "sun.net.httpserver.maxReqTime", conns = "jdk.httpserver.maxConnections", rsp = "sun.net.httpserver.maxRspTime";
+        String req0 = System.getProperty(req), conns0 = System.getProperty(conns);
+        try {
+            System.clearProperty(req);
+            System.setProperty(conns, "9");   // as -D in FORNAX_OPTS
+            Server.httpLimits();
+            assertEquals("120", System.getProperty(req));
+            assertEquals("9", System.getProperty(conns));
+            assertNull(System.getProperty(rsp), "no limit on answering: it would cut off a long stream");
+        } finally {
+            if (req0 == null) System.clearProperty(req); else System.setProperty(req, req0);
+            if (conns0 == null) System.clearProperty(conns); else System.setProperty(conns, conns0);
+        }
+    }
+
+    @Test
     void mistakesExitWithTwo() {
         assertEquals(2, run("frobnicate"));
         assertEquals(2, run("chat"));

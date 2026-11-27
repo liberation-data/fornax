@@ -784,7 +784,7 @@ const theme = 'vitesse-dark';
                             <table>
                                 <thead><tr><th scope="col">Model</th><th scope="col">Result</th></tr></thead>
                                 <tbody>
-                                    <tr><td>Qwen3 4B Instruct (Q4_K_M)</td><td class="num">~60 tokens/s</td></tr>
+                                    <tr><td>Qwen3 4B Instruct (Q4_K_M)</td><td class="num">~75 tokens/s</td></tr>
                                     <tr><td>ACE-Step 1.5 XL turbo</td><td class="num">3 min 20 s song in 57 s</td></tr>
                                     <tr><td>ACE-Step 1.5 turbo</td><td class="num">60 s song in ~15 s</td></tr>
                                     <tr><td>YuE2 3B (Q8_0)</td><td class="num">60 s song in ~60 s</td></tr>
@@ -793,7 +793,7 @@ const theme = 'vitesse-dark';
                                     <tr><td>Whisper large-v3-turbo (q5_0)</td><td class="num">55 s of speech in 1.8 s, timed word by word</td></tr>
                                     <tr><td>HTDemucs v4</td><td class="num">3 min 9 s song into four stems in 26 s</td></tr>
                                 </tbody>
-                                <caption>Qwen3’s tokens are streamed through a Java callback. One Strix Halo laptop, Vulkan.</caption>
+                                <caption>Qwen3’s tokens are streamed through a Java callback. One Strix Halo laptop, Vulkan. <a href="/docs/benchmarks/">Benchmarks</a> sets these against each engine’s own tool.</caption>
                             </table>
                         </div>
                     </div>
@@ -1022,7 +1022,6 @@ const theme = 'vitesse-dark';
                     <ul>
                         <li><span>Test and document the HIP, CUDA and Metal builds; natives jars for HIP and CUDA.</span></li>
                                                 <li><span><code>fornax-embabel</code>: an Embabel Agent <code>LlmService</code> and <code>LocalModelSource</code>.</span></li>
-                        <li><span>An optional OpenAI-compatible server.</span></li>
                         <li><span>An MLX module for Apple silicon, through <code>mlx-c</code>.</span></li>
                         <li><span>A Kotlin layer with coroutine <code>Flow</code> streaming.</span></li>
                     </ul>

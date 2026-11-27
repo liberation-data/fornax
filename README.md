@@ -11,7 +11,7 @@ Try it with one line, with nothing installed but [JBang](https://www.jbang.dev) 
 jbang fornax@fornax4j chat qwen3-4b "Write a haiku about a kiln"   # downloads the model on first use
 ```
 
-`jbang image@fornax4j flux2-klein "a brick kiln at dusk"`, `song@`, `speak@`, `transcribe@` and `see@` work the same
+`jbang image@fornax4j flux2-klein "a brick kiln at dusk"`, `song@`, `speak@`, `transcribe@`, `see@` and `server@` work the same
 way: they are the [`fornax` command](https://fornax4j.org/docs/guides/cli/), run from Maven Central.
 
 > Fornax was called **Kiln** until 0.1.0. Here's what changed:
@@ -170,7 +170,7 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 
 | Model | Result |
 |---|---|
-| Qwen3 4B Instruct (Q4_K_M) | ~60 tokens/s, streamed through a Java callback |
+| Qwen3 4B Instruct (Q4_K_M) | ~75 tokens/s, streamed through a Java callback: as fast as llama.cpp's own `llama-bench` |
 | Qwen3-Embedding 0.6B (Q8_0) | ~420 embeddings/s (20-token passages, 256 to a batch), matching `llama-embedding`'s vectors (cosine 1.000000) |
 | Qwen3-VL 4B Instruct (Q4_K_M) | a 1000×1300 invoice to schema-checked JSON (vendor, date, 4 line items, totals) in ~6 s; images read in 0.4 to 1.6 s, then ~60 tokens/s |
 | PaddleOCR-VL 1.6 (0.9B) | the same invoice's text (prompt "OCR:") in ~1.5 s, ~200 tokens/s |
@@ -182,6 +182,9 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 | HTDemucs v4 (F32) | a 3 min 9 s song split into four stems in 26 s (7.3 s of audio per second; about 2.9 on the CPU) |
 | FLUX.2 [klein] base 4B (fp8) | 768×768, 12 steps in ~130 s |
 | Qwen-Image 2512 (fp8) | 1024×1024, 20 steps in ~13 min |
+
+[Benchmarks](https://fornax4j.org/docs/benchmarks/) sets these against each engine's own tool and against ComfyUI, with
+the command behind every figure.
 
 The build script also knows the **ROCm (HIP)**, **CUDA** and **Metal** backends of the underlying engines. HIP has
 run LTX-2.5 video on the same machine (about 2.7× faster per step than Vulkan, and the way to render long clips; see
@@ -342,6 +345,7 @@ fornax song ace-step-turbo "acoustic folk, warm vocal" --lyrics words.txt --seco
 fornax speak "Hello from Fornax"                  # kokoro -> speech.wav; --voice, --list-voices
 fornax transcribe speech.wav                      # whisper-base.en; --words for each word's times
 fornax see qwen3-vl-4b image.png "What is by the door?"
+fornax server -m qwen3-4b                         # an OpenAI-compatible API at http://127.0.0.1:54154/v1
 fornax test flux2-klein                           # load, generate a little, report speed
 fornax info                                       # Java, native libraries, cache, token
 ```
@@ -370,6 +374,31 @@ at other native libraries. The launcher, `bin/fornax`, takes its Java, its jars 
 
 Check each model's license before you use what it makes. Some are non-commercial: YuE2's weights are
 CC BY-NC 4.0, for example.
+
+## The OpenAI-compatible server
+
+`fornax server` (or `FornaxServer`, in the `fornax-server` module, JDK only) serves Fornax's models over an
+OpenAI-compatible HTTP API, so any OpenAI client, agent framework or tool can use them with no Java code:
+
+```sh
+fornax server -m qwen3-4b
+curl -s localhost:54154/v1/chat/completions -d '{"messages":[{"role":"user","content":"Hi"}]}'
+```
+
+<!-- snippet: OpenAiServer#readme -->
+```java
+try (var server = FornaxServer.builder().model("qwen3-4b").build().start()) {
+    server.await();   // OpenAI base URL: server.url(), http://127.0.0.1:54154/v1
+}
+```
+
+It serves `POST /v1/chat/completions` (streaming, tools and `tool_calls`, `response_format` JSON schemas, `stop`,
+images for a vision model), `GET /v1/models`, `POST /v1/embeddings`, `POST /v1/images/generations` (base64 PNGs),
+`POST /v1/audio/speech` (WAV) and `POST /v1/audio/transcriptions` (a WAV file). A request may name the `-m`
+models and catalogue models already downloaded (with `--allow-downloads`, any model Fornax loads: alias,
+`org/name:TAG` or path, downloaded on first use), kept loaded in a `ModelPool` within `--budget-gb`. It listens on 127.0.0.1, refuses a foreign `Host` (DNS rebinding) and web pages unless `--cors`
+allows their origin, and with `--api-key` needs `Authorization: Bearer`. See
+[OpenAI-compatible server](https://fornax4j.org/docs/guides/openai-server/).
 
 ## Examples
 
@@ -423,7 +452,6 @@ error says what to install) unless `FORNAX_ALLOW_CPU=true` is set in the server'
 - Test and document the HIP, CUDA and Metal builds; natives jars for HIP and CUDA.
 - Video through stable-diffusion.cpp (`sd_generate_video`: Wan, LTX).
 - `fornax-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `fornax-llama`).
-- An optional OpenAI-compatible server.
 - An MLX module for Apple silicon, through `mlx-c`.
 - A Kotlin layer with coroutine `Flow` streaming.
 

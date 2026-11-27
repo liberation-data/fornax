@@ -44,4 +44,15 @@ class ArgsTest {
         assertThrows(Args.UsageException.class, () -> Args.parse(List.of("--temperature", "hot"), Set.of("temperature"), Set.of())
                 .floatOption("temperature", 0));
     }
+
+    @Test
+    void shortNamesAndRepeatedOptions() {
+        Args a = Args.parse(List.of("-m", "qwen3-4b", "--model", "flux2-klein", "--model=kokoro", "-x"), Set.of("model"), Set.of(),
+                java.util.Map.of("m", "model"));
+        assertEquals(List.of("qwen3-4b", "flux2-klein", "kokoro"), a.all("model"));
+        assertEquals("kokoro", a.option("model", null), "the last one");
+        assertEquals(List.of("-x"), a.positional(), "a one-letter name a command doesn't give is positional");
+        assertEquals(List.of(), a.all("other"));
+        assertEquals(List.of("-m", "x"), parse("-m", "x").positional(), "and without short names, -m is positional");
+    }
 }
