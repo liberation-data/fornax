@@ -115,7 +115,7 @@ matches the jar's.
 
 Each natives jar is one platform and one GPU backend, so **the jar you add is the choice**.
 
-- Natives jars for different platforms can sit side by side. To ship one build for every platform, add all three;
+- Natives jars for different platforms can sit side by side. To ship one build for every platform, add both;
   Fornax loads the one for the machine it runs on.
 - If jars for several backends of the same platform are on the classpath, `-Dfornax.backend=vulkan` (or the
   `FORNAX_BACKEND` environment variable) picks one. Otherwise Fornax prefers Metal, then CUDA, HIP, Vulkan and the CPU,

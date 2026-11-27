@@ -142,7 +142,7 @@ natives jar into a per-version cache (`~/.cache/fornax/<version>/` on Linux, `~/
 macOS; move it with `-Dfornax.cache.dir`) and loads it from there.
 
 **Choosing a backend.** Each natives jar is one platform and one GPU backend, so the jar you add is the choice.
-Natives jars for different platforms can sit side by side (to ship one build for every platform, add all three);
+Natives jars for different platforms can sit side by side (to ship one build for every platform, add both);
 Fornax loads the one for the machine it runs on. If jars for several backends of the same platform are on the
 classpath, `-Dfornax.backend=vulkan` (or `FORNAX_BACKEND`) picks one; otherwise Fornax prefers Metal, then CUDA, HIP and
 Vulkan. For ROCm (HIP), CUDA or anything else, build the libraries yourself (see [Building](#building)) and point
