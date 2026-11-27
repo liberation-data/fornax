@@ -239,20 +239,15 @@ public class Benchmarks {
         for (Side side : List.of(new Side(SERVE_SLOTS, false), new Side(SERVE_SLOTS, true), new Side(1, false))) {
             int parallel = side.parallel();
             // the server's models read fornax.isolation as they load: in a worker process each, batching there
-            if (side.isolated()) System.setProperty("fornax.isolation", "process");
-            try {
-                var m = GpuMemory.peakDuring(() -> {
-                    try (var server = org.liberationdata.fornax.server.FornaxServer.builder().port(0).model(gguf.toString())
-                            .contextSize(SERVE_CTX).parallel(parallel).budgetBytes(64L << 30).log(x -> {}).build().start()) {
-                        return drive("http://127.0.0.1:" + server.port());
-                    }
-                });
-                addServingRows(rows, "Fornax --parallel " + parallel + (side.isolated() ? ", isolated" : ""),
-                        "fornax server (llama.cpp " + Machine.pin("llama.cpp") + ")", parallel, m,
-                        "./gradlew :fornax-bench:benchmarks --args='" + out + " serving' -Pllama.server=" + llamaServer);
-            } finally {
-                if (side.isolated()) System.clearProperty("fornax.isolation");
-            }
+            var m = withIsolation(side.isolated(), () -> GpuMemory.peakDuring(() -> {
+                try (var server = org.liberationdata.fornax.server.FornaxServer.builder().port(0).model(gguf.toString())
+                        .contextSize(SERVE_CTX).parallel(parallel).budgetBytes(64L << 30).log(x -> {}).build().start()) {
+                    return drive("http://127.0.0.1:" + server.port());
+                }
+            }));
+            addServingRows(rows, "Fornax --parallel " + parallel + (side.isolated() ? ", isolated" : ""),
+                    "fornax server (llama.cpp " + Machine.pin("llama.cpp") + ")", parallel, m,
+                    "./gradlew :fornax-bench:benchmarks --args='" + out + " serving' -Pllama.server=" + llamaServer);
         }
         int port = 18_000 + (int) (ProcessHandle.current().pid() % 1000);
         List<String> cmd = List.of(llamaServer, "-m", gguf.toString(), "-ngl", "99", "-np", String.valueOf(SERVE_SLOTS),
@@ -269,6 +264,22 @@ public class Benchmarks {
         } finally {
             p.destroy();
             if (!p.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly();
+        }
+    }
+
+    /**
+     * Runs {@code work} with {@code fornax.isolation} set to {@code process} or {@code inprocess}, so a side is what its
+     * label says whatever the JVM was started with (the property also beats {@code FORNAX_ISOLATION}), then puts the
+     * property back as it was.
+     */
+    static <T> T withIsolation(boolean process, Callable<T> work) throws Exception {
+        String before = System.getProperty("fornax.isolation");
+        System.setProperty("fornax.isolation", process ? "process" : "inprocess");
+        try {
+            return work.call();
+        } finally {
+            if (before == null) System.clearProperty("fornax.isolation");
+            else System.setProperty("fornax.isolation", before);
         }
     }
 
