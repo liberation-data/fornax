@@ -33,6 +33,7 @@ load several files take a catalogue set's name (`new AceStepModel("ace-step")`, 
 `DiffusionModel.Config.builder().model("flux2-klein")`), and a reference for each file. Each refuses an alias or file
 it can't load before downloading it:
 
+<!-- snippet: Models#fetch -->
 ```java
 Map<String, Path> files = hub.fetch("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M", PullListener.logging());
 Path gguf = files.get("gguf");
@@ -48,6 +49,7 @@ repo's file list first. `hub.isReference(s)` says whether a string is a name to 
 
 ## Pulling a model
 
+<!-- snippet: Models#pull -->
 ```java
 import org.liberationdata.fornax.hub.FornaxHub;
 import org.liberationdata.fornax.hub.ModelCatalog;
@@ -108,6 +110,7 @@ It has what a progress bar needs:
 The listener runs on the pulling thread, so keep it short. To run a pull in the background and cancel it, use
 `pullAsync`:
 
+<!-- snippet: Models#async -->
 ```java
 PullTask task = hub.pullAsync(flux, progress -> ui.update(progress));
 // later, if the user clicks Cancel:
@@ -122,6 +125,7 @@ thread.
 
 To show the download size before the user starts a pull, call `plan`. It makes one HEAD request for each missing part:
 
+<!-- snippet: Models#plan -->
 ```java
 PullPlan plan = hub.plan(flux);
 long bytes = plan.bytesToDownload();   // what is left to fetch, minus what an earlier pull left
@@ -131,6 +135,7 @@ long bytes = plan.bytesToDownload();   // what is left to fetch, minus what an e
 
 `status` reads only the disk, so it is cheap enough to call for every model each time a list is drawn:
 
+<!-- snippet: Models#status -->
 ```java
 ModelStatus s = hub.status(flux);
 s.state();         // PRESENT, PARTIAL or MISSING
@@ -197,6 +202,7 @@ The token is sent to the Hub's own host only. It is not sent to the CDN that the
 
 ## Evicting a model
 
+<!-- snippet: Models#evict -->
 ```java
 Eviction e = hub.evict(flux);
 e.bytesFreed();
@@ -237,6 +243,7 @@ comes with Google's Health AI Developer Foundations terms.
 
 Your own models are model sets too:
 
+<!-- snippet: Models#custom -->
 ```java
 ModelSet mine = ModelSet.of("my-model", ModelSet.Kind.IMAGE, "My model", "stable-diffusion.cpp",
         ModelSet.Part.of("diffusion_model", "me/my-model", "model.safetensors"),

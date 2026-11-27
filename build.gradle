@@ -144,6 +144,37 @@ project(':fornax-examples') {
         implementation project(':fornax-whisper')
         implementation project(':fornax-demucs')
     }
+    // The docs' Java blocks: src/snippets/java, compiled (never run) by every build, and copied into README.md and the
+    // website's pages by scripts/Snippets.java. checkSnippets fails the build when a doc's block differs from its
+    // region, so an API change that breaks an example breaks the build. ./gradlew syncSnippets rewrites the blocks.
+    sourceSets { snippets { compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output } }
+    // SnippetsTest calls the script's methods, so the tests compile it too
+    sourceSets { test { java { srcDir rootProject.file('scripts') } } }
+    // the language-models guide's JSON examples use Jackson, as an app would
+    dependencies { snippetsImplementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0' }
+    def snippetJava = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+    def docs = rootProject.fileTree(rootProject.projectDir) { include 'README.md', 'website/src/content/docs/**/*.md', 'website/src/content/docs/**/*.mdx' }
+    def checkSnippets = tasks.register('checkSnippets', Exec) {
+        group = 'verification'
+        description = 'Fails when a Java block in the docs differs from its snippet (or has none)'
+        dependsOn 'compileSnippetsJava'
+        inputs.files(docs, sourceSets.snippets.java, rootProject.file('scripts/Snippets.java'))
+        def stamp = layout.buildDirectory.file('check-snippets.ok')
+        outputs.file(stamp)
+        workingDir = rootProject.projectDir
+        executable = snippetJava.get().executablePath.asFile
+        args 'scripts/Snippets.java', '--check'
+        doLast { stamp.get().asFile.text = 'ok' }
+    }
+    tasks.register('syncSnippets', Exec) {
+        group = 'documentation'
+        description = 'Copies each snippet region into its Java block in the docs'
+        dependsOn 'compileSnippetsJava'
+        workingDir = rootProject.projectDir
+        executable = snippetJava.get().executablePath.asFile
+        args 'scripts/Snippets.java'
+    }
+    tasks.named('check') { dependsOn checkSnippets }
     // ./gradlew chat --args='"your prompt"'   image --args='klein out.png "a prompt"'   song   yue2
     // speak --args='out.wav "text" am_michael' -Pmodel=kokoro
     // see --args='image.png "question"' -Pmodel=qwen3-vl-4b -Pschema=schema.json   invoice   defects

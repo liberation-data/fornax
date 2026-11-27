@@ -34,6 +34,7 @@ The async methods avoid that. Each model has one platform thread, named `fornax-
 owns the engine instance and makes every async call's downcall. A virtual thread that waits on the future unmounts, and
 its carrier goes on running other work:
 
+<!-- snippet: Threading#virtual-threads -->
 ```java
 import org.liberationdata.fornax.llama.LlamaModel;
 import org.liberationdata.fornax.llama.LlamaModel.Message;
@@ -69,6 +70,7 @@ take its time without holding up the next generation.
 `ModelPool.acquire` waits on a fair semaphore, which unmounts a virtual thread, so a pool works from virtual threads as
 it is. Borrow the model, await the async call, then give the model back:
 
+<!-- snippet: Threading#pool -->
 ```java
 try (var lease = pool.acquire("qwen3-4b", ModelPool.sizeOf(gguf), () -> new LlamaModel(gguf.toString()))) {
     String reply = lease.model().chatJsonAsync(requestJson).join();
@@ -88,6 +90,7 @@ once for each subscription:
 | `LlamaModel` | `chatAsync(messages, options, subscriber)`, `chatJsonAsync(request, images, subscriber)` | `chatStream(messages, options)` |
 | `TtsModel` | `speakAsync(text, voice, options, subscriber)` | `speakStream(text, voice, options)` |
 
+<!-- snippet: Threading#flow -->
 ```java
 import java.util.concurrent.Flow;
 
@@ -110,6 +113,7 @@ stops the generation. Its `onError` and the future both get a `StreamOverflowExc
 hold the GPU idle for the slowest consumer, and doesn't drop pieces, which would hand you a reply with holes in it.
 Change the buffer, or the executor the subscriber runs on, with `streamOn`:
 
+<!-- snippet: Threading#stream-on -->
 ```java
 llm.streamOn(Executors.newSingleThreadExecutor(), 4096);   // for calls made after this
 ```
@@ -141,6 +145,7 @@ Before, an exception thrown from a token or chunk consumer escaped into the engi
 it and exited. Now every Fornax upcall catches it, tells the engine to stop, and returns normally. When the native call
 returns, the Java method throws that same exception:
 
+<!-- snippet: Threading#throwing-consumer -->
 ```java
 try {
     llm.chat(messages, Options.DEFAULT, piece -> { throw new IllegalStateException("socket closed"); });

@@ -18,6 +18,7 @@ Both are a `LlamaModel` loaded in another `Mode`. They run through llama.cpp's p
 hf download Qwen/Qwen3-Embedding-0.6B-GGUF Qwen3-Embedding-0.6B-Q8_0.gguf
 ```
 
+<!-- snippet: Embeddings#embed -->
 ```java
 import org.liberationdata.fornax.Vectors;
 import org.liberationdata.fornax.llama.LlamaModel;
@@ -65,6 +66,7 @@ try (var emb = new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)) {
 hf download ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF qwen3-reranker-0.6b-q8_0.gguf
 ```
 
+<!-- snippet: Embeddings#rerank -->
 ```java
 import org.liberationdata.fornax.Scored;
 

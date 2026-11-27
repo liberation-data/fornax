@@ -13,6 +13,7 @@ audio decoder and the model's built-in voices. The class is `TtsModel`.
 hf download ggml-org/Kokoro-82M-GGUF Kokoro-82M-F32.gguf mmproj-Kokoro-82M-F16.gguf
 ```
 
+<!-- snippet: Speech#speak -->
 ```java
 import org.liberationdata.fornax.Audio;
 import org.liberationdata.fornax.tts.TtsModel;
@@ -55,6 +56,7 @@ Any other TTS GGUF that llama.cpp runs works too: pass both paths. Either can be
 [model reference](/docs/guides/models/#by-reference) instead, downloaded on first use, and the catalogue alias
 `kokoro` brings both files:
 
+<!-- snippet: Speech#files -->
 ```java
 try (var tts = new TtsModel("/models/model.gguf", "/models/mmproj.gguf")) {   // or (model, mmproj, gpuLayers, contextSize)
     // ...
@@ -69,6 +71,7 @@ Call `voices()` for a model's exact voice names. Check each model's licence befo
 
 VoxCPM2 has no built-in voices. Instead, a description in parentheses at the start of the text designs one:
 
+<!-- snippet: Speech#voxcpm -->
 ```java
 try (var tts = new TtsModel(TtsModel.Weights.VOXCPM2)) {
     var options = TtsModel.Options.DEFAULT.withSeed(1);
@@ -84,6 +87,7 @@ sound alike.
 
 For a model that clones a voice (VoxCPM2 and Qwen3-TTS), pass `@` and the path of a WAV or MP3 clip as the voice:
 
+<!-- snippet: Speech#clone -->
 ```java
 try (var tts = new TtsModel(TtsModel.Weights.QWEN3_TTS)) {
     tts.speak("This is my voice, reading something new.", "@/clips/me.wav").writeWav(new File("me-new.wav"));
@@ -104,6 +108,7 @@ Only clone a voice you have the right to use.
 of them to the model. `withLang` picks a language for a multilingual model, in the codes that model uses; `null` is
 its default.
 
+<!-- snippet: Speech#options -->
 ```java
 var options = TtsModel.Options.DEFAULT
         .withSeed(7)            // -1 (the default) is random
@@ -117,6 +122,7 @@ var options = TtsModel.Options.DEFAULT
 Pass a `Consumer<Audio>` and the audio arrives in chunks as it is decoded, so playback can start before the whole
 line is ready. The call still returns all of it.
 
+<!-- snippet: Speech#stream -->
 ```java
 Audio all = tts.speak("A longer passage to read aloud.", null,
         chunk -> System.out.printf("%.2f s more%n", chunk.seconds()));   // or hand each chunk to a player
