@@ -142,4 +142,16 @@ class LanguageModels {
         Result r = llm.complete("The three most common glazes for stoneware are", Options.DEFAULT.withMaxTokens(64), null);
         // --8<-- [end:complete]
     }
+
+    void slots(List<String> questions) {
+        // --8<-- [start:slots]
+        // four requests at once, each with 4096 tokens of context of its own
+        try (var llm = new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M", -1, 4096, 4)) {
+            List<java.util.concurrent.CompletableFuture<Result>> replies = questions.stream()
+                    .map(q -> llm.chatAsync(List.of(Message.user(q)), Options.DEFAULT))
+                    .toList();   // up to four decode together; the rest wait for a free slot
+            replies.forEach(f -> System.out.println(f.join().text()));
+        }
+        // --8<-- [end:slots]
+    }
 }

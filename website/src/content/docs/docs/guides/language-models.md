@@ -39,7 +39,8 @@ use instead. To download ahead of time, run `fornax pull unsloth/Qwen3-4B-Instru
 The constructor loads the weights onto the GPU, and they stay there until `close()`. Load once and reuse the model
 for many calls; [ModelPool](/docs/guides/model-pool/) helps when an app has several models to juggle.
 
-A `LlamaModel` can be called from any thread; its calls run one at a time, in arrival order. From virtual threads,
+A `LlamaModel` can be called from any thread; its calls run one at a time, in arrival order (or several at once, with
+[slots](#many-requests-at-once-slots)). From virtual threads,
 use `chatAsync`, `chatJsonAsync` and `extractAsync`, which return a `CompletableFuture` and stream to a
 `Flow.Subscriber`: see [Threading](/docs/guides/threading/).
 
@@ -248,6 +249,37 @@ when you format the prompt yourself.
 ```java
 Result r = llm.complete("The three most common glazes for stoneware are", Options.DEFAULT.withMaxTokens(64), null);
 ```
+
+## Many requests at once: slots
+
+A model answers one request at a time, so concurrent callers queue for it. Load it with slots and it runs that many
+together instead: each step decodes the next token of every running request in one batch (continuous batching, as
+llama-server's parallel slots do), so several callers share the GPU for much the cost of one.
+
+<!-- snippet: LanguageModels#slots -->
+```java
+// four requests at once, each with 4096 tokens of context of its own
+try (var llm = new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M", -1, 4096, 4)) {
+    List<java.util.concurrent.CompletableFuture<Result>> replies = questions.stream()
+            .map(q -> llm.chatAsync(List.of(Message.user(q)), Options.DEFAULT))
+            .toList();   // up to four decode together; the rest wait for a free slot
+    replies.forEach(f -> System.out.println(f.join().text()));
+}
+```
+
+- Every method works as before, from any thread; up to `slots` requests run at once and the rest queue in arrival
+  order.
+- Each request keeps its own options, seed, `json_schema` or tools, and streaming. Cancelling a future stops only
+  that request; `cancel()` stops every running one.
+- Each slot has its own `contextSize` tokens (rounded up to a multiple of 256), so the context takes `slots` times
+  the memory. A request that fills its
+  slot ends with `finish_reason` "length", whatever the others are doing; a prompt longer than a slot is refused.
+- A long prompt goes in alongside the running replies, a chunk a step, rather than stalling them.
+- Greedy replies can differ slightly from a model without slots, because a batch adds up the numbers in a different
+  order.
+- A callback (`Consumer`) runs on the model's batch thread, so one that blocks holds up every slot. The async and
+  streaming methods hand pieces to a buffer instead.
+- Not yet: images (a vision model loads without its mmproj) and [isolated](/docs/guides/isolation/) models.
 
 ## Try it
 

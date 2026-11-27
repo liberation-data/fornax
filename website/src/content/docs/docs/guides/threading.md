@@ -9,10 +9,11 @@ model while one is running.
 
 ## The short version
 
-- **Every model can be called from any thread.** Calls to one model run one at a time, in the order they arrive.
+- **Every model can be called from any thread.** Calls to one model run one at a time, in the order they arrive
+  (a language model with [slots](/docs/guides/language-models/#many-requests-at-once-slots) runs that many at once).
   Different models run in parallel.
 - **The blocking methods** (`chat`, `chatJson`, `extract`, `speak`, `generate`, ...) run on the calling thread, and so
-  do their callbacks. They behave as they always have.
+  do their callbacks (a language model with slots runs callbacks on its batch thread). They behave as they always have.
 - **The `...Async` methods** (`chatAsync`, `chatJsonAsync`, `extractAsync`, `speakAsync`, `generateAsync`, ...) run the
   native call on the model's own platform thread and return a `CompletableFuture`. Use them from virtual threads.
 - **Streaming** goes to a `java.util.concurrent.Flow.Subscriber` through a bounded buffer, delivered on virtual
@@ -52,7 +53,8 @@ try (var llm = new LlamaModel(gguf);
 ```
 
 The calls still run one at a time on the model's thread, in submission order: one model generates one reply at a time.
-What changes is that the waiting threads cost nothing.
+What changes is that the waiting threads cost nothing. (A language model loaded with
+[slots](/docs/guides/language-models/#many-requests-at-once-slots) generates several replies at once.)
 
 Fornax's tests show the difference with the virtual-thread scheduler cut to one carrier
 (`-Djdk.virtualThreadScheduler.parallelism=1`) and a heartbeat virtual thread that wakes every 5 ms. With Qwen3 4B,
@@ -128,7 +130,9 @@ is still working through the buffer. `onComplete` arrives after the last piece.
 
 The blocking methods' callbacks (`Consumer<String> onPiece`, `Consumer<Audio> onChunk`, and stable-diffusion.cpp's log
 and progress sinks) run on the thread that made the call, between tokens or steps. Keep them quick: append to a buffer,
-push to a queue, write to a socket.
+push to a queue, write to a socket. A language model with [slots](/docs/guides/language-models/#many-requests-at-once-slots)
+runs them on its batch thread instead, between the steps that every slot shares, so one that blocks holds up them all;
+there `cancel()` stops every running request, not only the callback's own.
 
 A callback may call `cancel()`, but not the same model's other blocking methods, and not `close()`. Both throw an
 `IllegalStateException`, because the engine is in the middle of the call that's running the callback. An `...Async`
@@ -160,7 +164,8 @@ hand the exception to, so Fornax prints it to standard error.
 
 ## Cancel
 
-`cancel()` stops the call that is running on that model, from any thread. Cancelling a future, or its `orTimeout`
+`cancel()` stops the call that is running on that model (every one, for a language model with slots), from any
+thread. Cancelling a future, or its `orTimeout`
 firing, stops that call only: if it is still queued, it never starts. Cancelling a subscription stops its call too.
 
 | Engine | Stops | What the call returns |
