@@ -1,0 +1,134 @@
+{
+  "date": "2026-11-27",
+  "machine": {
+    "os": "Linux 7.3.4-300.fc45.x86_64",
+    "arch": "amd64",
+    "java": "25.0.3+9-LTS",
+    "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "memoryBytes": 130443358208,
+    "gpu": "Advanced Micro Devices, Inc. [AMD/ATI] Strix Halo [Radeon Graphics / Radeon 8050S Graphics / Radeon 8060S Graphics] (rev c1)",
+    "vulkanDriver": "mesa-vulkan-drivers 26.2.7",
+    "backend": "vulkan",
+    "fornaxCommit": "915bde9",
+    "llama.cpp": "22b99122e1",
+    "stable-diffusion.cpp": "3b12781fac"
+  },
+  "groups": [
+    {
+      "id": "chat",
+      "title": "Chat: Qwen3 4B Instruct 2507, Q4_K_M",
+      "note": "A 553-token prompt, then 128 tokens generated after it, all layers on the GPU, llama.cpp's default batch sizes and flash attention. llama-bench's generation test runs at the same depth (-d 553); its time to the first token is the prompt plus one generated token, as Fornax's is.",
+      "columns": [
+        "Time to first token",
+        "Generation",
+        "Peak GPU memory"
+      ],
+      "rows": [
+        {
+          "runner": "Fornax",
+          "engine": "LlamaModel (llama.cpp 22b99122e1)",
+          "values": [
+            "0.30 s",
+            "74.9 tok/s",
+            "3.8 GB"
+          ],
+          "command": "./gradlew :fornax-bench:benchmarks --args='out/benchmarks chat' -Pllama.bench=<llama-bench>"
+        },
+        {
+          "runner": "llama-bench",
+          "engine": "llama.cpp 22b99122e1",
+          "values": [
+            "0.30 s",
+            "73.7 tok/s",
+            "3.5 GB"
+          ],
+          "command": "llama-bench -m <Qwen3-4B-Instruct-2507-Q4_K_M.gguf> -p 553 -n 128 -d 0,553 -ngl 99 -r 3 -o json"
+        }
+      ]
+    },
+    {
+      "id": "image",
+      "title": "Image: FLUX.2 [klein] base 4B, 768×768, 12 steps",
+      "note": "The same three files and settings on both sides; the two images are identical, pixel for pixel. Cold includes loading the weights; Fornax's warm run is a second image with them loaded.",
+      "columns": [
+        "Cold",
+        "Warm",
+        "Peak GPU memory"
+      ],
+      "rows": [
+        {
+          "runner": "sd-cli",
+          "engine": "stable-diffusion.cpp 3b12781fac",
+          "values": [
+            "132.1 s",
+            "—",
+            "12.0 GB"
+          ],
+          "command": "sd-cli --diffusion-model <flux-2-klein-base-4b-fp8.safetensors> --vae <flux2-vae.safetensors> --llm <qwen_3_4b.safetensors> -p '...' -W 768 -H 768 --steps 12 --cfg-scale 4.0 -s 7"
+        },
+        {
+          "runner": "Fornax",
+          "engine": "DiffusionModel (stable-diffusion.cpp 3b12781fac)",
+          "values": [
+            "137.3 s",
+            "130.5 s",
+            "12.7 GB"
+          ],
+          "command": "./gradlew :fornax-bench:benchmarks --args='out/benchmarks image' -Psd.cli=<sd-cli>"
+        }
+      ]
+    },
+    {
+      "id": "songs",
+      "title": "Songs: Fornax against ComfyUI",
+      "note": "The same request on each side, with the weights each runs: Fornax the GGUF Q8_0 conversions on Vulkan, ComfyUI its safetensors on ROCm PyTorch. So these set what you get from each today against each other, not two builds of one engine. Cold includes loading the weights; warm is a second song (seed + 1) with them loaded.",
+      "columns": [
+        "Weights",
+        "Cold",
+        "Warm"
+      ],
+      "rows": [
+        {
+          "runner": "ComfyUI",
+          "engine": "ACE-Step 1.5 turbo + 4B LM, 60 s song",
+          "values": [
+            "safetensors (bf16 DiT)",
+            "46.7 s",
+            "22.9 s"
+          ],
+          "command": "./gradlew :fornax-bench:bench --args='out/bench acestep'   # ComfyUI on 127.0.0.1:8188"
+        },
+        {
+          "runner": "Fornax",
+          "engine": "ACE-Step 1.5 turbo + 4B LM, 60 s song",
+          "values": [
+            "GGUF Q8_0",
+            "17.9 s",
+            "14.1 s"
+          ],
+          "command": "./gradlew :fornax-bench:bench --args='out/bench acestep'"
+        },
+        {
+          "runner": "ComfyUI",
+          "engine": "YuE2 3B with ABC plan, 60 s song",
+          "values": [
+            "safetensors (int8)",
+            "63.3 s",
+            "50.4 s"
+          ],
+          "command": "./gradlew :fornax-bench:bench --args='out/bench yue2'   # ComfyUI on 127.0.0.1:8188"
+        },
+        {
+          "runner": "Fornax",
+          "engine": "YuE2 3B with ABC plan, 60 s song",
+          "values": [
+            "GGUF Q8_0",
+            "64.2 s",
+            "57.3 s"
+          ],
+          "command": "./gradlew :fornax-bench:bench --args='out/bench yue2'"
+        }
+      ]
+    }
+  ]
+}

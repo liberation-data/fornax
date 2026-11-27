@@ -160,7 +160,7 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 
 | Model | Result |
 |---|---|
-| Qwen3 4B Instruct (Q4_K_M) | ~60 tokens/s, streamed through a Java callback |
+| Qwen3 4B Instruct (Q4_K_M) | ~75 tokens/s, streamed through a Java callback: as fast as llama.cpp's own `llama-bench` |
 | Qwen3-Embedding 0.6B (Q8_0) | ~420 embeddings/s (20-token passages, 256 to a batch), matching `llama-embedding`'s vectors (cosine 1.000000) |
 | Qwen3-VL 4B Instruct (Q4_K_M) | a 1000×1300 invoice to schema-checked JSON (vendor, date, 4 line items, totals) in ~6 s; images read in 0.4 to 1.6 s, then ~60 tokens/s |
 | PaddleOCR-VL 1.6 (0.9B) | the same invoice's text (prompt "OCR:") in ~1.5 s, ~200 tokens/s |
@@ -172,6 +172,9 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 | HTDemucs v4 (F32) | a 3 min 9 s song split into four stems in 26 s (7.3 s of audio per second; about 2.9 on the CPU) |
 | FLUX.2 [klein] base 4B (fp8) | 768×768, 12 steps in ~130 s |
 | Qwen-Image 2512 (fp8) | 1024×1024, 20 steps in ~13 min |
+
+[Benchmarks](https://fornax4j.org/docs/benchmarks/) sets these against each engine's own tool and against ComfyUI, with
+the command behind every figure.
 
 The build script also knows the **ROCm (HIP)**, **CUDA** and **Metal** backends of the underlying engines. HIP has
 run LTX-2.5 video on the same machine (about 2.7× faster per step than Vulkan, and the way to render long clips; see
