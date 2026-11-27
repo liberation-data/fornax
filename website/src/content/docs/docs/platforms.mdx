@@ -145,7 +145,8 @@ A CUDA build is possible but hasn't been tested yet; reports are welcome.
 ## Windows
 
 There's no Windows natives jar yet, but `native/build.sh` builds the engines as DLLs in [MSYS2](https://www.msys2.org/)'s
-UCRT64 shell (experimental: CI builds the CPU and Vulkan backends, and loads the CPU build from Java). Load them with
+UCRT64 shell (experimental: CI builds the CPU and Vulkan backends, loads the CPU build from Java, and generates text
+with a small model on it, in process and in an isolated worker JVM). Load them with
 `-Dfornax.library.path=build/native/windows-x86_64-<backend>`. Published natives follow in
 [#83](https://github.com/liberation-data/fornax/issues/83).
 
