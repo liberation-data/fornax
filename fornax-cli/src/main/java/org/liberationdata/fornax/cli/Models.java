@@ -12,6 +12,7 @@ import org.liberationdata.fornax.hub.ModelStatus;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
@@ -94,7 +95,7 @@ final class Models {
     static Fetched fetch(String spec, Kind kind, String command, boolean oneFile, FornaxHub hub, PrintStream err,
                          boolean terminal) throws IOException {
         String role = kind == Kind.TRANSCRIPTION ? "model" : "gguf";
-        if (oneFile && Files.isRegularFile(Path.of(spec))) return new Fetched(spec, null, Map.of(role, Path.of(spec)));
+        if (oneFile && isFile(spec)) return new Fetched(spec, null, Map.of(role, Path.of(spec)));
         var alias = ModelCatalog.byName(spec);
         if (alias.isPresent()) {
             ModelSet m = alias.get();
@@ -120,7 +121,13 @@ final class Models {
      * model downloads.
      */
     static boolean withoutMmproj(String spec) {
-        return ModelCatalog.byName(spec).isEmpty() && (Files.isRegularFile(Path.of(spec)) || ModelRef.tryParse(spec).isPresent());
+        return ModelCatalog.byName(spec).isEmpty() && (isFile(spec) || ModelRef.tryParse(spec).isPresent());
+    }
+
+    /** Whether s is a file that exists; false for what can't be a path at all, such as a reference's ':' on Windows. */
+    private static boolean isFile(String s) {
+        try { return Files.isRegularFile(Path.of(s)); }
+        catch (InvalidPathException notAPath) { return false; }
     }
 
     /** The set's files, pulled first (after {@code header}, with fornax pull's progress line) if any is missing. */
