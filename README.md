@@ -329,6 +329,7 @@ fornax song ace-step-turbo "acoustic folk, warm vocal" --lyrics words.txt --seco
 fornax speak "Hello from Fornax"                  # kokoro -> speech.wav; --voice, --list-voices
 fornax transcribe speech.wav                      # whisper-base.en; --words for each word's times
 fornax see qwen3-vl-4b image.png "What is by the door?"
+fornax server -m qwen3-4b                         # an OpenAI-compatible API at http://127.0.0.1:54154/v1
 fornax test flux2-klein                           # load, generate a little, report speed
 fornax info                                       # Java, native libraries, cache, token
 ```
@@ -357,6 +358,30 @@ at other native libraries. The launcher, `bin/fornax`, takes its Java, its jars 
 
 Check each model's license before you use what it makes. Some are non-commercial: YuE2's weights are
 CC BY-NC 4.0, for example.
+
+## The OpenAI-compatible server
+
+`fornax server` (or `FornaxServer`, in the `fornax-server` module, JDK only) serves Fornax's models over an
+OpenAI-compatible HTTP API, so any OpenAI client, agent framework or tool can use them with no Java code:
+
+```sh
+fornax server -m qwen3-4b
+curl -s localhost:54154/v1/chat/completions -d '{"messages":[{"role":"user","content":"Hi"}]}'
+```
+
+```java
+try (var server = FornaxServer.builder().model("qwen3-4b").build().start()) {
+    server.await();   // OpenAI base URL: server.url(), http://127.0.0.1:54154/v1
+}
+```
+
+It serves `POST /v1/chat/completions` (streaming, tools and `tool_calls`, `response_format` JSON schemas, `stop`,
+images for a vision model), `GET /v1/models`, `POST /v1/embeddings`, `POST /v1/images/generations` (base64 PNGs),
+`POST /v1/audio/speech` (WAV) and `POST /v1/audio/transcriptions` (a WAV file). A request may name any model
+Fornax loads (alias, `org/name:TAG` or path), downloaded on first use and kept loaded in a `ModelPool` within
+`--budget-gb`. It listens on 127.0.0.1, refuses a foreign `Host` (DNS rebinding) and web pages unless `--cors`
+allows their origin, and with `--api-key` needs `Authorization: Bearer`. See
+[OpenAI-compatible server](https://fornax4j.org/docs/guides/openai-server/).
 
 ## Examples
 
@@ -410,7 +435,6 @@ error says what to install) unless `FORNAX_ALLOW_CPU=true` is set in the server'
 - Test and document the HIP, CUDA and Metal builds; natives jars for HIP and CUDA.
 - Video through stable-diffusion.cpp (`sd_generate_video`: Wan, LTX).
 - `fornax-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `fornax-llama`).
-- An optional OpenAI-compatible server.
 - An MLX module for Apple silicon, through `mlx-c`.
 - A Kotlin layer with coroutine `Flow` streaming.
 
