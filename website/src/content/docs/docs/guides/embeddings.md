@@ -51,8 +51,10 @@ try (var emb = new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)) {
   256), each as its own sequence. A text embedded with others comes out very slightly different from one embedded
   alone (cosine 0.9999), in `llama-embedding` too: the batch changes the shapes of the GPU kernels.
 - **One text fits in the context.** In EMBED and RERANK mode the context size is also the batch, so the default
-  8192 tokens is the longest text (or query plus document) one call takes. A longer one fails with an error that
-  says so; split long documents into passages first. `new LlamaModel(w, gpuLayers, contextSize, Mode.EMBED)` sets it.
+  2048 tokens (as llama.cpp's `llama-embedding`) is the longest text (or query plus document) one call takes. A longer
+  one fails with an error that says so; split long documents into passages first, or set a larger context with
+  `new LlamaModel(w, gpuLayers, contextSize, Mode.EMBED)`. The GPU memory grows with it: a 0.6B reranker's working
+  memory is about 2.7 GB at 2048 tokens and 10.8 GB at 8192.
 - **The pooling is the model's.** The GGUF says how to pool the model's outputs into one vector (Qwen3-Embedding
   takes the last token, the end-of-text the tokenizer appends; others take the mean or the first token).
 - Text isn't parsed for special tokens: a document that contains `<|im_end|>` embeds those characters as text.

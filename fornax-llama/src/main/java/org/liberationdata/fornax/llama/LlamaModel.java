@@ -370,8 +370,19 @@ public final class LlamaModel implements AutoCloseable {
         this(ggufPath, null, mode, gpuLayers, contextSize, defaultWorker(ggufPath), true);
     }
 
-    /** A model loaded for chat, embeddings or reranking, with 8192 tokens of context. */
-    public LlamaModel(String ggufPath, Mode mode) { this(ggufPath, -1, 8192, mode); }
+    /**
+     * A model loaded for chat, embeddings or reranking, with {@link #defaultContext(Mode) the default context}: 8192
+     * tokens for chat, 2048 for embeddings and reranking.
+     */
+    public LlamaModel(String ggufPath, Mode mode) { this(ggufPath, -1, defaultContext(mode), mode); }
+
+    /**
+     * The context a constructor without a contextSize gives a mode: 8192 tokens for chat; 2048 for EMBED and RERANK,
+     * as llama.cpp's llama-embedding does. In those modes the context is also the batch the model works through at once,
+     * and its compute buffer grows with it: a 0.6B reranker takes about 2.7 GB at 2048 and 10.8 GB at 8192 (on Metal,
+     * #104). Pass a contextSize for longer texts.
+     */
+    public static int defaultContext(Mode mode) { return mode == Mode.CHAT ? 8192 : 2048; }
 
     /**
      * A chat model that runs up to {@code slots} requests at once, decoding them together (continuous batching, as
@@ -560,11 +571,12 @@ public final class LlamaModel implements AutoCloseable {
     }
 
     /**
-     * {@link #isolated(Weights)} loaded for chat, embeddings or reranking, with 8192 tokens of context; for example
+     * {@link #isolated(Weights)} loaded for chat, embeddings or reranking, with {@link #defaultContext(Mode) the default
+     * context}; for example
      * {@code LlamaModel.isolated(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)}. The mmproj is loaded only for CHAT.
      */
     public static LlamaModel isolated(Weights w, Mode mode) {
-        return new LlamaModel(w.model(), mode == Mode.CHAT ? w.mmproj() : null, mode, -1, 8192, workerFor(w.model()), true);
+        return new LlamaModel(w.model(), mode == Mode.CHAT ? w.mmproj() : null, mode, -1, defaultContext(mode), workerFor(w.model()), true);
     }
 
     /**
@@ -611,10 +623,10 @@ public final class LlamaModel implements AutoCloseable {
     public LlamaModel(Weights w, int gpuLayers, int contextSize) { this(w.model(), w.mmproj(), gpuLayers, contextSize); }
 
     /**
-     * Weights Fornax knows by name, loaded for chat, embeddings or reranking, with 8192 tokens of context; for example
-     * {@code new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)}.
+     * Weights Fornax knows by name, loaded for chat, embeddings or reranking, with {@link #defaultContext(Mode) the
+     * default context}; for example {@code new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)}.
      */
-    public LlamaModel(Weights w, Mode mode) { this(w, -1, 8192, mode); }
+    public LlamaModel(Weights w, Mode mode) { this(w, -1, defaultContext(mode), mode); }
 
     /**
      * Weights Fornax knows by name, loaded for chat, embeddings or reranking. The mmproj (if the weights have one) is
