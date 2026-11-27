@@ -29,6 +29,10 @@ import java.util.concurrent.Callable;
  *     -Pllama.bench=/path/to/llama-bench -Psd.cli=/path/to/sd-cli
  * </pre>
  *
+ * Build the two tools from the checkouts {@code native/build.sh} leaves under {@code engines-src/} (the pins, with
+ * Fornax's patches) and the same backend; the commands are under "Running them yourself" on the site's Benchmarks page
+ * ({@code website/src/content/docs/docs/benchmarks.mdx}).
+ *
  * Cases: {@code chat} (qwen3-4b: time to the first token of a ~512-token prompt, and tokens per second over 128
  * generated after it) and
  * {@code image} (FLUX.2 [klein], 768x768, 12 steps: seconds, cold with the load and warm). Each side's peak GPU memory
@@ -90,8 +94,9 @@ public class Benchmarks {
                             piece -> { if (first[0] == 0) first[0] = System.nanoTime(); });
                     long end = System.nanoTime();
                     if (r == 0) continue;
-                    ttft += ((first[0] == 0 ? end : first[0]) - start) / 1e9;
-                    tg += res.generatedTokens() > 1 ? (res.generatedTokens() - 1) / ((end - first[0]) / 1e9) : 0;
+                    var reply = Reply.of(start, first[0], end, res.generatedTokens());
+                    ttft += reply.ttftSeconds();
+                    tg += reply.tokensPerSecond();
                     ppTokens = res.promptTokens();
                     tgTokens = res.generatedTokens();
                 }
@@ -107,7 +112,8 @@ public class Benchmarks {
         int depth = fornax.value().get("promptTokens").intValue();
         Map<String, Object> settings = Map.of("promptTokens", depth, "genTokens", GEN_TOKENS, "gpuLayers", "all", "reps", REPS);
         rows.add(new Row("chat", "Fornax", "LlamaModel (llama.cpp " + Machine.pin("llama.cpp") + ")", CHAT_MODEL, settings,
-                fornax.value(), fornax.peakBytes(), "./gradlew :fornax-bench:benchmarks --args='" + out + " chat'"));
+                fornax.value(), fornax.peakBytes(),
+                "./gradlew :fornax-bench:benchmarks --args='" + out + " chat' -Pllama.bench=" + quoted(List.of(bench)).get(0)));
 
         // The reference: llama.cpp's own benchmark at the pin Fornax builds. Its prompt test runs on an empty context
         // and its generation test after `depth` tokens, as Fornax's did. Time to first token, as Fornax measures it,
@@ -115,18 +121,38 @@ public class Benchmarks {
         List<String> cmd = List.of(bench, "-m", gguf.toString(), "-p", String.valueOf(depth), "-n", String.valueOf(GEN_TOKENS),
                 "-d", "0," + depth, "-ngl", "99", "-r", String.valueOf(REPS), "-o", "json");
         var ref = GpuMemory.peakDuring(() -> run(cmd));
+        rows.add(new Row("chat", "llama-bench", "llama.cpp " + Machine.pin("llama.cpp"), CHAT_MODEL, settings,
+                llamaBench(ref.value(), depth), ref.peakBytes(), String.join(" ", quoted(cmd))));
+    }
+
+    /**
+     * llama-bench's JSON as Fornax's figures: its prompt test on an empty context, and its generation test after
+     * {@code depth} tokens. Fails if either is missing, rather than report an infinite time.
+     */
+    static Map<String, Double> llamaBench(String json, int depth) throws IOException {
         double pp = 0, tgAtDepth = 0;
-        for (JsonNode test : JSON.readTree(ref.value())) {
+        for (JsonNode test : JSON.readTree(json)) {
             int nPrompt = test.path("n_prompt").asInt(), nDepth = test.path("n_depth").asInt();
             if (nPrompt > 0 && nDepth == 0) pp = test.path("avg_ts").asDouble();
             if (nPrompt == 0 && nDepth == depth) tgAtDepth = test.path("avg_ts").asDouble();
         }
-        Map<String, Double> refResults = new LinkedHashMap<>();
-        refResults.put("timeToFirstTokenSeconds", depth / pp + 1 / tgAtDepth);
-        refResults.put("genTokensPerSecond", tgAtDepth);
-        refResults.put("promptTokensPerSecond", pp);
-        rows.add(new Row("chat", "llama-bench", "llama.cpp " + Machine.pin("llama.cpp"), CHAT_MODEL, settings, refResults,
-                ref.peakBytes(), String.join(" ", cmd)));
+        if (pp <= 0 || tgAtDepth <= 0)
+            throw new IllegalStateException("llama-bench gave no prompt test at depth 0 or no generation test at depth " + depth + ":\n" + json);
+        Map<String, Double> m = new LinkedHashMap<>();
+        m.put("timeToFirstTokenSeconds", depth / pp + 1 / tgAtDepth);
+        m.put("genTokensPerSecond", tgAtDepth);
+        m.put("promptTokensPerSecond", pp);
+        return m;
+    }
+
+    /** One timed reply: seconds to its first token, and tokens per second after it (the first token's time is in ttft). */
+    record Reply(double ttftSeconds, double tokensPerSecond) {
+        /** Fails on a reply of fewer than two tokens, which has no generation to time, rather than average in a zero. */
+        static Reply of(long startNanos, long firstNanos, long endNanos, int generated) {
+            if (generated < 2 || firstNanos == 0)
+                throw new IllegalStateException("a reply of " + generated + " tokens has no generation to time");
+            return new Reply((firstNanos - startNanos) / 1e9, (generated - 1) / ((endNanos - firstNanos) / 1e9));
+        }
     }
 
     /** About n tokens of plain English: the prompt Fornax times its prompt processing on. */
@@ -176,7 +202,7 @@ public class Benchmarks {
         });
         rows.add(new Row("image", "Fornax", "DiffusionModel (stable-diffusion.cpp " + Machine.pin("stable-diffusion.cpp") + ")",
                 IMAGE_MODEL, settings, fornax.value(), fornax.peakBytes(),
-                "./gradlew :fornax-bench:benchmarks --args='" + out + " image'"));
+                "./gradlew :fornax-bench:benchmarks --args='" + out + " image' -Psd.cli=" + quoted(List.of(cmd.get(0))).get(0)));
     }
 
     // ---- helpers ----
@@ -221,7 +247,10 @@ public class Benchmarks {
     /** Peak GPU memory from amdgpu's sysfs counters (VRAM and GTT), sampled every 50 ms. */
     static final class GpuMemory {
         static <T> Measured<T> peakDuring(Callable<T> work) throws Exception {
-            List<Path> counters = counters();
+            return peakDuring(counters(Path.of("/sys/class/drm")), work);
+        }
+
+        static <T> Measured<T> peakDuring(List<Path> counters, Callable<T> work) throws Exception {
             if (counters.isEmpty()) return new Measured<>(work.call(), null);
             long base = used(counters);
             long[] peak = {base};
@@ -232,18 +261,20 @@ public class Benchmarks {
                     try { Thread.sleep(50); } catch (InterruptedException e) { return; }
                 }
             });
+            T value;
             try {
-                T value = work.call();
-                return new Measured<>(value, Math.max(0, peak[0] - base));
+                value = work.call();
             } finally {
                 running.set(false);
                 sampler.join();
             }
+            // Read after the join, so the sampler's last write is seen, and sample once more for work shorter than 50 ms.
+            return new Measured<>(value, Math.max(0, Math.max(peak[0], used(counters)) - base));
         }
 
-        static List<Path> counters() {
+        static List<Path> counters(Path drm) {
             List<Path> out = new ArrayList<>();
-            try (var cards = Files.newDirectoryStream(Path.of("/sys/class/drm"), "card[0-9]*")) {
+            try (var cards = Files.newDirectoryStream(drm, "card[0-9]*")) {
                 for (Path c : cards) for (String f : List.of("mem_info_vram_used", "mem_info_gtt_used")) {
                     Path p = c.resolve("device").resolve(f);
                     if (Files.isReadable(p)) out.add(p);
@@ -281,8 +312,10 @@ public class Benchmarks {
         }
 
         /** The engine's commit from native/engines.properties, short. */
-        static String pin(String engine) {
-            String v = firstMatch(Path.of("native/engines.properties"), java.util.regex.Pattern.quote(engine) + "\\.commit=(\\w+)");
+        static String pin(String engine) { return pin(Path.of("native/engines.properties"), engine); }
+
+        static String pin(Path properties, String engine) {
+            String v = firstMatch(properties, java.util.regex.Pattern.quote(engine) + "\\.commit=(\\w+)");
             return v == null ? "?" : v.substring(0, Math.min(10, v.length()));
         }
 

@@ -64,7 +64,7 @@
             "—",
             "12.0 GB"
           ],
-          "command": "sd-cli --diffusion-model <flux-2-klein-base-4b-fp8.safetensors> --vae <flux2-vae.safetensors> --llm <qwen_3_4b.safetensors> -p '...' -W 768 -H 768 --steps 12 --cfg-scale 4.0 -s 7"
+          "command": "sd-cli --diffusion-model <flux-2-klein-base-4b-fp8.safetensors> --vae <flux2-vae.safetensors> --llm <qwen_3_4b.safetensors> -p 'a brick kiln at dusk, warm light, a potter loading bowls' -W 768 -H 768 --steps 12 --cfg-scale 4.0 -s 7"
         },
         {
           "runner": "Fornax",
@@ -106,7 +106,7 @@
             "17.9 s",
             "14.1 s"
           ],
-          "command": "./gradlew :fornax-bench:bench --args='out/bench acestep'"
+          "command": "./gradlew :fornax-bench:bench --args='out/bench acestep'   # ComfyUI on 127.0.0.1:8188"
         },
         {
           "runner": "ComfyUI",
@@ -126,7 +126,7 @@
             "64.2 s",
             "57.3 s"
           ],
-          "command": "./gradlew :fornax-bench:bench --args='out/bench yue2'"
+          "command": "./gradlew :fornax-bench:bench --args='out/bench yue2'   # ComfyUI on 127.0.0.1:8188"
         }
       ]
     }
