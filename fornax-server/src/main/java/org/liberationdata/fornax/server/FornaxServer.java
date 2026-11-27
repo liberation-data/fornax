@@ -111,6 +111,8 @@ public final class FornaxServer implements AutoCloseable {
     private final long maxBody;
     /** The request bodies held at once, in KB: past it, a request is answered 503 rather than buffered too. */
     private final java.util.concurrent.Semaphore buffering;
+    /** All of {@link #buffering}'s room, in KB. */
+    private final int bufferingKb;
     /** The KB of {@link #buffering} each request in hand holds, given back when it is answered. */
     private final Map<HttpExchange, Integer> held = new java.util.concurrent.ConcurrentHashMap<>();
     private final Runnable warm;
@@ -129,7 +131,8 @@ public final class FornaxServer implements AutoCloseable {
         if (b.maxBufferedBytes < b.maxBodyBytes)
             throw new IllegalArgumentException("maxBufferedBytes (" + b.maxBufferedBytes + ") must be at least maxBodyBytes ("
                     + b.maxBodyBytes + "), or a body that large could never be taken");
-        this.buffering = new java.util.concurrent.Semaphore((int) Math.min(Integer.MAX_VALUE, kb(b.maxBufferedBytes)));
+        this.bufferingKb = (int) Math.min(Integer.MAX_VALUE, kb(b.maxBufferedBytes));
+        this.buffering = new java.util.concurrent.Semaphore(bufferingKb);
         if (b.engines != null) {
             this.engines = b.engines;
             this.warm = () -> {};
@@ -617,6 +620,9 @@ public final class FornaxServer implements AutoCloseable {
     }
 
     private static long kb(long bytes) { return (bytes + 1023) >> 10; }
+
+    /** The request body held now, in KB, across every request in hand: for tests, to wait on rather than on time. */
+    int bufferedKb() { return bufferingKb - buffering.availablePermits(); }
 
     private ApiError tooLarge() {
         return new ApiError(413, "invalid_request_error", "the request is larger than " + maxBody / (1 << 20) + " MB", null, "request_too_large");

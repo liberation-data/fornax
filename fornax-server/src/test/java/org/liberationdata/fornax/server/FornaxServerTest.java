@@ -542,6 +542,15 @@ class FornaxServerTest {
         return s;
     }
 
+    /** Waits until the server holds {@code kb} of request body: the bodies sent are in hand, not just on their way. */
+    static void awaitBuffered(FornaxServer server, int kb) throws InterruptedException {
+        long end = System.nanoTime() + 10_000_000_000L;
+        while (server.bufferedKb() != kb) {
+            if (System.nanoTime() > end) fail("the server holds " + server.bufferedKb() + " KB of body, not " + kb);
+            Thread.sleep(5);
+        }
+    }
+
     /** A small request's status, sent until it is {@code want} (the server reads the bodies in hand as it gets them). */
     int statusOnceItIs(int port, int want) throws Exception {
         int got = 0;
@@ -558,6 +567,7 @@ class FornaxServerTest {
         try (var small = FornaxServer.builder().port(0).engines(engines).log(s -> {}).maxBodyBytes(mb).maxBufferedBytes(2L * mb).build().start()) {
             int port = small.port();
             Socket a = holding(port, "/v1/chat/completions", mb), b = holding(port, "/v1/chat/completions", mb);
+            awaitBuffered(small, 2 * (mb >> 10));
             assertEquals(503, statusOnceItIs(port, 503), "two 1 MB bodies fill 2 MB: the next is refused, not queued");
             var busy = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v1/chat/completions"))
                     .POST(HttpRequest.BodyPublishers.ofString("{\"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}")).build(),
@@ -578,6 +588,9 @@ class FornaxServerTest {
             // all of it came back, and no more: two bodies fill it again, and the next is refused again
             assertEquals(200, statusOnceItIs(port, 200));   // b's room is free (given back before its 400 went out)
             Socket c = holding(port, "/v1/embeddings", mb), d = holding(port, "/v1/audio/transcriptions", mb);
+            // Probe only once both hold their room: a probe sent sooner takes a KB of it, and on a slow machine c's or
+            // d's own hold can then find it short and be refused itself, leaving room the probes never fill.
+            awaitBuffered(small, 2 * (mb >> 10));
             assertEquals(503, statusOnceItIs(port, 503));
             c.close();
             d.close();
