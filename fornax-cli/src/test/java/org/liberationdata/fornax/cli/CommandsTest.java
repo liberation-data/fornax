@@ -176,6 +176,8 @@ class CommandsTest {
         assertEquals(deep, OutFile.choose(deep.toString(), tmp, "song.wav", ".wav"));
         assertTrue(Files.isDirectory(deep.getParent()));
         assertEquals(tmp.resolve("image-3.png"), OutFile.choose(tmp.toString(), Path.of("elsewhere"), "image.png", ".png"));   // a folder
+        assertEquals(tmp.resolve("new/speech.wav"), OutFile.choose(tmp.resolve("new") + "/", tmp, "speech.wav", ".wav"));   // a folder to make
+        assertTrue(Files.isDirectory(tmp.resolve("new")));
         var e = assertThrows(Args.UsageException.class, () -> OutFile.choose("speech.mp3", tmp, "speech.wav", ".wav"));
         assertEquals("--out speech.mp3: this writes a .wav file", e.getMessage());
     }

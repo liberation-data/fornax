@@ -30,7 +30,7 @@ final class Speak {
               --voice V            default the model's own first voice (Kokoro's af_heart); --list-voices for the others
               --list-voices        print the model's voices and stop
               --out FILE           where to write it (default speech.wav here, numbered rather than overwrite one;
-                                   a folder puts speech.wav in it)""";
+                                   a folder, or a name ending in /, puts speech.wav in it)""";
 
     static int run(Args a, FornaxHub hub, BufferedReader in, PrintStream out, PrintStream err) throws IOException {
         boolean list = a.has("list-voices");

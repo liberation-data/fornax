@@ -154,7 +154,7 @@ class PullTest {
         var ps = new PrintStream(out, true, StandardCharsets.UTF_8);
         var m = Models.fetch(REPO + ":Q8_0", org.liberationdata.fornax.hub.ModelSet.Kind.VISION, "see", true, hub(), ps, false);
         assertEquals(snapshot("tiny-Q8_0.gguf"), m.file("gguf"));
-        assertTrue(out.toString().contains("[fornax] downloading " + REPO + ":Q8_0: tiny-Q8_0.gguf from " + REPO), out.toString());
+        assertTrue(out.toString().contains("[fornax] downloading " + REPO + ":Q8_0\n"), out.toString());
         assertTrue(out.toString().contains("tiny-Q8_0.gguf  100%"), out.toString());   // fornax pull's progress line
 
         out.reset();   // then from the cache: no Hub, nothing said

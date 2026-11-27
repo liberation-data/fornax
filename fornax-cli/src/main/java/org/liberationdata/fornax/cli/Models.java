@@ -104,7 +104,7 @@ final class Models {
         var ref = ModelRef.tryParse(spec);
         if (ref.isPresent() && oneFile) {
             ModelSet m = hub.resolve(ref.get());   // from the cache when it's there, else the repo's file list
-            Map<String, Path> files = pulled(m, spec + ": " + m.parts().get(0).primary().file() + " from " + ref.get().repo(), hub, err, terminal);
+            Map<String, Path> files = pulled(m, spec, hub, err, terminal);
             if (!files.containsKey(role)) throw new Main.Failure(spec + " names " + m.parts().get(0).primary().file() + ", not "
                     + (kind == Kind.TRANSCRIPTION ? "a whisper.cpp model" : "a GGUF model"));
             return new Fetched(spec, null, files);

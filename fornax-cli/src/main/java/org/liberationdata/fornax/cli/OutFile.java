@@ -15,15 +15,17 @@ final class OutFile {
     private OutFile() {}
 
     /**
-     * {@code --out} as given (a file to write over, or a folder to put {@code fallback} in), else {@code fallback} in
-     * {@code dir}, numbered ({@code image-2.png}, ...) so as not to overwrite what an earlier run made.
+     * {@code --out} as given (a file to write over, or a folder, existing or ending in a slash, to put {@code fallback}
+     * in), else {@code fallback} in {@code dir}; numbered ({@code image-2.png}, ...) when put in a folder, so as not to
+     * overwrite what an earlier run made.
      *
      * @param ext the one extension the command writes, such as {@code ".png"}
      */
     static Path choose(String given, Path dir, String fallback, String ext) throws IOException {
         Path file;
         if (given == null) file = unused(dir.resolve(fallback));
-        else if (Files.isDirectory(Path.of(given))) file = unused(Path.of(given).resolve(fallback));
+        else if (Files.isDirectory(Path.of(given)) || given.endsWith("/") || given.endsWith(java.io.File.separator))
+            file = unused(Path.of(given).resolve(fallback));
         else file = Path.of(given);
         if (!file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(ext))
             throw new UsageException("--out " + given + ": this writes a " + ext + " file");

@@ -30,7 +30,7 @@ final class Image {
             A model that isn't downloaded yet is pulled first (see fornax list for sizes).
 
               --out FILE           where to write it (default image.png here, numbered rather than overwrite one;
-                                   a folder puts image.png in it)
+                                   a folder, or a name ending in /, puts image.png in it)
               --width N            default 1024, or the --ref image's; a multiple of 16
               --height N           default 1024, or the --ref image's; a multiple of 16
               --steps N            default 20

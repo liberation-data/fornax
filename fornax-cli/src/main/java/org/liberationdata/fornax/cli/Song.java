@@ -37,7 +37,7 @@ final class Song {
               --seconds N          length (default 30)
               --seed N             default random; the seed is printed, to make the same song again
               --out FILE           where to write it (default song.wav here, numbered rather than overwrite one;
-                                   a folder puts song.wav in it)""".formatted(Models.ids(Kind.SONG));
+                                   a folder, or a name ending in /, puts song.wav in it)""".formatted(Models.ids(Kind.SONG));
 
     /** A loaded song model: the one call song and test make of ACE-Step and YuE2 alike. */
     interface Singer extends AutoCloseable {
