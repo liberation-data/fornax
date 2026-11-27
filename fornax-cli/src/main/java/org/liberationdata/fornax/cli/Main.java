@@ -53,6 +53,7 @@ public final class Main {
             Map.entry("server", Server.USAGE), Map.entry("test", SmokeTest.USAGE), Map.entry("info", Info.USAGE));
 
     public static void main(String[] argv) {
+        Server.httpLimits();   // before any HTTP server class loads
         System.exit(run(argv, System.out, System.err));
     }
 

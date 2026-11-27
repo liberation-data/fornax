@@ -73,6 +73,12 @@ import java.util.function.Consumer;
  * that origin is allowed with {@link Builder#corsOrigin}; and with an {@link Builder#apiKey}, it refuses a request
  * without {@code Authorization: Bearer <key>}. Errors are OpenAI's: {@code {"error": {"message", "type", "param",
  * "code"}}} with the HTTP status.
+ *
+ * <p>Slow clients: the JDK HTTP server never times out a client that sends its request a byte at a time. Its limits
+ * are JVM-wide system properties, read when its classes load, so this class leaves them to the application: pass
+ * {@code -Dsun.net.httpserver.maxReqTime=120} (seconds to send a request) and {@code -Djdk.httpserver.maxConnections=512}
+ * to {@code java}, as {@code fornax server} sets them. Not {@code sun.net.httpserver.maxRspTime}, which would cut off
+ * a long stream.
  */
 public final class FornaxServer implements AutoCloseable {
     /** The port it listens on unless told otherwise. */
@@ -86,6 +92,10 @@ public final class FornaxServer implements AutoCloseable {
     private final Guard guard;
     private final Consumer<String> log;
     private final long maxBody;
+    /** The request bodies held at once, in KB: past it, a request is answered 503 rather than buffered too. */
+    private final java.util.concurrent.Semaphore buffering;
+    /** The KB of {@link #buffering} each request in hand holds, given back when it is answered. */
+    private final Map<HttpExchange, Integer> held = new java.util.concurrent.ConcurrentHashMap<>();
     private final Runnable warm;
     /** The chat generations running, which {@link #close} stops. */
     private final Set<Stopper> generating = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -96,7 +106,11 @@ public final class FornaxServer implements AutoCloseable {
         InetAddress address = InetAddress.getByName(b.host);
         this.guard = new Guard(address.isLoopbackAddress(), b.cors, b.apiKey);
         this.log = b.log;
-        this.maxBody = b.maxBodyBytes;
+        this.maxBody = Math.min(b.maxBodyBytes, Integer.MAX_VALUE - 8);   // an array's most
+        if (b.maxBufferedBytes < b.maxBodyBytes)
+            throw new IllegalArgumentException("maxBufferedBytes (" + b.maxBufferedBytes + ") must be at least maxBodyBytes ("
+                    + b.maxBodyBytes + "), or a body that large could never be taken");
+        this.buffering = new java.util.concurrent.Semaphore((int) Math.min(Integer.MAX_VALUE, kb(b.maxBufferedBytes)));
         if (b.engines != null) {
             this.engines = b.engines;
             this.warm = () -> {};
@@ -216,6 +230,8 @@ public final class FornaxServer implements AutoCloseable {
             status[0] = error(ex, ApiError.server(e.getMessage() != null ? e.getMessage() : e.toString()));
             if (!(e instanceof IOException)) log.accept("error in " + method + " " + path + ": " + e);
         } finally {
+            Integer kb = held.remove(ex);
+            if (kb != null) buffering.release(kb);
             ex.close();
             log.accept(String.format(Locale.ROOT, "%s %s %d %.2fs", method, path, status[0], (System.nanoTime() - t0) / 1e9));
         }
@@ -538,17 +554,38 @@ public final class FornaxServer implements AutoCloseable {
 
     private byte[] bytes(HttpExchange ex) throws IOException {
         String length = ex.getRequestHeaders().getFirst("Content-Length");
+        long declared = -1;
         if (length != null) {
-            try {
-                if (Long.parseLong(length.strip()) > maxBody) throw tooLarge();
-            } catch (NumberFormatException e) { throw ApiError.badRequest("a bad Content-Length", null); }
+            try { declared = Long.parseLong(length.strip()); }
+            catch (NumberFormatException e) { throw ApiError.badRequest("a bad Content-Length", null); }
+            if (declared > maxBody) throw tooLarge();
         }
         try (InputStream in = ex.getRequestBody()) {
-            byte[] b = in.readNBytes((int) Math.min(Integer.MAX_VALUE - 8, maxBody + 1));
-            if (b.length > maxBody) throw tooLarge();
-            return b;
+            if (declared >= 0) {   // the room for it all, before a byte is read
+                hold(ex, declared);
+                return in.readNBytes((int) declared);
+            }
+            var out = new ByteArrayOutputStream();   // chunked: the room for each piece as it comes
+            byte[] buf = new byte[64 << 10];
+            for (int n; (n = in.read(buf)) != -1; ) {
+                if (out.size() + (long) n > maxBody) throw tooLarge();
+                hold(ex, out.size() + (long) n);
+                out.write(buf, 0, n);
+            }
+            return out.toByteArray();
         }
     }
+
+    /** Takes room for {@code total} bytes of this request's body in all, or refuses it (503) when the server holds its fill. */
+    private void hold(HttpExchange ex, long total) {
+        int more = (int) (kb(total) - held.getOrDefault(ex, 0));
+        if (more <= 0) return;
+        if (!buffering.tryAcquire(more))
+            throw new ApiError(503, "server_error", "the server is busy with other requests; retry shortly", null, "server_busy");
+        held.merge(ex, more, Integer::sum);
+    }
+
+    private static long kb(long bytes) { return (bytes + 1023) >> 10; }
 
     private ApiError tooLarge() {
         return new ApiError(413, "invalid_request_error", "the request is larger than " + maxBody / (1 << 20) + " MB", null, "request_too_large");
@@ -568,7 +605,10 @@ public final class FornaxServer implements AutoCloseable {
     /** Sends the error, unless a reply has already started; returns the status. */
     private static int error(HttpExchange ex, ApiError e) {
         try {
-            if (ex.getResponseCode() == -1) json(ex, e.status, e.body());
+            if (ex.getResponseCode() == -1) {
+                if (e.status == 503) ex.getResponseHeaders().set("Retry-After", "1");
+                json(ex, e.status, e.body());
+            }
         } catch (IOException ignored) { /* the client has gone */ }
         return e.status;
     }
@@ -593,6 +633,7 @@ public final class FornaxServer implements AutoCloseable {
         private Consumer<String> log = logger();
         private final List<String> models = new ArrayList<>();
         private long maxBodyBytes = 64L << 20;
+        private long maxBufferedBytes = 256L << 20;
         private boolean allowDownloads;
         private Engines engines;
 
@@ -671,6 +712,19 @@ public final class FornaxServer implements AutoCloseable {
         public Builder maxBodyBytes(long bytes) {
             if (bytes <= 0) throw new IllegalArgumentException("maxBodyBytes must be more than 0, not " + bytes);
             this.maxBodyBytes = bytes;
+            return this;
+        }
+
+        /**
+         * The most request body held in memory at once, across every request in hand (default 256 MB; at least
+         * {@link #maxBodyBytes}). A request's body is read whole before it waits for its model, and kept until it is
+         * answered, so many large ones at once could fill the heap: past this, a request is answered
+         * {@code 503 server_busy} with {@code Retry-After} rather than queued (with a {@code Content-Length},
+         * before any of its body is read).
+         */
+        public Builder maxBufferedBytes(long bytes) {
+            if (bytes <= 0) throw new IllegalArgumentException("maxBufferedBytes must be more than 0, not " + bytes);
+            this.maxBufferedBytes = bytes;
             return this;
         }
 

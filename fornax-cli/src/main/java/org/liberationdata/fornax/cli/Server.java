@@ -50,6 +50,20 @@ final class Server {
             curl -s localhost:%d/v1/chat/completions -d '{"messages":[{"role":"user","content":"Hi"}]}'"""
             .formatted(FornaxServer.EMBEDDING_MODEL, FornaxServer.DEFAULT_PORT, FornaxServer.DEFAULT_PORT);
 
+    /**
+     * The JDK HTTP server's limits on slow clients, which it reads once per JVM, when its classes load, so they are set
+     * as the {@code fornax} command starts ({@link Main#main}), not by the library: a client gets 120 seconds to send its
+     * request (headers and body), and the server takes 512 connections at once, a dribbling client otherwise holding a
+     * thread and a connection forever. No limit on answering ({@code sun.net.httpserver.maxRspTime}): that clock runs
+     * from the request read to the reply's end, so it would cut off a long stream, or a request waiting for a model to
+     * load. A {@code -D} in {@code FORNAX_OPTS} or {@code JAVA_OPTS} wins.
+     */
+    static final Map<String, String> HTTP_LIMITS = Map.of("sun.net.httpserver.maxReqTime", "120", "jdk.httpserver.maxConnections", "512");
+
+    static void httpLimits() {
+        HTTP_LIMITS.forEach((k, v) -> { if (System.getProperty(k) == null) System.setProperty(k, v); });
+    }
+
     static int run(Args a, FornaxHub hub, PrintStream out, PrintStream err) throws IOException {
         if (!a.positional().isEmpty()) throw new UsageException("give models with -m (fornax server -m qwen3-4b), not " + a.positional());
         int port = a.intOption("port", FornaxServer.DEFAULT_PORT);

@@ -463,6 +463,76 @@ class FornaxServerTest {
         }
     }
 
+    /** A request whose headers say a body of {@code length} is coming, and half of it, so the server holds room for it all. */
+    static Socket holding(int port, String path, int length) throws Exception {
+        Socket s = new Socket(InetAddress.getLoopbackAddress(), port);
+        s.setSoTimeout(5000);
+        OutputStream out = s.getOutputStream();
+        out.write(("POST " + path + " HTTP/1.1\r\nHost: 127.0.0.1:" + port + "\r\nContent-Length: " + length + "\r\n\r\n")
+                .getBytes(StandardCharsets.UTF_8));
+        out.write(new byte[length / 2]);
+        out.flush();
+        return s;
+    }
+
+    /** A small request's status, sent until it is {@code want} (the server reads the bodies in hand as it gets them). */
+    int statusOnceItIs(int port, int want) throws Exception {
+        int got = 0;
+        for (int i = 0; i < 300 && got != want; i++) {
+            if (i > 0) Thread.sleep(10);
+            got = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v1/embeddings"))
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"input\": \"a\"}")).build(), HttpResponse.BodyHandlers.discarding()).statusCode();
+        }
+        return got;
+    }
+
+    @Test void requestBodiesHeldAtOnceAreBounded() throws Exception {
+        int mb = 1 << 20;
+        try (var small = FornaxServer.builder().port(0).engines(engines).log(s -> {}).maxBodyBytes(mb).maxBufferedBytes(2L * mb).build().start()) {
+            int port = small.port();
+            Socket a = holding(port, "/v1/chat/completions", mb), b = holding(port, "/v1/chat/completions", mb);
+            assertEquals(503, statusOnceItIs(port, 503), "two 1 MB bodies fill 2 MB: the next is refused, not queued");
+            var busy = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v1/chat/completions"))
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}")).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(503, busy.statusCode());
+            assertEquals("1", busy.headers().firstValue("Retry-After").orElseThrow());
+            assertEquals("server_busy", get(json(busy), "error", "code"));
+            assertEquals("server_error", get(json(busy), "error", "type"));
+
+            a.close();   // a client gone mid-body: its room comes back
+            assertEquals(200, statusOnceItIs(port, 200));
+            OutputStream out = b.getOutputStream();   // a body that ends, but isn't JSON: a 400, and its room back
+            out.write(new byte[mb - mb / 2]);
+            out.flush();
+            assertTrue(response(new java.io.BufferedInputStream(b.getInputStream()))[0].contains(" 400 "));
+            b.close();
+
+            // all of it came back, and no more: two bodies fill it again, and the next is refused again
+            Socket c = holding(port, "/v1/embeddings", mb), d = holding(port, "/v1/audio/transcriptions", mb);
+            assertEquals(503, statusOnceItIs(port, 503));
+            c.close();
+            d.close();
+            assertEquals(200, statusOnceItIs(port, 200));
+
+            // a body sent in many small chunks holds its size, not a KB a chunk (4000 of them would be past 2 MB)
+            String json = "{\"input\": \"a\"" + " ".repeat(800_000) + "}";
+            var chunked = new StringBuilder("POST /v1/embeddings HTTP/1.1\r\nHost: 127.0.0.1:" + port + "\r\nTransfer-Encoding: chunked\r\n\r\n");
+            for (int i = 0; i < json.length(); i += 200) {
+                String piece = json.substring(i, Math.min(json.length(), i + 200));
+                chunked.append(Integer.toHexString(piece.length())).append("\r\n").append(piece).append("\r\n");
+            }
+            try (Socket e = new Socket(InetAddress.getLoopbackAddress(), port)) {
+                e.setSoTimeout(5000);
+                e.getOutputStream().write(chunked.append("0\r\n\r\n").toString().getBytes(StandardCharsets.UTF_8));
+                String[] r = response(new java.io.BufferedInputStream(e.getInputStream()));
+                assertTrue(r[0].contains(" 200 "), r[0] + r[1]);
+            }
+            assertThrows(IllegalArgumentException.class, () -> FornaxServer.builder().port(0).engines(engines).maxBodyBytes(2L * mb)
+                    .maxBufferedBytes(mb).build(), "a body the limit allows must fit");
+        }
+    }
+
     @Test void aModelsOwnToolCallIdIsKept() {
         Map<String, Object> message = org.liberationdata.fornax.server.Json.map(org.liberationdata.fornax.Json.parse(
                 "{\"tool_calls\": [{\"id\": \"Ab3dE6gH9\"}, {\"id\": \"\"}, {\"id\": \"call_12\"}]}"));
@@ -482,6 +552,7 @@ class FornaxServerTest {
         assertThrows(IllegalArgumentException.class, () -> b.budgetBytes(0));
         assertThrows(IllegalArgumentException.class, () -> b.contextSize(-1));
         assertThrows(IllegalArgumentException.class, () -> b.maxBodyBytes(0));
+        assertThrows(IllegalArgumentException.class, () -> b.maxBufferedBytes(0));
         assertThrows(IllegalArgumentException.class, () -> b.idleTimeout(java.time.Duration.ZERO));
         b.idleTimeout(null).contextSize(0).budgetBytes(1).maxBodyBytes(1);   // never unload; the model's own context
     }

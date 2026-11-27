@@ -143,7 +143,8 @@ fornax server [-m MODEL]... [options]
 ```
 
 `FornaxServer.builder()` has the same settings, plus the hub to download with, a download progress listener, a
-log line consumer and the largest request body (`maxBodyBytes`).
+log line consumer, the largest request body (`maxBodyBytes`) and the most request body held at once
+(`maxBufferedBytes`).
 
 ## Limits
 
@@ -156,6 +157,25 @@ for the body):
 - images: 4 megapixels each, 8 a request, 100 steps
 - speech: 4096 characters
 - transcription: a WAV at 8 to 384 kHz (the body limit is about 35 minutes of 16 kHz 16-bit mono)
+
+A request's body is read whole before it waits for its model, and kept until it is answered. So that many at once
+can't fill the heap, the bodies held at once are limited to 256 MB in all (`maxBufferedBytes`, at least
+`maxBodyBytes`): past that, a request is answered 503 (`server_busy`, with `Retry-After: 1`) rather than queued, and
+the OpenAI clients retry it.
+
+A client that sends its request slowly, a byte at a time, would hold a connection and a thread for as long as it
+liked. `fornax server` gives a client 120 seconds to send its request, headers and body, and takes 512 connections at
+once. These are the JDK HTTP server's own settings, which it reads once per JVM, so `FornaxServer` doesn't set them
+for an application it runs in. To set them in yours, pass them to `java` (or set them before the first HTTP server is
+made); for `fornax server`, a `-D` in `FORNAX_OPTS` overrides its values:
+
+```text
+java -Dsun.net.httpserver.maxReqTime=120 -Djdk.httpserver.maxConnections=512 ...
+FORNAX_OPTS=-Dsun.net.httpserver.maxReqTime=600 fornax server -m qwen3-4b
+```
+
+Leave `sun.net.httpserver.maxRspTime` unset: its clock runs from the request's end to the reply's, so it would cut
+off a long stream, or a request waiting for a model to load.
 
 ## Who may call it
 
