@@ -38,6 +38,7 @@ Package `org.liberationdata.fornax`. The engine modules depend on it.
 | `StreamOverflowException` | what a streaming subscriber gets when it falls a whole buffer behind, and the generation stops |
 | `Vectors` | search over embeddings in memory: `topK(query, vectors, k)` (by cosine), `cosine`, `dot`, `normalize`, `rank(scores)`. See [Embeddings and reranking](/docs/guides/embeddings/) |
 | `Scored` | an item's `index` and `score`; `BEST_FIRST` |
+| `http.EventStream`, `http.Loopback` | the server-sent-events writer (with its keep-alives) and the Host check that fornax-server and fornax-studio-server share. For those servers, not for applications: they may change in any release |
 
 ## fornax-llama
 

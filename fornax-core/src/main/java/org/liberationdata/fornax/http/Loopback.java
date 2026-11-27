@@ -7,6 +7,8 @@ import java.util.regex.Pattern;
  * The Host check shared by fornax-server and fornax-studio-server. A server bound to loopback is still reachable from
  * the web pages open in the user's browser, through DNS rebinding: a page's own name is pointed at 127.0.0.1, and its
  * requests carry that name as their Host. Answering only a Host that is a loopback address (or localhost) refuses them.
+ *
+ * <p>For Fornax's own servers, not an API for applications: it may change in any release.
  */
 public final class Loopback {
     /** Any address in 127.0.0.0/8, all of it loopback (a name can't be rebound to a literal address). */

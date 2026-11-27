@@ -23,6 +23,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * and no one else's.
  *
  * <p>A write that fails means the client has gone: the stream is closed to writes from then on, and onGone runs, once.
+ *
+ * <p>For Fornax's own servers, not an API for applications: it may change in any release.
  */
 public final class EventStream implements AutoCloseable {
     private static final ScheduledExecutorService TIMER = Executors.newSingleThreadScheduledExecutor(r -> {
