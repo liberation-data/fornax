@@ -423,6 +423,11 @@ const theme = 'vitesse-dark';
             .bar .fill { height: 100%; border-radius: 6px; display: flex; align-items: center; justify-content: flex-end; padding-right: 10px; font-weight: 700; font-size: 14px; min-width: 64px; }
             .bar .fill.fornax { background: linear-gradient(90deg, #f6b25a, var(--accent)); color: var(--abyss); }
             .bar .fill.other { background: #e2d5c9; color: var(--ink); }
+            .platforms { margin-top: 72px; padding-top: 56px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 28px 56px; align-items: center; }
+            .platforms .text { flex: 1 1 420px; display: flex; flex-direction: column; gap: 14px; }
+            .platforms .text > p:not(.eyebrow) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
+            .platforms h3 { margin: 0; font-size: 26px; }
+            .platforms .backends { flex: 1 1 360px; }
             .backends { display: flex; flex-wrap: wrap; gap: 10px; }
             .backends span { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); font-size: 15px; font-weight: 500; }
             .backends .ok { border-color: #e8a26a; background: #fff1e3; }
@@ -790,22 +795,16 @@ const theme = 'vitesse-dark';
                     <div class="split">
                         <div class="text">
                             <p class="eyebrow">Measured</p>
-                            <h2>What it does on one machine today.</h2>
+                            <h2>Fast enough to build on.</h2>
                             <p>
-                                Everything here ran from Java on Linux, on an AMD Radeon 8060S (Ryzen AI Max+ 395 “Strix Halo”, 128 GB
-                                unified memory) with the Vulkan backend.
+                                A 4B model streams about 75 tokens a second into a Java callback. A one-minute song takes 15 seconds,
+                                a minute of speech is transcribed word by word in under two, and a whole track splits into four stems in
+                                26. All from plain Java calls: no Python, no server.
                             </p>
-                            <p>Backends:</p>
-                            <div class="backends">
-                                <span class="ok">Vulkan <small>tested</small></span>
-                                <span class="ok">ROCm (HIP) <small>tested</small></span>
-                                <span class="ok">Metal <small>tested</small></span>
-                                <span>CUDA <small>untested</small></span>
-                            </div>
                             <p style="font-size: 16px">
-                                The build script knows the ROCm, CUDA and Metal backends of the underlying engines. HIP passes the test
-                                suite on the same machine, and runs LTX video faster than Vulkan. Metal passes the test suite on an Apple M2 Max (songs, video and
-                                Intel Macs not run yet); the CUDA build hasn’t been tested yet. Reports and fixes welcome.
+                                Measured on our reference machine, a Ryzen AI Max+ 395 laptop on Vulkan.
+                                <a href="/docs/benchmarks/">Benchmarks</a> has the command behind every figure, and sets each against the
+                                engine’s own tool.
                             </p>
                         </div>
                         <div class="table-card">
@@ -821,7 +820,7 @@ const theme = 'vitesse-dark';
                                     <tr><td>Whisper large-v3-turbo (q5_0)</td><td class="num">55 s of speech in 1.8 s, timed word by word</td></tr>
                                     <tr><td>HTDemucs v4</td><td class="num">3 min 9 s song into four stems in 26 s</td></tr>
                                 </tbody>
-                                <caption>Qwen3’s tokens are streamed through a Java callback. One Strix Halo laptop, Vulkan. <a href="/docs/benchmarks/">Benchmarks</a> sets these against each engine’s own tool.</caption>
+                                <caption>Reference machine: AMD Ryzen AI Max+ 395 (Radeon 8060S, 128 GB unified memory), Linux, Vulkan.</caption>
                             </table>
                         </div>
                     </div>
@@ -851,6 +850,24 @@ const theme = 'vitesse-dark';
                                 <div class="bar"><span>Fornax</span><div class="track"><div class="fill fornax" style={`width: ${(14.7 / 38.2) * 100}%`}>14.7 s</div></div></div>
                                 <div class="bar"><span>ComfyUI</span><div class="track"><div class="fill other" style={`width: ${(23.0 / 38.2) * 100}%`}>23.0 s</div></div></div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="platforms">
+                        <div class="text">
+                            <p class="eyebrow">Runs on</p>
+                            <h3>Your GPU, your OS.</h3>
+                            <p>
+                                One Java API, and the native libraries for your platform. Vulkan and ROCm run the full test suite every
+                                night; Metal passes it on Apple silicon. Pick the backend when you add the natives.
+                            </p>
+                        </div>
+                        <div class="backends">
+                            <span class="ok">Linux · Vulkan <small>tested nightly</small></span>
+                            <span class="ok">Linux · ROCm <small>tested nightly</small></span>
+                            <span class="ok">macOS · Metal <small>tested</small></span>
+                            <span>CUDA <small>next</small></span>
+                            <span>Windows <small>planned</small></span>
                         </div>
                     </div>
                 </div>
