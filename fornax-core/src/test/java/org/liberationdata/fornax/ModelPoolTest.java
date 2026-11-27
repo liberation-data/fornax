@@ -103,4 +103,46 @@ class ModelPoolTest {
             assertEquals(2, loads.get());
         }
     }
+
+    /** Two different models loading at once: the second counts the first's size, and so makes room for both (#68). */
+    @Test
+    void aModelBeingLoadedCountsAgainstTheBudget() throws Exception {
+        List<String> log = java.util.Collections.synchronizedList(new ArrayList<>());
+        try (var pool = new ModelPool(100, null)) {
+            pool.acquire("idle", 40, () -> new Fake("idle", log)).close();
+            var bLoading = new CountDownLatch(1);
+            var release = new CountDownLatch(1);
+            Thread b = Thread.ofPlatform().start(() -> {
+                try (var l = pool.acquire("b", 40, () -> {
+                    bLoading.countDown();
+                    try { release.await(); } catch (InterruptedException e) { throw new IllegalStateException(e); }
+                    return new Fake("b", log);
+                })) { assertNotNull(l.model()); }
+            });
+            try {
+                assertTrue(bLoading.await(10, TimeUnit.SECONDS));
+                // b's 40 is on its way: 40 idle + 40 b + 40 c is over 100, so the idle model goes before c loads
+                try (var c = pool.acquire("c", 40, () -> new Fake("c", log))) {
+                    assertTrue(log.contains("close idle"), log.toString());
+                }
+            } finally {
+                release.countDown();   // even on failure: the pool can't close while b holds its slot
+                b.join(10_000);
+            }
+            assertEquals(80, pool.loadedBytes());
+        }
+    }
+
+    @Test
+    void aFailedLoadGivesBackItsReservation() {
+        List<String> log = new ArrayList<>();
+        try (var pool = new ModelPool(100, null)) {
+            pool.acquire("idle", 40, () -> new Fake("idle", log)).close();
+            assertThrows(IllegalStateException.class, () -> pool.acquire("broken", 50, () -> { throw new IllegalStateException("no"); }));
+            // nothing held for the failed load: 40 idle + 60 fits
+            pool.acquire("c", 60, () -> new Fake("c", log)).close();
+            assertEquals(List.of("load idle", "load c"), log);
+            assertEquals(100, pool.loadedBytes());
+        }
+    }
 }
