@@ -1,0 +1,148 @@
+---
+title: Set up on your platform
+description: Fornax step by step for each platform - Linux with Vulkan or ROCm, macOS with Metal, NVIDIA with CUDA - and where Windows stands.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Find your machine below and follow its steps. On Linux with any GPU, and on any Mac, you add Fornax from Maven Central
+and you're done. ROCm and CUDA mean building the engines once for your GPU.
+
+| Platform | GPU | Natives | State |
+|---|---|---|---|
+| [Linux, Vulkan](#linux-amd-intel-or-nvidia-with-vulkan) | AMD, Intel, NVIDIA | published | tested nightly |
+| [Linux, ROCm](#linux-amd-with-rocm) | AMD | build them yourself | tested nightly |
+| [macOS, Metal](#macos-with-metal) | Apple silicon, Intel Macs | published | tested |
+| [NVIDIA, CUDA](#nvidia-with-cuda) | NVIDIA | build them yourself | not tested yet |
+| [Windows](#windows) | | | planned |
+
+Just want to try the models, with no code? [Fornax Studio](/docs/getting-started/#fornax-studio) installs on Linux
+and macOS.
+
+## Linux: AMD, Intel or NVIDIA, with Vulkan
+
+The quickest path, and the one to pick unless you need ROCm or CUDA. Linux x86-64 with glibc 2.39 or newer (Ubuntu
+24.04, Fedora 40 and later).
+
+<Steps>
+
+1. **Check the GPU driver.** Desktop Fedora and Ubuntu ship it. `vulkaninfo --summary` should list your GPU; if it
+   doesn't, follow [Installing GPU drivers](/docs/gpu-drivers/).
+
+2. **Add Fornax to your build**: an engine module and the Linux natives jar. With Gradle:
+
+   ```kotlin
+   dependencies {
+       implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
+       implementation("org.fornax4j:fornax-llama")
+       runtimeOnly("org.fornax4j:fornax-natives-linux-x86_64-vulkan")
+   }
+   ```
+
+   Maven, and every module, are in [Maven and Gradle](/docs/maven-and-gradle/).
+
+3. **Run on Java 22 or newer**, with `--enable-native-access=ALL-UNNAMED`. The first call unpacks the natives jar
+   into `~/.cache/fornax`.
+
+</Steps>
+
+## Linux: AMD with ROCm
+
+ROCm (HIP) is faster than Vulkan for video on AMD, and has no compute timeout for long jobs. Its libraries are built
+for your GPU's architecture and link the ROCm you installed, so you build Fornax's engines once on your machine. It
+passes the test suite on a Radeon 8060S (one rerank score drifts, [#80](https://github.com/liberation-data/fornax/issues/80)).
+
+<Steps>
+
+1. **Install ROCm 7 and the build tools.** On Fedora, ROCm comes from Fedora itself:
+
+   ```sh
+   sudo dnf install rocm-hip-devel hipblas-devel rocblas-devel rocminfo cmake ninja-build gcc-c++ git
+   ```
+
+   On Ubuntu, add AMD's ROCm repository with [AMD's install guide](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/),
+   then `sudo apt install rocm-hip-sdk cmake ninja-build g++ git`.
+
+2. **Let your user reach the GPU, and find its architecture.**
+
+   ```sh
+   sudo usermod -aG render,video $USER     # then log out and back in
+   rocminfo | grep -m1 -o 'gfx[0-9a-f]*'   # gfx1151 is a Radeon 8060S; gfx1100 a Radeon RX 7900
+   ```
+
+3. **Build the engines at the release you use.** About 15 minutes; it writes seven libraries (around 700 MB) to
+   `build/native/linux-x86_64-hip/`.
+
+   ```sh
+   git clone https://github.com/liberation-data/fornax.git && cd fornax
+   git checkout v0.2.0                     # the same version as your Fornax dependencies
+   HIP_ARCH=gfx1100 native/build.sh hip    # your architecture from step 2
+   ```
+
+4. **Add the engine modules, without a natives jar,** and point Fornax at your libraries:
+
+   ```kotlin
+   dependencies {
+       implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
+       implementation("org.fornax4j:fornax-llama")
+   }
+   ```
+
+   ```sh
+   java --enable-native-access=ALL-UNNAMED \
+        -Dfornax.library.path=/path/to/fornax/build/native/linux-x86_64-hip -jar your-app.jar
+   ```
+
+   `FORNAX_LIBRARY_PATH` works too. Either one takes priority over a natives jar on the classpath.
+
+5. **Check it found the GPU.** If ROCm finds no GPU, Fornax stops with an error that says what to check
+   (`rocminfo`, the `render` group), rather than running on the CPU.
+
+</Steps>
+
+[Choosing a GPU backend](/docs/guides/gpu-backends/#hip-rocm) has what Fornax has learned on HIP so far.
+
+## macOS, with Metal
+
+macOS 13.3 or newer, on Apple silicon or Intel. Nothing to install: Metal is part of macOS. Fornax passes its test
+suite on an Apple M2 Max.
+
+<Steps>
+
+1. **Add Fornax to your build**, with the natives jar for your Mac:
+
+   ```kotlin
+   dependencies {
+       implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
+       implementation("org.fornax4j:fornax-llama")
+       runtimeOnly("org.fornax4j:fornax-natives-macos-aarch64-metal")   // macos-x86_64-metal on an Intel Mac
+   }
+   ```
+
+2. **Run on Java 22 or newer**, with `--enable-native-access=ALL-UNNAMED`.
+
+</Steps>
+
+## NVIDIA, with CUDA
+
+NVIDIA GPUs run Fornax through Vulkan today, with the published Linux natives: start [there](#linux-amd-intel-or-nvidia-with-vulkan).
+A CUDA build is possible but hasn't been tested yet; reports are welcome.
+
+<Steps>
+
+1. **Install the CUDA toolkit** (with cuBLAS), with `CUDA_PATH` pointing at it, and the build tools from the ROCm
+   steps above.
+
+2. **Build and point Fornax at the libraries**, as for ROCm:
+
+   ```sh
+   git checkout v0.2.0 && native/build.sh cuda
+   java --enable-native-access=ALL-UNNAMED -Dfornax.library.path=$PWD/build/native/linux-x86_64-cuda -jar your-app.jar
+   ```
+
+</Steps>
+
+## Windows
+
+Fornax doesn't run on Windows yet. The Java side is ready; the native build and a Windows natives jar are planned in
+[#83](https://github.com/liberation-data/fornax/issues/83), starting with Vulkan.
