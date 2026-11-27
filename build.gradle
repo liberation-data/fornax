@@ -316,10 +316,15 @@ project(':fornax-cli') {
         systemProperty 'fornax.library.path', nativeDir.absolutePath
         standardInput = System.in
     }
-    // The launcher as an installer renders it, run against the installed distribution (see LauncherTest)
+    // The launcher as an installer renders it, run against the installed distribution (see LauncherTest), and
+    // install.sh run against the distribution's zip (see InstallScriptTest)
     tasks.named('test') {
-        dependsOn 'installDist'
+        dependsOn 'installDist', 'distZip'
         systemProperty 'fornax.cli.install', layout.buildDirectory.dir('install/fornax-cli').get().asFile.absolutePath
+        systemProperty 'fornax.cli.distZip', tasks.named('distZip', Zip).get().archiveFile.get().asFile.absolutePath
+        systemProperty 'fornax.cli.version', project.version.toString()
+        systemProperty 'fornax.install.script', rootProject.file('website/public/install.sh').absolutePath
+        inputs.file(rootProject.file('website/public/install.sh'))
         systemProperty 'fornax.jbang.catalog', rootProject.file('jbang-catalog.json').absolutePath
         inputs.file(rootProject.file('jbang-catalog.json'))
     }

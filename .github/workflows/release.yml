@@ -6,6 +6,8 @@
 # approve it in the `release` environment. Run by hand for a dry run, which builds
 # and signs every jar exactly as a release does, and stops before the upload; the signed repository is left as an
 # artifact to look through. A run by hand that isn't a dry run must be on a v* tag.
+# A release also gets, attached on GitHub, the fornax command's distribution for each platform and a SHA256SUMS of
+# them, which install.sh (fornax4j.org/install.sh) installs from; a dry run keeps them as an artifact.
 # After a release, verify-central waits for repo1.maven.org to serve it and builds samples/hello-fornax from there.
 #
 # NO SECRETS WHERE THIRD-PARTY CODE BUILDS. The natives job builds llama.cpp, stable-diffusion.cpp, acestep.cpp,
@@ -296,6 +298,40 @@ jobs:
           grep -q 'org.fornax4j:fornax-natives-linux-x86_64-vulkan:jar' "$RUNNER_TEMP/maven-deps.txt" \
             || { echo "::error::Maven took no natives jar from fornax-natives"; cat "$RUNNER_TEMP/maven-deps.txt"; exit 1; }
 
+      # The fornax command as a download, for install.sh (website/public/install.sh, served as fornax4j.org/install.sh):
+      # per platform, the CLI's distribution with only that platform's natives jar in lib/, and SHA256SUMS over them.
+      # release-assets attaches them to the GitHub release.
+      - name: Build the fornax-cli downloads
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/cli-dist"
+          mkdir -p "$out"
+          for p in linux-x86_64-vulkan macos-aarch64-metal; do
+            ./gradlew --no-daemon -q :fornax-cli:distZip -Pversion="$VERSION" -Pfornax.natives="$p" -Pfornax.natives.require=true
+            zip="fornax-cli-$VERSION-$p.zip"
+            cp "fornax-cli/build/distributions/fornax-cli-$VERSION.zip" "$out/$zip"
+            natives=$(unzip -Z1 "$out/$zip" | grep -o 'fornax-natives-[^/]*\.jar$' || true)
+            [ "$natives" = "fornax-natives-$p-$VERSION.jar" ] || { echo "::error::$zip should hold only fornax-natives-$p-$VERSION.jar, not:" $natives; exit 1; }
+          done
+          (cd "$out" && sha256sum fornax-cli-*.zip > SHA256SUMS && cat SHA256SUMS)
+          ls -l "$out"
+
+      # The Linux download, installed the way a user installs it, into a throwaway home, and run.
+      - name: Install it with install.sh
+        run: |
+          set -euo pipefail
+          home="$RUNNER_TEMP/install-home"
+          mkdir -p "$home"
+          HOME="$home" FORNAX_DIST_URL="file://$RUNNER_TEMP/cli-dist" FORNAX_VERSION="$VERSION" sh website/public/install.sh
+          "$home/.local/bin/fornax" --version | grep -Fx "fornax $VERSION"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fornax-cli-dist-${{ env.VERSION }}
+          path: ${{ runner.temp }}/cli-dist
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Keep the signed repository (dry run)
         if: env.DRY_RUN == 'true'
         uses: actions/upload-artifact@v7
@@ -320,6 +356,36 @@ jobs:
             echo "::notice::Fornax $VERSION is already on Maven Central; not uploading it again"; exit 0
           fi
           ./gradlew --no-daemon publishAndReleaseToMavenCentral -Pversion="$VERSION" -Pfornax.natives.require=true
+
+  # After the upload to Maven Central: the fornax-cli downloads and their SHA256SUMS, which install.sh fetches, onto
+  # the GitHub release. The only job that writes to the repository, and it runs no build.
+  release-assets:
+    name: Attach the fornax-cli downloads to v${{ needs.version.outputs.version }}
+    needs: [version, publish]
+    if: needs.version.outputs.dry_run != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: fornax-cli-dist-${{ env.VERSION }}
+          path: cli-dist
+
+      - name: Upload them
+        run: |
+          set -euo pipefail
+          # A run by hand on a v* tag may have no release to attach to.
+          if ! gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "::notice::no GitHub release v$VERSION to attach the fornax-cli downloads to"; exit 0
+          fi
+          (cd cli-dist && sha256sum -c SHA256SUMS)
+          gh release upload "v$VERSION" cli-dist/* --clobber
 
   # After a release: wait until Maven Central serves every artifact, then build the sample from Central alone, the
   # way a user would (built, not run: runners have no GPU to run it on).

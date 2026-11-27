@@ -25,6 +25,30 @@ fornax image flux2-klein "a brick kiln at dusk"      # like chat, downloads the 
   [jbang-catalog.json](https://github.com/liberation-data/fornax/blob/main/jbang-catalog.json), and run
   `org.fornax4j:fornax-cli`, which JBang can also run by those coordinates: `jbang org.fornax4j:fornax-cli:0.3.0 chat qwen3-4b`
   (add `--java 22+ -R--enable-native-access=ALL-UNNAMED`, as the aliases do).
+- **With install.sh** (from Fornax 0.3.0), on Linux x86_64 or an Apple-silicon Mac, for a machine with no JBang, such
+  as a server. It downloads the `fornax-cli` zip for your platform from the
+  [GitHub release](https://github.com/liberation-data/fornax/releases), checks it against the release's `SHA256SUMS`,
+  unpacks it into `~/.local/share/fornax` and links `~/.local/bin/fornax` to it. It needs no root and edits no shell
+  startup file: if `~/.local/bin` isn't on your `PATH`, it prints the line to add. Read it first, then run it:
+
+  ```sh
+  curl -fsSLO https://fornax4j.org/install.sh
+  less install.sh
+  sh install.sh
+  ```
+
+  Or in one line, if you trust it unread:
+
+  ```sh
+  curl -fsSL https://fornax4j.org/install.sh | sh
+  ```
+
+  `fornax` runs on Java 22 or newer (`FORNAX_JAVA`, `JAVA_HOME`, or `java` on `PATH`). The script installs no Java:
+  it checks for one, and if there is none it says how to get one (`sdk install java` with
+  [SDKMAN](https://sdkman.io), `jbang jdk install 25`, or your package manager). On Linux the engines need the Vulkan
+  loader and your GPU's Vulkan driver ([Installing GPU drivers](/docs/gpu-drivers/)). Run it again to update; `FORNAX_VERSION=0.3.0` installs that
+  release, and `FORNAX_HOME` and `FORNAX_BIN_DIR` move the two folders. To uninstall, delete `~/.local/share/fornax`
+  and `~/.local/bin/fornax`.
 - **With Fornax Studio** (coming in the next Fornax Studio release): choose **Install fornax command** from Studio's menu.
   Studio writes a `fornax` launcher into a folder on your `PATH` (`~/.local/bin` on Linux; `/usr/local/bin`, or
   `~/.local/bin`, on macOS). That `fornax` runs on Studio's own Java and engines, so it needs nothing else installed.
