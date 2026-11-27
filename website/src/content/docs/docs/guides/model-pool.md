@@ -42,7 +42,8 @@ Closing the pool unloads everything.
 
 - **A model loads on first `acquire` and stays loaded** after its lease closes.
 - **Room is made least recently used first.** Loading a model that would take the pool over its budget first unloads
-  idle models, the one used longest ago first.
+  idle models, the one used longest ago first. A model counts against the budget from the moment its load starts, so
+  two models loading at once make room for both.
 - **Models in use are never unloaded.** If the models in use alone are over the budget, the load goes ahead anyway:
   the budget is a target, not a hard limit.
 - **Idle models are unloaded in the background** once they have been idle longer than the timeout. Pass `null` for
