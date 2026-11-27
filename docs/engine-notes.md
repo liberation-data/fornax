@@ -53,10 +53,12 @@ surprises you.
   Vulkan (`sd_backend_is(backend, "Vulkan")`): HIP, CUDA and Metal have no 2 s job limit, and there the split would
   only change kernel choices (not bit-identical), add up to ~1.5 GB of peak memory on big layers and break Vulkan's
   int8 fusions for nothing. Setting either variable to a positive value turns that split on for any backend; `0`, a
-  negative or an unparsable value turns it off everywhere. The chunk count is capped at the row count.
+  negative or an unparsable value turns it off everywhere. The attention chunk count is capped at its query rows.
   Rows are independent (the int8 activations are quantized per row), so the output is the same: 512×320×49 and
   1024×640×49 clips came out bit-identical, frames and audio, with every split forced small (down to 128-row
-  feed-forward chunks) and with the defaults. At 1024×640×49 the defaults (two feed-forward chunks) left steps at
+  feed-forward chunks) and with the defaults. Only those budgets were checked: much smaller ones also chunk small
+  layers and the flash-attention auto probe, which can then take other kernels or the other attention path, so they
+  aren't guaranteed bit-identical. At 1024×640×49 the defaults (two feed-forward chunks) left steps at
   39.4 s against 40.2 s whole; forcing 6 feed-forward, 2 projection and 4 attention chunks made them 43.8 s. An
   `expand_graph` per attention chunk, as MiniMax-H3's head chunks use, cost 2 to 3 s a step, so the patch has none.
   The patch is to be proposed upstream. HIP has no such timeout (ROCm work goes through KFD user queues, which is why
