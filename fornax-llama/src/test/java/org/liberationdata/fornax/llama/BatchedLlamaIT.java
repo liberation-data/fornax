@@ -163,10 +163,27 @@ class BatchedLlamaIT {
         assertThrows(IllegalStateException.class, () -> m.chat(count, GREEDY));
     }
 
+    /**
+     * A slot that served another request is cleared before the next: alone in the batch, a greedy reply in a reused
+     * slot is the same as the first time, which stale cells or a stale sampler would change.
+     */
+    @Test void aReusedSlotAnswersAsAFreshOneDoes() {
+        try (LlamaModel one = new LlamaModel(path, -1, 1024, 2)) {
+            String first = one.chat(ask(QUESTIONS.get(0)), GREEDY).text();
+            one.chat(ask("Count from 1 to 100, one number per line, nothing else. /no_think"), GREEDY.withMaxTokens(120));
+            String again = one.chat(ask(QUESTIONS.get(0)), GREEDY).text();
+            assertEquals(first, again);
+        }
+    }
+
     @Test void slotsRefuseWhatIsntBatchedYet() {
         assertEquals(4, batched.slots());
         var img = new LlamaModel.Image(1, 1, new byte[3]);
         var e = assertThrows(IllegalStateException.class, () -> batched.chat(List.of(Message.user("what is this?", img)), GREEDY));
+        assertTrue(e.getMessage().contains("images aren't batched"), e.getMessage());
+        e = assertThrows(IllegalStateException.class, () -> batched.chatJson("{\"messages\":[]}", List.of(img), null));
+        assertTrue(e.getMessage().contains("images aren't batched"), e.getMessage());
+        e = assertThrows(IllegalStateException.class, () -> batched.complete("<__media__>", List.of(img), GREEDY, null));
         assertTrue(e.getMessage().contains("images aren't batched"), e.getMessage());
         assertThrows(IllegalArgumentException.class, () -> new LlamaModel(path, -1, 0, 2));
     }

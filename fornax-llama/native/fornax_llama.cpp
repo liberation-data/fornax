@@ -980,26 +980,32 @@ int fornax_llama_batch_step(fornax_llama * h, fornax_llama_piece_cb on_piece, fo
         if (s.i_batch < 0) continue;  // more prompt to go
         const int idx = s.i_batch;
         s.i_batch = -1;
-        llama_token tok;
-        if (s.session) {
-            tok = common_sampler_sample(s.chat_smpl, h->ctx, idx);
-            common_sampler_accept(s.chat_smpl, tok, true);
-        } else {
-            tok = llama_sampler_sample(s.raw_smpl, h->ctx, idx);
+        // As chat_json_impl does, a request whose grammar rejects a token, or whose output the chat parser can't
+        // read, fails alone: an exception must not cross the C boundary into the JVM.
+        try {
+            llama_token tok;
+            if (s.session) {
+                tok = common_sampler_sample(s.chat_smpl, h->ctx, idx);
+                common_sampler_accept(s.chat_smpl, tok, true);
+            } else {
+                tok = llama_sampler_sample(s.raw_smpl, h->ctx, idx);
+            }
+            if (llama_vocab_is_eog(h->vocab, tok)) { finish_slot(h, i, "stop", on_done, user); continue; }
+            s.generated++;
+            auto emit = [&](const char * p) { return on_piece ? on_piece(i, p, user) : 0; };
+            bool stop;
+            if (s.session) {
+                stop = chat_feed(h->vocab, *s.session, tok, s.raw, s.sent_content, emit);
+            } else {
+                std::string piece = common_token_to_piece(h->vocab, tok, true);
+                s.text += piece;
+                stop = emit(piece.c_str()) != 0;
+            }
+            if (stop) { finish_slot(h, i, "stop", on_done, user); continue; }
+            s.next = tok;
+        } catch (const std::exception & e) {
+            fail_slot(h, i, fail(std::string("chat: ") + e.what(), 7), on_done, user);
         }
-        if (llama_vocab_is_eog(h->vocab, tok)) { finish_slot(h, i, "stop", on_done, user); continue; }
-        s.generated++;
-        auto emit = [&](const char * p) { return on_piece ? on_piece(i, p, user) : 0; };
-        bool stop;
-        if (s.session) {
-            stop = chat_feed(h->vocab, *s.session, tok, s.raw, s.sent_content, emit);
-        } else {
-            std::string piece = common_token_to_piece(h->vocab, tok, true);
-            s.text += piece;
-            stop = emit(piece.c_str()) != 0;
-        }
-        if (stop) { finish_slot(h, i, "stop", on_done, user); continue; }
-        s.next = tok;
     }
     int busy = 0;
     for (const auto & s : h->slots) busy += s.busy ? 1 : 0;

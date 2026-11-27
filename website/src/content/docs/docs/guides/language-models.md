@@ -269,9 +269,10 @@ try (var llm = new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M", -1, 
 
 - Every method works as before, from any thread; up to `slots` requests run at once and the rest queue in arrival
   order.
-- Each request keeps its own options, seed, `json_schema` or tools, streaming and cancel. Cancelling one stops only
-  that one.
-- Each slot has its own `contextSize` tokens, so the context takes `slots` times the memory. A request that fills its
+- Each request keeps its own options, seed, `json_schema` or tools, and streaming. Cancelling a future stops only
+  that request; `cancel()` stops every running one.
+- Each slot has its own `contextSize` tokens (rounded up to a multiple of 256), so the context takes `slots` times
+  the memory. A request that fills its
   slot ends with `finish_reason` "length", whatever the others are doing; a prompt longer than a slot is refused.
 - A long prompt goes in alongside the running replies, a chunk a step, rather than stalling them.
 - Greedy replies can differ slightly from a model without slots, because a batch adds up the numbers in a different
