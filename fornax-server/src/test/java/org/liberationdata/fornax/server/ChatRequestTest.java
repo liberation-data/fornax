@@ -94,6 +94,24 @@ class ChatRequestTest {
         assertEquals("model", none.param);
     }
 
+    /** Formats ImageIO reads but the engine can't decode are refused by their header, as a non-image is. */
+    @Test void onlyTheFormatsTheEngineDecodesPass() {
+        for (String format : List.of("png", "jpeg", "gif", "bmp"))
+            assertEquals(12, ChatRequest.pixels(encoded(format, BufferedImage.TYPE_INT_RGB)), format);
+        for (String format : List.of("tiff", "wbmp")) {
+            ApiError e = assertThrows(ApiError.class, () -> ChatRequest.pixels(encoded(format, BufferedImage.TYPE_BYTE_BINARY)), format);
+            assertTrue(e.getMessage().contains("PNG, JPEG, GIF or BMP"), e.getMessage());
+        }
+    }
+
+    /** A 4 x 3 image in this ImageIO format, as base64. */
+    static String encoded(String format, int type) {
+        var out = new ByteArrayOutputStream();
+        try { assertTrue(ImageIO.write(new BufferedImage(4, 3, type), format, out), "no writer for " + format); }
+        catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
+        return Base64.getEncoder().encodeToString(out.toByteArray());
+    }
+
     /** A real PNG this size, as base64. */
     static String png(int w, int h) {
         var out = new ByteArrayOutputStream();

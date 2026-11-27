@@ -204,6 +204,24 @@ class FornaxServerTest {
         assertTrue(((String) get(last, "error", "message")).contains("the GPU fell over"), r.body());
     }
 
+    /** A 500 names the file that failed but not where it is: the caller doesn't learn the machine's directories. */
+    @Test void aServerErrorCutsLocalPathsToTheirFileNames() throws Exception {
+        engines.failure = new IllegalStateException("failed to load /home/someone/.cache/huggingface/hub/models--x/blobs/model.gguf: bad magic");
+        engines.failAfter = 0;
+        var r = post("/v1/chat/completions", "{\"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}");
+        assertEquals(500, r.statusCode());
+        assertEquals("failed to load model.gguf: bad magic", get(json(r), "error", "message"), r.body());
+    }
+
+    @Test void withoutPathsKeepsWhatIsntALocalPath() {
+        assertEquals("model.gguf", ApiError.withoutPaths("/a/b/model.gguf"));
+        assertEquals("open model.gguf failed", ApiError.withoutPaths("open C:\\Users\\x\\model.gguf failed"));
+        assertEquals("'mmproj.gguf' (No such file)", ApiError.withoutPaths("'/tmp/m/mmproj.gguf' (No such file)"));
+        for (String keep : List.of("see https://fornax4j.org/docs/guides/x", "models/not-there.gguf", "a / b", "rc=1: n/a",
+                "unsloth/Qwen3-4B-GGUF:Q4_K_M", "no such model qwen3-4b"))
+            assertEquals(keep, ApiError.withoutPaths(keep));
+    }
+
     /** A request that fails before anything is streamed, but after a keep-alive has sent the status, still says why. */
     @Test void aFailureAfterAKeepAliveIsAnErrorEvent() throws Exception {
         Sse.keepAliveMillis = 50;
@@ -329,6 +347,9 @@ class FornaxServerTest {
         assertEquals(400, post("/v1/images/generations", "{\"prompt\": \"a kiln\"}").statusCode(), "no default image model");
         for (String bad : List.of("{\"model\": \"m\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"500x500\"}",
                 "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"big\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"n\": 9}",
+                "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"1024x1024x\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"+1024x1024\"}",
+                "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"1024x+1024\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \" 1024x1024\"}",
+                "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"\u0661\u0660\u0662\u0664x1024\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"size\": 1024}",
                 "{\"model\": \"m\", \"prompt\": \"p\", \"response_format\": \"url\"}",
                 "{\"model\": \"m\", \"prompt\": \"p\", \"n\": 4294967297}", "{\"model\": \"m\", \"prompt\": \"p\", \"n\": -1}"))
             assertEquals(400, post("/v1/images/generations", bad).statusCode(), bad);

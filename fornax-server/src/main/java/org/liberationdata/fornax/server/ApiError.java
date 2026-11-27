@@ -37,7 +37,24 @@ final class ApiError extends RuntimeException {
         return new ApiError(404, "invalid_request_error", message, "model", "model_not_found");
     }
 
-    static ApiError server(String message) { return new ApiError(500, "server_error", message, null, null); }
+    /** A 500, with each local path in the message cut to its file name ({@link #withoutPaths}). */
+    static ApiError server(String message) { return new ApiError(500, "server_error", withoutPaths(message), null, null); }
+
+    /**
+     * A 500 for an unexpected exception: its message (or its class, without one), with each local path cut to its
+     * file name, since engine errors name model and cache files and a caller has no business knowing the directories.
+     */
+    static ApiError server(Throwable e) {
+        return server(e.getMessage() != null ? e.getMessage() : e.toString());
+    }
+
+    /** Unix (/a/b/file) and Windows (C:\\a\\file) paths with a directory, as their last segment. */
+    static String withoutPaths(String message) {
+        return PATH.matcher(message).replaceAll("$1");
+    }
+
+    private static final java.util.regex.Pattern PATH = java.util.regex.Pattern.compile(
+            "(?:(?<![\\w.:/])/|\\b[A-Za-z]:\\\\)(?:[^\\s/\\\\'\"()]+[/\\\\])+([^\\s/\\\\'\"()]*)");
 
     Map<String, Object> body() {
         return Json.obj("error", Json.obj("message", getMessage(), "type", type, "param", param, "code", code));
