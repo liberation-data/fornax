@@ -89,9 +89,9 @@ fornax test flux2-klein                   # one 256x256 image in 4 steps
 fornax test ace-step --seconds 5          # a short song
 ```
 
-`<model>` is an alias, `org/name:TAG`, `org/name:file.gguf`, `org/name` (when the cache has one GGUF model from it)
-or a path to a `.gguf` file. `chat` and `test` use what is already downloaded, and say what to `fornax pull` when it
-isn't.
+`<model>` is an alias, `org/name[@REV]:TAG`, `org/name:file.gguf`, `org/name` (when the repo has one GGUF model) or a
+path to a `.gguf` file. `chat` and `test` download a model that isn't in the cache yet before loading it, with the same
+progress line as `fornax pull`, and refuse one of another kind before downloading anything.
 
 A reasoning model, such as Qwen3, thinks aloud in `<think>…</think>` before it answers. `fornax chat` hides that, and
 shows only the answer; `--think` shows the reasoning too. Some models (Qwen3 Thinking, DeepSeek-R1 distills) are
@@ -123,7 +123,7 @@ fornax see qwen3-vl-4b receipt.jpg "What is the total?"
 ```
 
 Each is a thin wrapper over its engine (`DiffusionModel`, `AceStepModel` or `Yue2Model`, `TtsModel`,
-`WhisperModel` and a vision `LlamaModel`), and `--help` lists its options. Unlike `chat`, these download a model
+`WhisperModel` and a vision `LlamaModel`), and `--help` lists its options. Like `chat`, these download a model
 that isn't in the cache yet before loading it, with the same progress line as `fornax pull`. A model of the wrong
 kind is refused before anything is downloaded, with the ones that fit: `fornax image qwen3-4b` says qwen3-4b is a
 chat model and names the image models.

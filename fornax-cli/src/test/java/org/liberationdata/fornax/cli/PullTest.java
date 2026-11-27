@@ -139,7 +139,8 @@ class PullTest {
         assertEquals(COMMIT, Files.readString(root.resolve("hub/models--acme--Tiny-GGUF/refs/main")));
         assertTrue(out.toString().contains("[2/2] tiny-Q8_0.gguf  100%"), out.toString());
         assertTrue(out.toString().contains("Try it: fornax chat " + REPO + ":tiny-Q8_0.gguf"), out.toString());
-        assertEquals(snap, ((Models.Llm) Models.resolve(REPO + ":Q8_0", hub())).path());
+        assertEquals(snap, Models.fetch(REPO + ":Q8_0", java.util.EnumSet.of(org.liberationdata.fornax.hub.ModelSet.Kind.CHAT), "chat", true, hub(),
+                new java.io.PrintStream(java.io.OutputStream.nullOutputStream()), false).file("gguf"));
         assertEquals(List.of(), cdnAuth, "the token goes to the Hub only");
 
         requests.clear();   // a second pull finds both on disk and asks the Hub for nothing but the list

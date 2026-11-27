@@ -1,5 +1,7 @@
 package org.liberationdata.fornax.cli;
 
+import org.liberationdata.fornax.hub.ModelSet.Kind;
+
 import org.liberationdata.fornax.cli.Args.UsageException;
 import org.liberationdata.fornax.hub.FornaxHub;
 import org.liberationdata.fornax.llama.LlamaModel;
@@ -10,6 +12,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.util.ArrayList;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -25,8 +28,9 @@ final class Chat {
             With a prompt, prints one reply. Without one, chats interactively (/reset clears the history,
             /exit or Ctrl-D quits); with stdin redirected, the whole of stdin is the prompt.
 
-            <model> is a .gguf path, an alias (qwen3-4b), org/name:file.gguf, org/name:TAG (a quant such as
-            Q4_K_M) or org/name, looked up in the Hugging Face cache (see fornax list).
+            <model> is a .gguf path, an alias (qwen3-4b, or a vision model's), org/name[@REV]:TAG (a quant such as
+            Q4_K_M), org/name:file.gguf or org/name. One that isn't in the Hugging Face cache yet is downloaded first,
+            with fornax pull's progress line.
 
             A reasoning model's <think>...</think> blocks (Qwen3's, for one) are hidden; --think shows them.
 
@@ -46,8 +50,8 @@ final class Chat {
     static int run(Args a, FornaxHub hub, BufferedReader in, PrintStream out, PrintStream err) throws IOException {
         String spec = a.positional(0);
         if (spec == null) throw new UsageException("which model? (see fornax list)");
-        if (!(Models.resolve(spec, hub) instanceof Models.Llm llm))
-            throw new Main.Failure(spec + " isn't a language model; try fornax test " + spec);
+        // downloaded first when it isn't in the cache; a model of another kind is refused before that
+        Path gguf = Models.fetch(spec, java.util.EnumSet.of(Kind.CHAT, Kind.VISION), "chat", true, hub, err, Main.terminal()).file("gguf");
         String prompt = String.join(" ", a.rest(1));
         boolean interactive = prompt.isBlank() && Main.terminal();
         if (prompt.isBlank() && !interactive) {
@@ -58,9 +62,9 @@ final class Chat {
         String system = a.option("system", null);
         boolean think = a.has("think");
 
-        err.println("[fornax] loading " + llm.path());
+        err.println("[fornax] loading " + gguf);
         long t0 = System.nanoTime();
-        try (var model = new LlamaModel(llm.path().toString(), a.intOption("gpu-layers", -1), a.intOption("ctx", 8192))) {
+        try (var model = new LlamaModel(gguf.toString(), a.intOption("gpu-layers", -1), a.intOption("ctx", 8192))) {
             err.printf(Locale.ROOT, "[fornax] loaded in %s%n", Fmt.seconds((System.nanoTime() - t0) / 1e9));
             List<Message> history = new ArrayList<>();
             if (system != null) history.add(Message.system(system));
@@ -69,7 +73,7 @@ final class Chat {
                 reply(model, history, o, think, false, out, err);
                 return 0;
             }
-            err.println("[fornax] chatting with " + llm.name() + ". /reset clears the history, /exit quits.");
+            err.println("[fornax] chatting with " + spec + ". /reset clears the history, /exit quits.");
             boolean opensInside = false;   // the model's replies start inside a think block (its <think> in the prompt)
             while (true) {
                 out.print("> ");

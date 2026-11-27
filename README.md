@@ -359,8 +359,8 @@ fornax test flux2-klein                           # load, generate a little, rep
 fornax info                                       # Java, native libraries, cache, token
 ```
 
-`image`, `song`, `speak`, `transcribe` and `see` download a model that isn't in the cache yet, as `fornax pull` would,
-and write to `--out` (else `image.png`, `song.wav` or `speech.wav` here, numbered rather than overwrite one).
+Every command that runs a model downloads it first if it isn't in the cache yet, as `fornax pull` would. `image`, `song`
+and `speak` write to `--out` (else `image.png`, `song.wav` or `speech.wav` here, numbered rather than overwrite one).
 A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--think` shows them. A gated repo
 (LTX-2.5) needs its terms accepted on huggingface.co and `HF_TOKEN` (or `hf auth login`); the error says so.
 
