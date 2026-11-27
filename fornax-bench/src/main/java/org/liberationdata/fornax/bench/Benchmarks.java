@@ -49,7 +49,7 @@ public class Benchmarks {
 
     public static void main(String[] args) throws Exception {
         Path out = Path.of(args.length > 0 ? args[0] : "out/benchmarks");
-        List<String> cases = args.length > 1 ? List.of(args).subList(1, args.length) : List.of("chat", "image");
+        List<String> cases = cases(args);
         Files.createDirectories(out);
         List<Row> rows = new ArrayList<>();
         for (String c : cases) {
@@ -67,6 +67,19 @@ public class Benchmarks {
         String md = markdown(rows);
         Files.writeString(out.resolve("results.md"), md);
         System.out.println(md);
+    }
+
+    static final List<String> CASES = List.of("chat", "image");
+
+    /**
+     * The cases named after the output directory, or all of them. Fails on an unknown one before any case runs, rather
+     * than after a long one whose results would then go unwritten.
+     */
+    static List<String> cases(String[] args) {
+        List<String> cases = args.length > 1 ? List.of(args).subList(1, args.length) : CASES;
+        for (String c : cases)
+            if (!CASES.contains(c)) throw new IllegalArgumentException("unknown case " + c + " (" + String.join(", ", CASES) + ")");
+        return cases;
     }
 
     // ---- chat: LlamaModel against llama-bench ----
@@ -226,6 +239,7 @@ public class Benchmarks {
         }
     }
 
+    /** Each argument as a POSIX shell reads it back: plain ones as they are, the rest in single quotes. */
     static List<String> quoted(List<String> cmd) {
         return cmd.stream().map(a -> a.matches("[\\w./:=+-]+") ? a : "'" + a.replace("'", "'\\''") + "'").toList();
     }

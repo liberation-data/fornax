@@ -54,6 +54,25 @@ class BenchmarksTest {
     }
 
     @Test
+    void casesDefaultToAllAndAnUnknownOneFailsBeforeAnyRuns() {
+        assertEquals(List.of("chat", "image"), Benchmarks.cases(new String[]{"out"}));
+        assertEquals(List.of("image"), Benchmarks.cases(new String[]{"out", "image"}));
+        // A typo after "chat" fails now, not after the chat case has run and its results are lost.
+        var e = assertThrows(IllegalArgumentException.class, () -> Benchmarks.cases(new String[]{"out", "chat", "imgae"}));
+        assertTrue(e.getMessage().contains("imgae"), e.getMessage());
+    }
+
+    @Test
+    void runReturnsStandardOutputAndFailsWithTheTailOfStandardError() throws Exception {
+        assertEquals("out\n", Benchmarks.run(List.of("sh", "-c", "echo out; echo noise >&2")));
+        var e = assertThrows(IllegalStateException.class, () -> Benchmarks.run(List.of("sh", "-c",
+                "for i in $(seq 1 20); do echo line$i >&2; done; exit 3")));
+        assertTrue(e.getMessage().startsWith("sh failed:"), e.getMessage());
+        assertTrue(e.getMessage().contains("line20") && e.getMessage().contains("line6"), e.getMessage());
+        assertFalse(e.getMessage().contains("line5\n"), e.getMessage());
+    }
+
+    @Test
     void quotedLeavesPlainArgumentsAndQuotesTheRest() {
         assertEquals(List.of("sd-cli", "-W", "768", "/a/b.gguf", "'a kiln, at dusk'", "'it'\\''s'", "''"),
                 Benchmarks.quoted(List.of("sd-cli", "-W", "768", "/a/b.gguf", "a kiln, at dusk", "it's", "")));
