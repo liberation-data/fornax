@@ -84,8 +84,10 @@ surprises you.
 - **A LoRA on fp8 weights aborted the process.** The default `lora_apply_mode=auto` merged the LoRA into fp8
   weights (FLUX.2 klein's `-fp8` files) "immediately", which needs a copy into F8_E4M3 that Vulkan can't run:
   `ggml-backend.cpp: pre-allocated tensor ... cannot run the operation (CPY)`, then SIGABRT. sd-cli does the same.
-  `native/patches/stable-diffusion.cpp/0002` makes `auto` treat fp8 like quantized weights and apply LoRAs at run
-  time; without the patch, `.set("lora_apply_mode", "at_runtime")` works around it.
+  `native/patches/stable-diffusion.cpp/0002` (upstream as leejet/stable-diffusion.cpp#2431, revised to the
+  maintainer's review) makes `auto` apply LoRAs at run time for F8_E5M2 weights, and for F8_E4M3 weights wherever the
+  backend can't copy F32 back to E4M3 (Vulkan, Metal); CPU and CUDA keep the immediate merge. Without the patch,
+  `.set("lora_apply_mode", "at_runtime")` works around it.
 - **Qwen-Image-Edit 2511 needs `zero_cond_t`.** The engine enables it when the weights contain an
   `__index_timestep_zero__` tensor (Comfy-Org's bf16 file does). Files without it need
   `model_args = "qwen_image_zero_cond_t=true"`, or edits degrade badly, again with no error.
