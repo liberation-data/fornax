@@ -191,7 +191,7 @@ class FornaxServerTest {
 
     /** A failure once the stream has started can't be a status: it is OpenAI's error event, with no [DONE] after it. */
     @Test void aFailureMidStreamIsAnErrorEvent() throws Exception {
-        engines.failure = new IllegalStateException("llama chat failed (rc=1): the GPU fell over");
+        engines.failure = new IllegalStateException("llama chat failed (rc=1) on /home/someone/models/m.gguf: the GPU fell over");
         engines.failAfter = 2;
         var r = post("/v1/chat/completions", "{\"stream\": true, \"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}");
         assertEquals(200, r.statusCode());
@@ -201,7 +201,7 @@ class FornaxServerTest {
         assertEquals("Hel", get(data.get(1), "choices", 0, "delta", "content"));
         Object last = data.getLast();
         assertEquals("server_error", get(last, "error", "type"));
-        assertTrue(((String) get(last, "error", "message")).contains("the GPU fell over"), r.body());
+        assertEquals("llama chat failed (rc=1) on m.gguf: the GPU fell over", get(last, "error", "message"), "its path cut too");
     }
 
     /** A 500 names the file that failed but not where it is: the caller doesn't learn the machine's directories. */
