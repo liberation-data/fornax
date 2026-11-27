@@ -69,7 +69,8 @@ the soundtrack, but that isn't how the model was trained to run.
 
 **bf16 on drivers without it.** ComfyUI's int8 checkpoint keeps a few tensors in bf16. Up to 0.2.0 they had to be
 widened to f32 with `tensor_type_rules` on GPUs whose Vulkan driver has no bf16 (the Radeon 8060S's RADV). From 0.3.0,
-stable-diffusion.cpp loads them itself (leejet/stable-diffusion.cpp#2432), so no rules are needed.
+stable-diffusion.cpp loads the one that broke the run, the keyframe position embedding, as f32 itself
+(leejet/stable-diffusion.cpp#2432), so no rules are needed.
 
 ## First and last frames
 

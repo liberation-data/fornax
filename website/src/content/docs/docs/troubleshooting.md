@@ -77,13 +77,14 @@ FORNAX_ACESTEP_VAE_CHUNK=256 ./gradlew song --args='song.wav'
 **What you see:** a run aborts on the CPU backend, unable to add f32 and bf16.
 
 **Why:** the Radeon 8060S's Vulkan driver reports no bf16 support (`bf16: 0`), so bf16 operations fall back to the
-CPU, which has no f32 + bf16 add. stable-diffusion.cpp never converts `.bias` tensors, so its `tensor_type_rules`
-alone couldn't fix it.
+CPU, which has no f32 + bf16 add. In LTX-2.5 the tensor at fault was `keyframes_abs_pos_embedding`, which
+stable-diffusion.cpp's `tensor_type_rules` skip (they never convert names containing `embedding`), so rules alone
+couldn't fix it.
 
-**Fix:** from 0.3.0 nothing: stable-diffusion.cpp loads LTX-2.5's bf16 tensors as f32 itself
-(leejet/stable-diffusion.cpp#2432, which Fornax's pin includes). On 0.2.0, widen them with
-`.set("tensor_type_rules", DiffusionModel.Config.LTX_BF16_TO_F32)`; 0.2.0 carries the patch that lets the rules
-reach `.bias` tensors.
+**Fix:** from 0.3.0 nothing: stable-diffusion.cpp loads that tensor as f32 itself
+(leejet/stable-diffusion.cpp#2432, which Fornax's pin includes). On 0.2.0, `Config.builder().model("ltx-…")` sets
+`DiffusionModel.Config.LTX_BF16_TO_F32`; loading file by file, set it with `.set("tensor_type_rules", …)`. 0.2.0
+carries the patch that lets those rules reach any tensor.
 
 ## A hires refine that ghosts
 
