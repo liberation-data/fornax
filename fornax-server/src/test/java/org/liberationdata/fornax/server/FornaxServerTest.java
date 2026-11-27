@@ -425,7 +425,7 @@ class FornaxServerTest {
                     case "json" -> assertEquals("Hello there.", get(json(r), "text"));
                     case "text" -> assertEquals("Hello there.\n", r.body());
                     case "verbose_json" -> {
-                        assertEquals("en", get(json(r), "language"));
+                        assertEquals("english", get(json(r), "language"));
                         assertEquals("Hello", get(json(r), "words", 0, "word"));
                         assertEquals(0.4, get(json(r), "words", 1, "start"));
                     }
@@ -752,5 +752,12 @@ class FornaxServerTest {
         assertThrows(IllegalArgumentException.class, () -> b.maxBufferedBytes(0));
         assertThrows(IllegalArgumentException.class, () -> b.idleTimeout(java.time.Duration.ZERO));
         b.idleTimeout(null).contextSize(0).budgetBytes(1).maxBodyBytes(1);   // never unload; the model's own context
+    }
+
+    @Test void verboseJsonNamesTheLanguageAsOpenAiDoes() {
+        assertEquals("english", FornaxServer.languageName("en"));
+        assertEquals("german", FornaxServer.languageName("de"));
+        assertEquals("jw", FornaxServer.languageName("jw"));   // whisper's own code for Javanese: Java doesn't know it
+        assertNull(FornaxServer.languageName(null));
     }
 }

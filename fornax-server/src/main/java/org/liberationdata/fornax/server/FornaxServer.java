@@ -579,11 +579,21 @@ public final class FornaxServer implements AutoCloseable {
                     segments.add(Json.obj("id", i, "start", s.start(), "end", s.end(), "text", s.text()));
                 }
                 for (var w : t.words()) words.add(Json.obj("word", w.text().strip(), "start", w.start(), "end", w.end()));
-                json(ex, 200, Json.obj("task", "transcribe", "language", t.language(), "duration", audio.seconds(), "text", text,
+                json(ex, 200, Json.obj("task", "transcribe", "language", languageName(t.language()), "duration", audio.seconds(), "text", text,
                         "segments", segments, "words", words));
             }
             default -> json(ex, 200, Json.obj("text", text));
         }
+    }
+
+    /**
+     * A language's English name in lower case, as OpenAI's verbose_json has it ("english" for "en"); the code itself
+     * when Java doesn't know it (whisper's "jw", say), and null for null.
+     */
+    static String languageName(String code) {
+        if (code == null) return null;
+        String name = java.util.Locale.forLanguageTag(code).getDisplayLanguage(java.util.Locale.ENGLISH);
+        return name.isEmpty() || name.equalsIgnoreCase(code) ? code : name.toLowerCase(java.util.Locale.ROOT);
     }
 
     // ---- requests and replies ----
