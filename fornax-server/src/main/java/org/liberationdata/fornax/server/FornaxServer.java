@@ -819,7 +819,12 @@ public final class FornaxServer implements AutoCloseable {
         Builder engines(Engines engines) { this.engines = engines; return this; }
 
         /** Binds the port (failing here if it is in use); {@link FornaxServer#start} downloads, loads and serves. */
-        public FornaxServer build() throws IOException { return new FornaxServer(this); }
+        public FornaxServer build() throws IOException {
+            // here, before the server makes its model pool, whose reaper thread a refused build would leave running
+            if (engines == null && parallel > 1 && contextSize == 0)
+                throw new IllegalArgumentException("parallel needs each slot's context size: set contextSize (not 0)");
+            return new FornaxServer(this);
+        }
 
         private static Consumer<String> logger() {
             System.Logger l = System.getLogger("org.liberationdata.fornax.server");

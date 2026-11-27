@@ -137,4 +137,15 @@ class PooledEnginesTest {
         assertThrows(IllegalArgumentException.class, () -> FornaxServer.builder().parallel(0));
         assertThrows(IllegalArgumentException.class, () -> FornaxServer.builder().parallel(257));
     }
+
+    @Test void buildRefusesParallelWithoutAContextSizeBeforeStartingThePoolsReaper() {
+        // a refused build is not closed by anyone: a model pool made first would leave its reaper thread running
+        java.util.function.LongSupplier reapers = () -> Thread.getAllStackTraces().keySet().stream()
+                .filter(t -> t.getName().equals("fornax-model-pool-reaper")).count();
+        long before = reapers.getAsLong();
+        var e = assertThrows(IllegalArgumentException.class, () -> FornaxServer.builder().port(0).hub(hub()).log(s -> {})
+                .parallel(4).contextSize(0).build());
+        assertTrue(e.getMessage().contains("contextSize"), e.getMessage());
+        assertEquals(before, reapers.getAsLong(), "no model pool left behind");
+    }
 }
