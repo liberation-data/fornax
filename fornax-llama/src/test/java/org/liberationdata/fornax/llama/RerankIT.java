@@ -57,7 +57,11 @@ class RerankIT {
     void scoresMatchLlamaEmbedding() {
         for (Scored s : model.rerank(QUERY, DOCS)) {
             System.out.printf("doc %d: fornax %.7f, llama-embedding %.7f%n", s.index(), s.score(), LLAMA_EMBEDDING[s.index()]);
-            assertEquals(LLAMA_EMBEDDING[s.index()], s.score(), 0.01, "doc " + s.index());
+            // The reference scores are llama-embedding's on Vulkan. A document near 0.5 moves with the backend's kernels
+            // (the softmax magnifies small differences there: doc 3 is 0.626 on Vulkan, 0.576 on Metal), so it gets a
+            // wider margin; the clear ones must match closely on any backend.
+            double margin = Math.abs(LLAMA_EMBEDDING[s.index()] - 0.5) < 0.2 ? 0.06 : 0.01;
+            assertEquals(LLAMA_EMBEDDING[s.index()], s.score(), margin, "doc " + s.index());
         }
     }
 
