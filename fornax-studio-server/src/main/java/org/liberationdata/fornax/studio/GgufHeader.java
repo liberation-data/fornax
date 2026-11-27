@@ -10,10 +10,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A GGUF file's metadata, read from its header without loading the model: the scalar and string values by key
- * (arrays, such as a tokenizer's vocabulary, are skipped). Enough to tell what a file is, as {@link #speaksAudio} does.
+ * (arrays, such as a tokenizer's vocabulary, are skipped). Enough to tell what a file is, as {@link #onlySpeech} does.
  */
 final class GgufHeader {
     private GgufHeader() {}
@@ -45,14 +46,27 @@ final class GgufHeader {
         return out;
     }
 
+    // Projectors of models that speak aloud and also chat in text (LFM3-Audio): Chat keeps them.
+    private static final Set<String> CHATTY_VOICES = Set.of("lfm3a_gen");
+    // Projectors of models that hear audio only to transcribe it (Qwen3-ASR): Chat leaves them out.
+    private static final Set<String> TRANSCRIBERS = Set.of("qwen3a");
+
     /**
-     * Whether a model's projector ({@code mmproj-*.gguf}) takes or makes audio: speech recognition, text to speech or
-     * voice cloning. Those models share llama.cpp architectures with chat models (Soprano is qwen3), so the
-     * projector is what tells them apart.
+     * Whether a model's projector ({@code mmproj-*.gguf}) makes it a speech model and not one to chat with: text to
+     * speech, voice cloning or speech recognition. Those share llama.cpp architectures with chat models (Soprano is
+     * qwen3), so the projector is what tells them apart. A model that does both, as audio chat models do, chats: it
+     * belongs in Chat as well as wherever its audio is used.
+     *
+     * <p>A projector that makes audio is a voice unless it's one known to chat as well; one that only hears audio is
+     * a chat model (Ultravox, Voxtral, Qwen2.5-Omni) unless it's a known transcriber. So an unknown voice stays out of
+     * Chat, where it couldn't answer, and an unknown listener stays in.
      */
-    static boolean speaksAudio(Path mmproj) {
+    static boolean onlySpeech(Path mmproj) {
         Map<String, Object> h = read(mmproj);
-        return Boolean.TRUE.equals(h.get("clip.has_audio_encoder")) || Boolean.TRUE.equals(h.get("clip.has_gen_audio_encoder"));
+        if (Boolean.TRUE.equals(h.get("clip.has_gen_audio_encoder")))
+            return !CHATTY_VOICES.contains(String.valueOf(h.get("clip.gen.audio.projector_type")));
+        return Boolean.TRUE.equals(h.get("clip.has_audio_encoder")) 
+                && TRANSCRIBERS.contains(String.valueOf(h.get("clip.audio.projector_type")));
     }
 
     private static Object readValue(DataInputStream in, int type) throws IOException {
