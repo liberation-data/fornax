@@ -66,7 +66,9 @@ if [ "$OS" = windows ]; then
     # A DLL exports nothing from a static archive (--exclude-libs), so each engine's ggml stays its own, as on Linux;
     # the GCC runtime is linked in, so a DLL needs nothing from MinGW beside it. No OpenMP: ggml's own thread pool.
     SHARED="-shared"; EXT=dll; PRE=""; OMP=""
-    PRIVATE="-Wl,--exclude-libs,ALL -Wl,--no-undefined -static-libgcc -static-libstdc++"
+    # --export-all-symbols: a source that marks its own API dllexport (stems.cpp) would otherwise turn off MinGW's
+    # export of everything else, Fornax's fornax_* functions included. The archives stay out (--exclude-libs).
+    PRIVATE="-Wl,--export-all-symbols -Wl,--exclude-libs,ALL -Wl,--no-undefined -static-libgcc -static-libstdc++"
     COMMON_OS="-DGGML_OPENMP=OFF -DCMAKE_CXX_FLAGS=-D_USE_MATH_DEFINES"   # M_PI and friends (stems.cpp)
     DEFS="-D_USE_MATH_DEFINES"
     SD_LINK="-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++ -static"  # sd.cpp links its own DLL
