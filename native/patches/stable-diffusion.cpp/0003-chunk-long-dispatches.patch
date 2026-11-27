@@ -146,6 +146,21 @@ index 1f0a42c..b2bafe3 100644
  #ifndef SD_USE_UPSTREAM_GGML
  ggml_tensor* ggml_ext_mul_mat_i8_tensorwise(GGMLRunnerContext* runner_ctx,
                                              ggml_tensor* weight,
+diff --git a/src/core/ggml_runner.cpp b/src/core/ggml_runner.cpp
+index b65c5ab..6da352c 100644
+--- a/src/core/ggml_runner.cpp
++++ b/src/core/ggml_runner.cpp
+@@ -113,6 +113,10 @@ void GGMLRunner::prepare_build_in_tensor_after(ggml_cgraph* gf) {
+ }
+ 
+ ggml_cgraph* GGMLRunner::new_graph_custom(size_t graph_size) {
++    // ggml_ext_split_rows and the flash-attention row split add nodes in proportion to the token count, past what a
++    // model's fixed graph size allows (Wan 14B at 480p x 81 frames adds ~12k nodes to a 10240-node graph). Only the
++    // node capacity changes; compute_ctx is sized for MAX_GRAPH_SIZE tensors already.
++    graph_size = std::max<size_t>(graph_size, MAX_GRAPH_SIZE);
+     if (weight_adapter) {
+         graph_size += weight_adapter->get_extra_graph_size();
+     }
 diff --git a/src/core/ggml_runner.h b/src/core/ggml_runner.h
 index c18b92f..4c6c959 100644
 --- a/src/core/ggml_runner.h
