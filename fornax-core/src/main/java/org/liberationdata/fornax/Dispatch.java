@@ -41,7 +41,7 @@ import java.util.function.Function;
  *   concurrency: {@code workers} requests run at once, each with its model to itself. A model is loaded in one worker
  *   at a time; a worker may hold several. The exception is a model registered with a concurrency above 1 (a language
  *   model with slots, which decodes its requests together): once loaded, it takes up to that many requests at once on
- *   its worker, unless a request ranked above them is waiting for a worker.</li>
+ *   its worker, unless a request ranked above them is waiting for a worker (or for room).</li>
  *   <li><b>Affinity.</b> A request for a loaded model waits for that model's worker. A request for a model that isn't
  *   loaded takes an idle worker (one that hasn't just crashed first, then the one with the fewest bytes loaded) and
  *   loads it there.</li>
@@ -400,9 +400,10 @@ public final class Dispatch implements AutoCloseable {
             if (l != null) {                                     // affinity: wait for the model's own worker
                 if (l.lane.running != null) {
                     // a model with a concurrency takes more requests while it runs, unless one ranked above them is
-                    // waiting for this worker (or any), which would otherwise wait for as long as they keep coming
+                    // waiting for this worker (or any, or for room), which would otherwise wait for as long as they
+                    // keep coming
                     boolean join = l.lane.running == l && l.ready && l.inUse < l.spec.concurrency
-                            && !workerWanted && !laneWanted.contains(l.lane);
+                            && !workerWanted && !roomBlocked && !laneWanted.contains(l.lane);
                     if (!join) {
                         if (l.lane.running != l) laneWanted.add(l.lane);
                         continue;

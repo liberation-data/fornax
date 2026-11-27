@@ -499,6 +499,24 @@ class DispatchTest {
         assertEquals(List.of("b", "a"), order);
     }
 
+    /** The same for a request ranked above them that waits for room, which the shared model holds while in use. */
+    @Test
+    void aRequestWaitingForRoomStopsMoreJoiningAModelWithAConcurrency() throws Exception {
+        var d = dispatch(2, 1);                   // an idle worker, but room for one model
+        var a = slotted(d, "a", 3);
+        var b = model(d, "b");
+        var gate = hold(a);
+        List<String> order = Collections.synchronizedList(new ArrayList<>());
+        var fb = record(b, QoS.INTERACTIVE, "b", order);
+        awaitQueued(d, 1, 0);
+        var fa = record(a, QoS.INTERACTIVE, "a", order);
+        awaitQueued(d, 2, 0);                     // a has free slots, but b came first and waits for a's room
+        gate.complete(null);
+        fb.get(30, TimeUnit.SECONDS);
+        fa.get(30, TimeUnit.SECONDS);
+        assertEquals(List.of("b", "a"), order);
+    }
+
     @Test
     void aLowerRankedRequestForAnotherModelDoesntStopJoining() throws Exception {
         var d = dispatch(1, 10);

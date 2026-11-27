@@ -65,7 +65,8 @@ model's own API, and the dispatch decides only when and where it runs.
 ## How requests are scheduled
 
 - **A worker runs one request at a time.** The GPU is the scarce resource, so the number of workers is the number of
-  requests that run at once. A model is loaded in one worker at a time, and a worker can hold several models.
+  requests that run at once (a model with [slots](#a-model-with-slots) runs several in its worker). A model is loaded
+  in one worker at a time, and a worker can hold several models.
 - **Affinity.** A request for a loaded model waits for that model's worker, even if another worker is idle. Moving the
   model would cost a reload.
 - **Placement.** A request for a model that isn't loaded takes an idle worker. The dispatch skips one that crashed
@@ -126,9 +127,9 @@ qwen.submit(QoS.INTERACTIVE, llm -> llm.chatAsync(messages, LlamaModel.Options.D
 
 - Requests join the model while it has a free slot, once it has loaded. A model loads once, however many requests
   arrive for it together.
-- Priority still holds. A request ranked above them that is waiting for a worker (for another model) stops more
-  requests joining, so the worker drains and the waiting request goes next. A stream of chats can't hold the worker
-  for good.
+- Priority still holds. A request ranked above them that is waiting for a worker (for another model), or for room in
+  the budget, stops more requests joining, so the worker drains and the waiting request goes next. A stream of chats
+  can't hold the worker, or its memory, for good.
 - Count the slots' KV cache in the size, as above: each slot has its own context.
 - A crash fails every request in flight on that worker, and the next request loads the model again.
 

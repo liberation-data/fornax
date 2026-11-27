@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -215,6 +216,33 @@ class WorkerTest {
             model.cancel();
             assertEquals("stopped", new Wire.In(b.get(30, TimeUnit.SECONDS)).string());
         }
+    }
+
+    /** A cancel before the call is sent reaches it through the per-call cancel, as with one lane through the instance's. */
+    @Test
+    void onAnInstanceWithLanesACancelBeforeTheCallIsSentStillStopsIt() {
+        var svc = worker(FAST).open(SERVICE, str("lanes:2"), 2);
+        try (var model = new ModelThread("isolated", 2, svc::close, svc::cancel)) {
+            for (int i = 0; i < 20; i++) {
+                byte[] r = model.run(c -> { c.cancel(); return svc.invoke("spin", null, c, null); });
+                assertEquals("stopped", new Wire.In(r).string(), "round " + i);
+            }
+        }
+    }
+
+    /** Closing an instance with lanes stops every call in flight, and frees it once they have returned. */
+    @Test
+    void closingAnInstanceWithLanesStopsEveryCallInFlight() throws Exception {
+        Worker w = worker(FAST);
+        var svc = w.open(SERVICE, str("lanes:2"), 2);
+        var started = new CountDownLatch(2);
+        List<CompletableFuture<byte[]>> spins = new ArrayList<>();
+        for (int i = 0; i < 2; i++)
+            spins.add(CompletableFuture.supplyAsync(() -> svc.invoke("spin", null, null, x -> started.countDown())));
+        assertTrue(started.await(30, TimeUnit.SECONDS));
+        svc.close();
+        for (var f : spins) assertEquals("stopped", new Wire.In(f.get(30, TimeUnit.SECONDS)).string());
+        assertThrows(IllegalStateException.class, () -> svc.invoke("echo", null));
     }
 
     @Test
