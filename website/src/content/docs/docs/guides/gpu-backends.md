@@ -110,8 +110,10 @@ native/build.sh metal
 
 The libraries are `.dylib`s, in `build/native/macos-arm64-metal/` on Apple silicon.
 
-Fornax's test suite passes on Metal on an Apple M2 Max with 32 GB: chat, vision, speech, transcription and FLUX.2
-[klein] images, with every layer on the GPU. Songs (ACE-Step, YuE2) and video haven't been run on a Mac yet, nor has
+Fornax's test suite passes on Metal on an Apple M2 Max with 32 GB (macOS 27.2), with every layer on the GPU: chat,
+vision, embeddings and reranking, speech, transcription, stem separation, FLUX.2 [klein] images and upscaling, isolated
+workers and Dispatch. A borderline reranker score differs from Vulkan's by about 0.05, as kernels do; the ranking is
+the same. Songs (ACE-Step, YuE2) and video haven't been run on a Mac yet, nor has
 an Intel Mac. To run the tests on a Mac from a Linux checkout, see `scripts/test-on-mac.sh` (or
 `./gradlew testOnMac -Pfornax.macHost=<host>`).
 

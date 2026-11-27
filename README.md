@@ -178,8 +178,9 @@ the command behind every figure.
 
 The build script also knows the **ROCm (HIP)**, **CUDA** and **Metal** backends of the underlying engines. HIP has
 run LTX-2.5 video on the same machine (about 2.7× faster per step than Vulkan, and the way to render long clips; see
-[engine notes](docs/engine-notes.md)), and Metal passes the test suite on an Apple M2 Max with 32 GB (chat, vision, speech, transcription and FLUX.2 [klein]
-images; songs and video haven't been run on a Mac yet, nor has an Intel Mac). CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
+[engine notes](docs/engine-notes.md)), and Metal passes the test suite on an Apple M2 Max with 32 GB (macOS 27.2: chat, vision, embeddings and reranking, speech,
+transcription, stem separation, FLUX.2 [klein] images and upscaling, isolated workers and Dispatch; songs and video
+haven't been run on a Mac yet, nor has an Intel Mac). CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
 build the native libraries. Reports and fixes welcome.
 
 ## How it works
