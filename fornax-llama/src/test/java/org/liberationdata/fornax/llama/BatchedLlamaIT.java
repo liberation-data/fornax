@@ -151,6 +151,16 @@ class BatchedLlamaIT {
         assertFalse(batched.chat(ask(QUESTIONS.get(1)), GREEDY).text().isBlank(), "the model still serves after a refused request");
     }
 
+    /** A request refused as it's added (one that doesn't parse, or has no tokens) fails alone, beside a running one. */
+    @Test void aRequestRefusedAtItsAddFailsAloneBesideARunningOne() {
+        CompletableFuture<Result> running = batched.chatAsync(ask(QUESTIONS.get(1)), GREEDY);
+        var e = assertThrows(IllegalStateException.class, () -> batched.chatJson("{\"messages\": [", null));
+        assertTrue(e.getMessage().contains("rc=7"), e.getMessage());
+        e = assertThrows(IllegalStateException.class, () -> batched.complete("", GREEDY, null));   // Qwen3 adds no BOS
+        assertTrue(e.getMessage().contains("empty prompt"), e.getMessage());
+        assertFalse(running.join().text().isBlank());
+    }
+
     @Test void closeWithSlotsBusyEndsThemAndFrees() {
         LlamaModel m = new LlamaModel(path, -1, 1024, 2);
         List<Message> count = ask("Count from 1 to 300, one number per line, nothing else. /no_think");
@@ -186,5 +196,7 @@ class BatchedLlamaIT {
         e = assertThrows(IllegalStateException.class, () -> batched.complete("<__media__>", List.of(img), GREEDY, null));
         assertTrue(e.getMessage().contains("images aren't batched"), e.getMessage());
         assertThrows(IllegalArgumentException.class, () -> new LlamaModel(path, -1, 0, 2));
+        e = assertThrows(IllegalStateException.class, () -> new LlamaModel(path, -1, 256, 257));   // refused before it loads
+        assertTrue(e.getMessage().contains("slots must be 1 to 256"), e.getMessage());
     }
 }
