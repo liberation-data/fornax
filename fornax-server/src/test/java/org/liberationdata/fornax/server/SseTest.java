@@ -84,11 +84,14 @@ class SseTest {
         try {
             assertTrue(stuck.writing.await(5, TimeUnit.SECONDS));
             Thread.sleep(300);   // some 15 ticks while the first write is stuck
+            long released = System.nanoTime();
             stuck.release.countDown();
             Thread.sleep(30);
+            int writes = stuck.writes.get();
+            long since = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - released);
             // a write queued per tick would all go out now, some 15 at once; with one under way, a tick or two's worth
-            // (the bound leaves room for a slow machine pausing during the sleep)
-            assertTrue(stuck.writes.get() < 8, stuck.writes.get() + " keep-alives");
+            // plus one per tick since (a slow machine may wake from the sleep late, and the writes don't block now)
+            assertTrue(writes < 8 + since / 20, writes + " keep-alives in " + since + " ms");
         } finally {
             stuck.release.countDown();
             a.close();
