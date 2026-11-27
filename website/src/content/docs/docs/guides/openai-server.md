@@ -117,7 +117,8 @@ The reply is a WAV, so ask for `response_format: "wav"` (an OpenAI client asking
 `/v1/audio/transcriptions` takes a WAV `file` (multipart, as the clients send it; convert other formats first,
 `ffmpeg -i in.mp3 in.wav`) at 8 to 384 kHz, with `whisper-base.en` unless `model` names another (`whisper-large-v3-turbo` for 99
 languages), and `language` and `prompt`. `response_format` is `json` (the default), `text`, `srt`, `vtt` or
-`verbose_json`, which has the segments and each word's start and end.
+`verbose_json`, which has the segments, each word's start and end, and the language spoken by its English name
+(`english`), as OpenAI gives it.
 
 ## Models
 

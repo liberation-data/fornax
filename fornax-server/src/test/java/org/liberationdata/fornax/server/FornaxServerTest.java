@@ -757,7 +757,16 @@ class FornaxServerTest {
     @Test void verboseJsonNamesTheLanguageAsOpenAiDoes() {
         assertEquals("english", FornaxServer.languageName("en"));
         assertEquals("german", FornaxServer.languageName("de"));
-        assertEquals("jw", FornaxServer.languageName("jw"));   // whisper's own code for Javanese: Java doesn't know it
+        assertEquals("chinese", FornaxServer.languageName("zh"));
+        assertEquals("cantonese", FornaxServer.languageName("yue"));
+        assertEquals("hawaiian", FornaxServer.languageName("haw"));
+        // where Java's name isn't whisper's
+        assertEquals("javanese", FornaxServer.languageName("jw"));   // whisper's own code: Java doesn't know it
+        assertEquals("nynorsk", FornaxServer.languageName("nn"));
+        assertEquals("maori", FornaxServer.languageName("mi"));
+        assertEquals("bengali", FornaxServer.languageName("bn"));
+        assertEquals("myanmar", FornaxServer.languageName("my"));
+        assertEquals("xx", FornaxServer.languageName("xx"));   // unknown: the code itself
         assertNull(FornaxServer.languageName(null));
     }
 }

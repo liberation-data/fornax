@@ -588,13 +588,19 @@ public final class FornaxServer implements AutoCloseable {
 
     /**
      * A language's English name in lower case, as OpenAI's verbose_json has it ("english" for "en"); the code itself
-     * when Java doesn't know it (whisper's "jw", say), and null for null.
+     * when Java doesn't know it, and null for null. Where Java's name isn't whisper's, whisper's wins.
      */
     static String languageName(String code) {
         if (code == null) return null;
-        String name = java.util.Locale.forLanguageTag(code).getDisplayLanguage(java.util.Locale.ENGLISH);
-        return name.isEmpty() || name.equalsIgnoreCase(code) ? code : name.toLowerCase(java.util.Locale.ROOT);
+        String whisper = WHISPER_NAMES.get(code);
+        if (whisper != null) return whisper;
+        String name = Locale.forLanguageTag(code).getDisplayLanguage(Locale.ENGLISH);
+        return name.isEmpty() || name.equalsIgnoreCase(code) ? code : name.toLowerCase(Locale.ROOT);
     }
+
+    /** Whisper's names where Java's differ ("bangla", "māori", "burmese"), or Java has none (whisper's own "jw"). */
+    private static final Map<String, String> WHISPER_NAMES = Map.of(
+            "bn", "bengali", "jw", "javanese", "mi", "maori", "my", "myanmar", "nn", "nynorsk");
 
     // ---- requests and replies ----
 
