@@ -67,7 +67,8 @@ if [ "$OS" = windows ]; then
     # the GCC runtime is linked in, so a DLL needs nothing from MinGW beside it. No OpenMP: ggml's own thread pool.
     SHARED="-shared"; EXT=dll; PRE=""; OMP=""
     PRIVATE="-Wl,--exclude-libs,ALL -Wl,--no-undefined -static-libgcc -static-libstdc++"
-    COMMON_OS="-DGGML_OPENMP=OFF"
+    COMMON_OS="-DGGML_OPENMP=OFF -DCMAKE_CXX_FLAGS=-D_USE_MATH_DEFINES"   # M_PI and friends (stems.cpp)
+    DEFS="-D_USE_MATH_DEFINES"
     SD_LINK="-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++ -static"  # sd.cpp links its own DLL
     whole() { printf -- '-Wl,--whole-archive %s -Wl,--no-whole-archive ' "$*"; }
     group() { printf -- '-Wl,--start-group %s -Wl,--end-group ' "$*"; }
@@ -172,7 +173,7 @@ build_demucs() {  # stems.cpp's HTDemucs, through its libstems C ABI (src/libste
     mkdir -p "$b"
     cmake_build "$s" "$b" stems $GGML -DSTEMS_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF
     $CXX -std=c++17 -O2 -fPIC $SHARED -o "$OUT/${PRE}fornax_demucs.$EXT" "$ROOT/fornax-demucs/native/fornax_demucs.cpp" \
-        "$s/src/libstems.cpp" -DSTEMS_VERSION_STRING="\"$(sed -n 's/^project(stems_cpp VERSION \([^ ]*\).*/\1/p' "$s/CMakeLists.txt")\"" \
+        "$s/src/libstems.cpp" ${DEFS:-} -DSTEMS_VERSION_STRING="\"$(sed -n 's/^project(stems_cpp VERSION \([^ ]*\).*/\1/p' "$s/CMakeLists.txt")\"" \
         -I"$s/src" -I"$s/ggml/include" \
         "$(archive "$b" stems_core)" $(ggml_archives "$b") $PRIVATE $OMP $LIBS $DL $THREADS
 }
