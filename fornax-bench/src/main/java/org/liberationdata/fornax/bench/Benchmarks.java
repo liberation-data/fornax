@@ -35,7 +35,10 @@ import java.util.concurrent.Callable;
  *
  * Cases: {@code chat} (qwen3-4b: time to the first token of a ~512-token prompt, and tokens per second over 128
  * generated after it) and
- * {@code image} (FLUX.2 [klein], 768x768, 12 steps: seconds, cold with the load and warm). Each side's peak GPU memory
+ * {@code image} (FLUX.2 [klein], 768x768, 12 steps: seconds, cold with the load and warm) and
+ * {@code serving} (qwen3-4b over the OpenAI API, 1 to 8 streaming clients at once: fornax server with 4 slots, and with
+ * 1, against llama-server with 4; tokens a second across all clients, and time to first token and request latency,
+ * median and 95th percentile). Each side's peak GPU memory
  * is sampled from the amdgpu driver's sysfs counters (VRAM and GTT, above what was in use before it started), where
  * there are any. Writes {@code results.json} (with the machine, the engines' pins and the command behind every row) and
  * {@code results.md}. One side runs at a time, so the two never share the GPU.
@@ -56,7 +59,8 @@ public class Benchmarks {
             switch (c) {
                 case "chat" -> chat(out, rows);
                 case "image" -> image(out, rows);
-                default -> throw new IllegalArgumentException("unknown case " + c + " (chat, image)");
+                case "serving" -> serving(out, rows);
+                default -> throw new IllegalArgumentException("unknown case " + c + " (chat, image, serving)");
             }
         }
         Map<String, Object> report = new LinkedHashMap<>();
@@ -69,7 +73,7 @@ public class Benchmarks {
         System.out.println(md);
     }
 
-    static final List<String> CASES = List.of("chat", "image");
+    static final List<String> CASES = List.of("chat", "image", "serving");
 
     /**
      * The cases named after the output directory, or all of them. Fails on an unknown one before any case runs, rather
@@ -216,6 +220,134 @@ public class Benchmarks {
         rows.add(new Row("image", "Fornax", "DiffusionModel (stable-diffusion.cpp " + Machine.pin("stable-diffusion.cpp") + ")",
                 IMAGE_MODEL, settings, fornax.value(), fornax.peakBytes(),
                 "./gradlew :fornax-bench:benchmarks --args='" + out + " image' -Psd.cli=" + quoted(List.of(cmd.get(0))).get(0)));
+    }
+
+    // ---- serving: fornax server against llama-server, several clients at once ----
+
+    static final int SERVE_SLOTS = 4, SERVE_CTX = 2048, SERVE_PROMPT = 256, SERVE_GEN = 256, SERVE_ROUNDS = 3;
+    static final List<Integer> SERVE_CLIENTS = List.of(1, 2, 4, 8);
+
+    /**
+     * The same requests to each server: C clients at once, each sending SERVE_ROUNDS streamed chats one after another,
+     * every prompt its own (it starts with its number), so no server reuses one request's prompt for the next. Greedy,
+     * SERVE_GEN tokens at most. A side's rows are measured with nothing else on the GPU.
+     */
+    static void serving(Path out, List<Row> rows) throws Exception {
+        Path gguf = FornaxHub.standard().fetch(CHAT_MODEL, PullListener.logging()).get("gguf");
+        String llamaServer = tool("llama.server", "llama-server");
+        for (int parallel : List.of(SERVE_SLOTS, 1)) {
+            var m = GpuMemory.peakDuring(() -> {
+                try (var server = org.liberationdata.fornax.server.FornaxServer.builder().port(0).model(gguf.toString())
+                        .contextSize(SERVE_CTX).parallel(parallel).budgetBytes(64L << 30).log(x -> {}).build().start()) {
+                    return drive("http://127.0.0.1:" + server.port());
+                }
+            });
+            addServingRows(rows, "Fornax --parallel " + parallel, "fornax server (llama.cpp " + Machine.pin("llama.cpp") + ")",
+                    parallel, m, "./gradlew :fornax-bench:benchmarks --args='" + out + " serving' -Pllama.server=" + llamaServer);
+        }
+        int port = 18_000 + (int) (ProcessHandle.current().pid() % 1000);
+        List<String> cmd = List.of(llamaServer, "-m", gguf.toString(), "-ngl", "99", "-np", String.valueOf(SERVE_SLOTS),
+                "-c", String.valueOf(SERVE_SLOTS * SERVE_CTX), "--host", "127.0.0.1", "--port", String.valueOf(port));
+        Path log = out.resolve("llama-server.log");
+        Process p = new ProcessBuilder(cmd).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+        try {
+            var m = GpuMemory.peakDuring(() -> {
+                awaitHealthy("http://127.0.0.1:" + port, p, log);
+                return drive("http://127.0.0.1:" + port);
+            });
+            addServingRows(rows, "llama-server -np " + SERVE_SLOTS, "llama.cpp " + Machine.pin("llama.cpp"), SERVE_SLOTS, m,
+                    String.join(" ", quoted(cmd)));
+        } finally {
+            p.destroy();
+            if (!p.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly();
+        }
+    }
+
+    /** One request's times: to its first content, to its end, and the tokens it generated. */
+    record Timed(double ttft, double latency, int tokens) {}
+
+    /** Per client count: the figures the rows report. */
+    static Map<Integer, Map<String, Double>> drive(String base) throws Exception {
+        var http = java.net.http.HttpClient.newBuilder().version(java.net.http.HttpClient.Version.HTTP_1_1).build();
+        java.util.concurrent.atomic.AtomicInteger n = new java.util.concurrent.atomic.AtomicInteger();
+        request(http, base, n.incrementAndGet());   // a warm-up
+        Map<Integer, Map<String, Double>> byClients = new LinkedHashMap<>();
+        for (int clients : SERVE_CLIENTS) {
+            List<Timed> done = java.util.Collections.synchronizedList(new ArrayList<>());
+            long t0 = System.nanoTime();
+            try (var pool = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+                List<java.util.concurrent.Future<?>> fs = new ArrayList<>();
+                for (int c = 0; c < clients; c++)
+                    fs.add(pool.submit(() -> { for (int r = 0; r < SERVE_ROUNDS; r++) done.add(request(http, base, n.incrementAndGet())); return null; }));
+                for (var f : fs) f.get();
+            }
+            double wall = (System.nanoTime() - t0) / 1e9;
+            Map<String, Double> m = new LinkedHashMap<>();
+            m.put("tokensPerSecond", done.stream().mapToInt(Timed::tokens).sum() / wall);
+            m.put("ttftP50", pct(done.stream().map(Timed::ttft).toList(), 50));
+            m.put("ttftP95", pct(done.stream().map(Timed::ttft).toList(), 95));
+            m.put("latencyP50", pct(done.stream().map(Timed::latency).toList(), 50));
+            m.put("latencyP95", pct(done.stream().map(Timed::latency).toList(), 95));
+            m.put("meanTokens", done.stream().mapToInt(Timed::tokens).average().orElse(0));
+            byClients.put(clients, m);
+            System.out.printf(Locale.ROOT, "%s, %d clients: %.1f tok/s, TTFT p50 %.2fs%n", base, clients, m.get("tokensPerSecond"), m.get("ttftP50"));
+        }
+        return byClients;
+    }
+
+    static Timed request(java.net.http.HttpClient http, String base, int number) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("messages", List.of(Map.of("role", "user", "content", "Request " + number + ". " + promptOf(SERVE_PROMPT))));
+        body.put("max_tokens", SERVE_GEN);
+        body.put("temperature", 0);
+        body.put("stream", true);
+        body.put("stream_options", Map.of("include_usage", true));
+        long start = System.nanoTime();
+        long[] first = {0};
+        int[] tokens = {0};
+        var r = http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + "/v1/chat/completions"))
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body))).build(),
+                java.net.http.HttpResponse.BodyHandlers.ofLines());
+        if (r.statusCode() != 200) throw new IllegalStateException(base + " answered " + r.statusCode());
+        r.body().filter(l -> l.startsWith("data: {")).forEach(l -> {
+            try {
+                JsonNode e = JSON.readTree(l.substring(6));
+                if (first[0] == 0 && !e.path("choices").path(0).path("delta").path("content").asText("").isEmpty()) first[0] = System.nanoTime();
+                if (e.path("usage").has("completion_tokens")) tokens[0] = e.path("usage").path("completion_tokens").asInt();
+            } catch (IOException ex) { throw new java.io.UncheckedIOException(ex); }
+        });
+        long end = System.nanoTime();
+        if (first[0] == 0 || tokens[0] == 0) throw new IllegalStateException(base + " streamed no content or no usage");
+        return new Timed((first[0] - start) / 1e9, (end - start) / 1e9, tokens[0]);
+    }
+
+    static double pct(List<Double> xs, int p) {
+        List<Double> s = new ArrayList<>(xs);
+        java.util.Collections.sort(s);
+        return s.get(Math.min(s.size() - 1, (int) Math.ceil(p / 100.0 * s.size()) - 1));
+    }
+
+    static void addServingRows(List<Row> rows, String side, String engine, int slots,
+                               Measured<Map<Integer, Map<String, Double>>> m, String command) {
+        m.value().forEach((clients, results) -> rows.add(new Row("serving", side, engine, CHAT_MODEL,
+                Map.of("clients", clients, "slots", slots, "contextPerSlot", SERVE_CTX, "promptTokens", SERVE_PROMPT,
+                        "maxTokens", SERVE_GEN, "rounds", SERVE_ROUNDS), results, m.peakBytes(), command)));
+    }
+
+    /** Waits for llama-server's /health to answer 200 (it answers 503 while loading), or fails if it exits. */
+    static void awaitHealthy(String base, Process p, Path log) throws Exception {
+        var http = java.net.http.HttpClient.newHttpClient();
+        for (int i = 0; i < 600; i++) {
+            if (!p.isAlive()) throw new IllegalStateException("llama-server exited; see " + log);
+            try {
+                var r = http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + "/health")).build(),
+                        java.net.http.HttpResponse.BodyHandlers.discarding());
+                if (r.statusCode() == 200) return;
+            } catch (IOException notYet) { /* not listening yet */ }
+            Thread.sleep(200);
+        }
+        throw new IllegalStateException("llama-server never became healthy; see " + log);
     }
 
     // ---- helpers ----

@@ -16,7 +16,7 @@ import java.util.Set;
 
 /** {@code fornax server}: Fornax's engines behind an OpenAI-compatible HTTP API ({@link FornaxServer}). */
 final class Server {
-    static final Set<String> OPTIONS = Set.of("model", "port", "host", "api-key", "cors", "budget-gb", "ctx", "idle-minutes");
+    static final Set<String> OPTIONS = Set.of("model", "port", "host", "api-key", "cors", "budget-gb", "ctx", "idle-minutes", "parallel");
     static final Set<String> FLAGS = Set.of("allow-downloads");
     static final Map<String, String> SHORT = Map.of("m", "model");
 
@@ -44,6 +44,8 @@ final class Server {
               --budget-gb N        memory for loaded models, by their files' size (default 24)
               --idle-minutes N     unload a model unused this long (default 15; 0 = never)
               --ctx N              context size for language and embedding models (default 8192; 0 = the model's own)
+              --parallel N         chat requests each language model answers at once, decoded together in one batch
+                                   (default 1); each gets its own --ctx, which --budget-gb counts. Vision models: 1
               --allow-downloads    let a request name any model, downloading it on first use (default: only the -m
                                    models and catalogue models already downloaded)
 
@@ -76,10 +78,13 @@ final class Server {
         if (idle < 0) throw new UsageException("--idle-minutes must be 0 or more");
         int ctx = a.intOption("ctx", 8192);
         if (ctx < 0) throw new UsageException("--ctx must be 0 or more");
+        int parallel = a.intOption("parallel", 1);
+        if (parallel < 1 || parallel > 256) throw new UsageException("--parallel must be from 1 to 256");
+        if (parallel > 1 && ctx == 0) throw new UsageException("--parallel needs a context size for each request: --ctx N, not 0");
         boolean terminal = Main.terminal();
 
         var b = FornaxServer.builder().host(host).port(port).apiKey(key).hub(hub).budgetBytes((long) (budget * (1L << 30)))
-                .idleTimeout(idle == 0 ? null : Duration.ofMinutes(idle)).contextSize(ctx)
+                .idleTimeout(idle == 0 ? null : Duration.ofMinutes(idle)).contextSize(ctx).parallel(parallel)
                 .allowDownloads(a.has("allow-downloads"))
                 .pullListener(new PullLine(err, terminal)).log(s -> err.println("[fornax] " + s));
         for (String origin : a.all("cors")) b.corsOrigin(origin);

@@ -225,6 +225,10 @@ class CommandsTest {
         assertEquals(2, run("server", "--port", "70000"));
         assertTrue(err.toString().contains("--port must be from 0 to 65535"), err.toString());
         assertEquals(2, run("server", "--budget-gb", "0"));
+        assertEquals(2, run("server", "--parallel", "0"));
+        assertTrue(err.toString().contains("--parallel must be from 1 to 256"), err.toString());
+        assertEquals(2, run("server", "--parallel", "4", "--ctx", "0"));
+        assertTrue(err.toString().contains("--parallel needs a context size"), err.toString());
         assertEquals(2, run("server", "--allow-downloads", "--port", "70000"));   // a flag: --port is still read
         assertTrue(err.toString().contains("--port must be from 0 to 65535"), err.toString());
         assertEquals(2, run("server", "--allow-downloads=yes"));

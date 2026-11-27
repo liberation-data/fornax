@@ -164,4 +164,90 @@ class ModelPoolTest {
             assertEquals(80, pool.loadedBytes());
         }
     }
+
+    // ---- concurrency: a model several requests use at once (a language model with slots) ----
+    // (a timeout each: a lease a failed assertion leaves open would make the pool's close wait for ever)
+
+    @Test @org.junit.jupiter.api.Timeout(20)
+    void aModelWithConcurrencyHasThatManyUsersAtOnceAndLoadsOnce() throws Exception {
+        List<String> log = java.util.Collections.synchronizedList(new ArrayList<>());
+        AtomicInteger loads = new AtomicInteger();
+        try (var pool = new ModelPool(100, null)) {
+            CountDownLatch held = new CountDownLatch(3), release = new CountDownLatch(1);
+            List<Thread> users = new ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                users.add(Thread.ofPlatform().start(() -> {
+                    try (var l = pool.acquire("a", 10, 3, () -> { loads.incrementAndGet(); sleep(50); return new Fake("a", log); })) {
+                        held.countDown();
+                        release.await();
+                    } catch (InterruptedException e) { throw new RuntimeException(e); }
+                }));
+            }
+            assertTrue(held.await(5, TimeUnit.SECONDS), "three users at once");
+            assertEquals(1, loads.get(), "the first lease loaded it; the others waited for that load");
+            assertTrue(pool.entries().getFirst().inUse());
+            var fourth = Thread.ofPlatform().start(() -> pool.acquire("a", 10, 3, () -> new Fake("a", log)).close());
+            fourth.join(200);
+            assertTrue(fourth.isAlive(), "a fourth waits for one of the three");
+            release.countDown();
+            fourth.join(5000);
+            for (Thread t : users) t.join(5000);
+            assertFalse(pool.entries().getFirst().inUse());
+        }
+        assertEquals(List.of("load a", "close a"), log);
+    }
+
+    @Test @org.junit.jupiter.api.Timeout(20)
+    void aModelWithAnyUserLeftIsNeverEvictedOrUnloadedUnderIt() throws Exception {
+        List<String> log = new ArrayList<>();
+        try (var pool = new ModelPool(50, null)) {
+            var one = pool.acquire("a", 40, 2, () -> new Fake("a", log));
+            Fake a = one.model();
+            pool.acquire("a", 40, 2, () -> new Fake("a", log)).close();   // the other user has gone; one remains
+            pool.acquire("b", 40, () -> new Fake("b", log)).close();       // over budget, but a is still in use
+            assertFalse(one.model().closed);
+            pool.unloadAll();
+            assertFalse(one.model().closed, "unloadAll skips it while one user remains");
+            var unloading = Thread.ofPlatform().start(() -> pool.unload("a"));
+            unloading.join(200);
+            assertTrue(unloading.isAlive(), "unload waits for every user");
+            one.close();
+            unloading.join(5000);
+            assertTrue(a.closed);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Timeout(20)
+    void aKeyKeepsItsConcurrency() {
+        try (var pool = new ModelPool(100, null)) {
+            pool.acquire("a", 10, 2, () -> new Fake("a", new ArrayList<>())).close();
+            assertThrows(IllegalArgumentException.class, () -> pool.acquire("a", 10, () -> new Fake("a", new ArrayList<>())));
+            assertThrows(IllegalArgumentException.class, () -> pool.acquire("b", 10, 0, () -> new Fake("b", new ArrayList<>())));
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Timeout(20)
+    void aConcurrentModelsLoadStillReservesItsRoom() throws Exception {
+        // #71's reservation, with concurrency: while a's load runs, b's load counts a's size and evicts what it must
+        List<String> log = java.util.Collections.synchronizedList(new ArrayList<>());
+        try (var pool = new ModelPool(100, null)) {
+            pool.acquire("old", 40, () -> new Fake("old", log)).close();
+            CountDownLatch loading = new CountDownLatch(1), finish = new CountDownLatch(1);
+            var a = Thread.ofPlatform().start(() -> pool.acquire("a", 40, 4, () -> {
+                loading.countDown();
+                try { finish.await(); } catch (InterruptedException e) { throw new RuntimeException(e); }
+                return new Fake("a", log);
+            }).close());
+            assertTrue(loading.await(5, TimeUnit.SECONDS));
+            pool.acquire("b", 40, () -> new Fake("b", log)).close();   // 40 old + 40 a (reserved) + 40 b > 100: old goes
+            finish.countDown();
+            a.join(5000);
+            assertTrue(log.contains("close old"), log.toString());
+            assertEquals(80, pool.loadedBytes());
+        }
+    }
+
+    static void sleep(long ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException e) { throw new RuntimeException(e); }
+    }
 }

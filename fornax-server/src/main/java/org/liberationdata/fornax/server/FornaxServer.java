@@ -138,7 +138,7 @@ public final class FornaxServer implements AutoCloseable {
             this.warm = () -> {};
         } else {
             var pooled = new PooledEngines(b.hub != null ? b.hub : FornaxHub.standard(), new ModelPool(b.budgetBytes, b.idleTimeout),
-                    b.models, b.contextSize, b.pulls, b.log, b.allowDownloads);
+                    b.models, b.contextSize, b.parallel, b.pulls, b.log, b.allowDownloads);
             this.engines = pooled;
             this.warm = pooled::warm;
         }
@@ -700,6 +700,7 @@ public final class FornaxServer implements AutoCloseable {
         private long budgetBytes = 24L << 30;
         private Duration idleTimeout = Duration.ofMinutes(15);
         private int contextSize = 8192;
+        private int parallel = 1;
         private FornaxHub hub;
         private PullListener pulls = PullListener.logging();
         private Consumer<String> log = logger();
@@ -754,6 +755,19 @@ public final class FornaxServer implements AutoCloseable {
         public Builder contextSize(int tokens) {
             if (tokens < 0) throw new IllegalArgumentException("contextSize must be 0 or more, not " + tokens);
             this.contextSize = tokens;
+            return this;
+        }
+
+        /**
+         * How many chat requests each language model runs at once (default 1). More than 1 loads it with that many
+         * slots, which decode together in one batch (continuous batching), so concurrent clients share the GPU instead
+         * of queueing; each slot has {@link #contextSize} tokens of its own, so the context takes that many times the
+         * memory, and the pool's budget counts it. Vision models, which a model with slots can't take images in yet,
+         * still run one request at a time.
+         */
+        public Builder parallel(int requests) {
+            if (requests < 1 || requests > 256) throw new IllegalArgumentException("parallel must be from 1 to 256, not " + requests);
+            this.parallel = requests;
             return this;
         }
 

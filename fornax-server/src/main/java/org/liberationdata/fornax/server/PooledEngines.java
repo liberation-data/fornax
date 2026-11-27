@@ -54,6 +54,7 @@ final class PooledEngines implements Engines {
     private final ModelPool pool;
     private final List<String> configured;
     private final int contextSize;
+    private final int parallel;   // chat requests at once per language model: its slots
     private final PullListener pulls;
     private final Consumer<String> log;
     private final boolean allowDownloads;
@@ -69,8 +70,11 @@ final class PooledEngines implements Engines {
     }
 
     /** allowDownloads: whether a request may name a model the server wasn't started with that isn't downloaded. */
-    PooledEngines(FornaxHub hub, ModelPool pool, List<String> configured, int contextSize, PullListener pulls, Consumer<String> log,
-                  boolean allowDownloads) {
+    PooledEngines(FornaxHub hub, ModelPool pool, List<String> configured, int contextSize, int parallel, PullListener pulls,
+                  Consumer<String> log, boolean allowDownloads) {
+        if (parallel > 1 && contextSize <= 0)
+            throw new IllegalArgumentException("parallel needs each slot's context size: set contextSize (not 0)");
+        this.parallel = parallel;
         this.allowDownloads = allowDownloads;
         this.hub = hub;
         this.pool = pool;
@@ -119,11 +123,35 @@ final class PooledEngines implements Engines {
         check(f, images);
         try (ModelPool.Lease<LlamaModel> lease = lease(f)) {
             LlamaModel m = lease.model();
+            if (m.slots() > 1) return chatInSlot(m, requestJson, onContent, stop);
             stop.attach(m::cancel);
             try { return m.chatJson(requestJson, onContent); }
             catch (IllegalStateException e) { throw engineError(e); }
             finally { stop.detach(); }
         }
+    }
+
+    /**
+     * A chat on a model with slots, where cancel() would stop every slot's request: this one is stopped through its own
+     * future instead, and then gets an empty reply (the client has gone, or its deadline passed).
+     */
+    private static String chatInSlot(LlamaModel m, String requestJson, Consumer<String> onContent, Stopper stop) {
+        var f = m.chatJsonAsync(requestJson, List.of(), new java.util.concurrent.Flow.Subscriber<String>() {
+            @Override public void onSubscribe(java.util.concurrent.Flow.Subscription s) { s.request(Long.MAX_VALUE); }
+            @Override public void onNext(String piece) { if (onContent != null) onContent.accept(piece); }
+            @Override public void onError(Throwable t) {}
+            @Override public void onComplete() {}
+        });
+        stop.attach(() -> f.cancel(true));
+        try {
+            return f.join();
+        } catch (java.util.concurrent.CancellationException e) {
+            throw e;
+        } catch (java.util.concurrent.CompletionException e) {
+            if (e.getCause() instanceof IllegalStateException ise) throw engineError(ise);
+            if (e.getCause() instanceof RuntimeException re) throw re;
+            throw e;
+        } finally { stop.detach(); }
     }
 
     /**
@@ -336,15 +364,24 @@ final class PooledEngines implements Engines {
     @SuppressWarnings("unchecked")
     <M extends AutoCloseable> ModelPool.Lease<M> lease(Found f) {
         long size = ModelPool.sizeOf(f.files().values().toArray(Path[]::new));
+        int slots = slots(f);
+        if (slots > 1) size += LlamaModel.kvCacheBytes(f.file("gguf").toString(), contextSize * slots);
         Supplier<AutoCloseable> loader = () -> {
             log.accept("loading " + f.id() + " for " + what(f.use()));
             return load(f);
         };
-        try { return (ModelPool.Lease<M>) (ModelPool.Lease<?>) pool.acquire(f.key(), size, loader); }
+        try { return (ModelPool.Lease<M>) (ModelPool.Lease<?>) pool.acquire(f.key(), size, slots, loader); }
         catch (UncheckedIOException e) { throw ApiError.server(f.id() + ": " + e.getMessage()); }
     }
 
+    /** A language model's slots: {@link #parallel}, except for a vision model, whose images a model with slots can't take. */
+    private int slots(Found f) {
+        return f.use() == Use.CHAT && !(f.set() != null && f.set().kind() == Kind.VISION) ? parallel : 1;
+    }
+
     private AutoCloseable load(Found f) {
+        int slots = slots(f);
+        if (slots > 1) return new LlamaModel(f.file("gguf").toString(), -1, contextSize, slots);
         return switch (f.use()) {
             case CHAT -> new LlamaModel(f.file("gguf").toString(),
                     f.set() != null && f.set().kind() == Kind.VISION ? f.file("mmproj").toString() : null, -1, contextSize);

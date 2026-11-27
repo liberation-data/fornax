@@ -33,7 +33,9 @@ import java.util.function.Supplier;
  *       Models in use are never unloaded; if they alone exceed the budget, the load goes ahead anyway. A model
  *       counts against the budget from the moment its load starts, so two loads at once make room for both.</li>
  *   <li>Models idle longer than {@code idleTimeout} are unloaded in the background ({@code null} = never).</li>
- *   <li>A model has one user at a time (engine instances aren't thread-safe): {@code acquire} waits for it.</li>
+ *   <li>A model has one user at a time (engine instances aren't thread-safe): {@code acquire} waits for it. One
+ *       that serves several requests at once (a language model with slots) is acquired with its concurrency, and
+ *       has that many users at once; it is unloaded only once all of them are done with it.</li>
  * </ul>
  *
  * Sizes are the caller's estimate of memory used, usually the size of the weight files ({@link #sizeOf}).
@@ -52,15 +54,27 @@ public final class ModelPool implements AutoCloseable {
 
     private final class Slot {
         final String key;
+        /** How many leases at once. Unloading takes them all, so a model in use by anyone is never unloaded. */
+        final int concurrency;
         // Not a ReentrantLock: a thread holding this model must not be able to "re-lock" it from makeRoom and evict it.
-        final Semaphore use = new Semaphore(1, true);
+        final Semaphore use;
+        /** Held while the model loads, so of several leases taken at once, only the first loads it. */
+        final Object loading = new Object();
         volatile AutoCloseable model;
         volatile long size;
         /** The size of the model while its loader runs, held against the budget so a concurrent load counts it. */
         volatile long reserved;
         volatile Instant lastUsed = Instant.now();
 
-        Slot(String key) { this.key = key; }
+        Slot(String key, int concurrency) {
+            this.key = key;
+            this.concurrency = concurrency;
+            this.use = new Semaphore(concurrency, true);
+        }
+
+        boolean tryAcquireAll() { return use.tryAcquire(concurrency); }
+        void acquireAll() { use.acquireUninterruptibly(concurrency); }
+        void releaseAll() { use.release(concurrency); }
     }
 
     private final long budget;
@@ -92,27 +106,41 @@ public final class ModelPool implements AutoCloseable {
     }
 
     /** Borrows the model under {@code key}, loading it with {@code loader} if it isn't loaded. */
-    @SuppressWarnings("unchecked")
     public <M extends AutoCloseable> Lease<M> acquire(String key, long sizeBytes, Supplier<M> loader) {
+        return acquire(key, sizeBytes, 1, loader);
+    }
+
+    /**
+     * Borrows the model under {@code key}, which takes up to {@code concurrency} users at once (a language model with
+     * that many slots); a key keeps the concurrency it was first acquired with.
+     * @throws IllegalArgumentException for a concurrency below 1, or other than the key's
+     */
+    @SuppressWarnings("unchecked")
+    public <M extends AutoCloseable> Lease<M> acquire(String key, long sizeBytes, int concurrency, Supplier<M> loader) {
         if (closed) throw new IllegalStateException("pool is closed");
+        if (concurrency < 1) throw new IllegalArgumentException("concurrency must be at least 1");
         Slot slot;
-        synchronized (slots) { slot = slots.computeIfAbsent(key, Slot::new); }
+        synchronized (slots) { slot = slots.computeIfAbsent(key, k -> new Slot(k, concurrency)); }
+        if (slot.concurrency != concurrency)
+            throw new IllegalArgumentException(key + " was pooled with concurrency " + slot.concurrency + ", not " + concurrency);
         slot.use.acquireUninterruptibly();
         try {
-            if (slot.model == null) {
-                synchronized (budgetLock) {
-                    makeRoom(sizeBytes, slot);
-                    slot.reserved = sizeBytes;
-                }
-                slot.size = sizeBytes;
-                AutoCloseable loaded = null;
-                try {
-                    loaded = loader.get();
-                } finally {
-                    // One step, so makeRoom counts it by its reservation or by its size: never both, never neither.
+            synchronized (slot.loading) {
+                if (slot.model == null) {
                     synchronized (budgetLock) {
-                        slot.model = loaded;
-                        slot.reserved = 0;   // loaded (now counted by its size) or failed (given back)
+                        makeRoom(sizeBytes, slot);
+                        slot.reserved = sizeBytes;
+                    }
+                    slot.size = sizeBytes;
+                    AutoCloseable loaded = null;
+                    try {
+                        loaded = loader.get();
+                    } finally {
+                        // One step, so makeRoom counts it by its reservation or by its size: never both, never neither.
+                        synchronized (budgetLock) {
+                            slot.model = loaded;
+                            slot.reserved = 0;   // loaded (now counted by its size) or failed (given back)
+                        }
                     }
                 }
             }
@@ -144,22 +172,22 @@ public final class ModelPool implements AutoCloseable {
         Slot slot;
         synchronized (slots) { slot = slots.get(key); }
         if (slot == null) return false;
-        slot.use.acquireUninterruptibly();
-        try { return closeModel(slot); } finally { slot.use.release(); }
+        slot.acquireAll();
+        try { return closeModel(slot); } finally { slot.releaseAll(); }
     }
 
     /** Unloads every model not in use. */
     public void unloadAll() {
         for (Slot s : snapshot()) {
-            if (s.use.tryAcquire()) {
-                try { closeModel(s); } finally { s.use.release(); }
+            if (s.tryAcquireAll()) {
+                try { closeModel(s); } finally { s.releaseAll(); }
             }
         }
     }
 
     public List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
-        for (Slot s : snapshot()) out.add(new Entry(s.key, s.size, s.model != null, s.use.availablePermits() == 0, s.lastUsed));
+        for (Slot s : snapshot()) out.add(new Entry(s.key, s.size, s.model != null, s.use.availablePermits() < s.concurrency, s.lastUsed));
         return out;
     }
 
@@ -190,8 +218,8 @@ public final class ModelPool implements AutoCloseable {
         closed = true;
         if (reaper != null) reaper.shutdownNow();
         for (Slot s : snapshot()) {
-            s.use.acquireUninterruptibly();
-            try { closeModel(s); } finally { s.use.release(); }
+            s.acquireAll();
+            try { closeModel(s); } finally { s.releaseAll(); }
         }
     }
 
@@ -204,25 +232,25 @@ public final class ModelPool implements AutoCloseable {
         long loaded = loadedBytes() + reservedBytes();
         for (Slot s : idle) {
             if (loaded + needed <= budget) break;
-            if (!s.use.tryAcquire()) continue;  // in use: never evicted
+            if (!s.tryAcquireAll()) continue;  // in use: never evicted
             try {
                 long size = s.size;
                 if (closeModel(s)) loaded -= size;
-            } finally { s.use.release(); }
+            } finally { s.releaseAll(); }
         }
     }
 
     private void unloadIdle() {
         Instant cutoff = Instant.now().minus(idleTimeout);
         for (Slot s : snapshot()) {
-            if (s.model == null || s.lastUsed.isAfter(cutoff) || !s.use.tryAcquire()) continue;
+            if (s.model == null || s.lastUsed.isAfter(cutoff) || !s.tryAcquireAll()) continue;
             try {
                 if (s.lastUsed.isBefore(cutoff)) closeModel(s);
-            } finally { s.use.release(); }
+            } finally { s.releaseAll(); }
         }
     }
 
-    /** Caller holds s.use. */
+    /** Caller holds all of s.use. */
     private static boolean closeModel(Slot s) {
         AutoCloseable m = s.model;
         if (m == null) return false;

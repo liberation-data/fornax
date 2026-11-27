@@ -29,7 +29,7 @@ class PooledEnginesTest {
     }
 
     PooledEngines engines(boolean allowDownloads, String... models) {
-        return new PooledEngines(hub(), new ModelPool(1L << 30, null), List.of(models), 0, PullListener.NONE, s -> {}, allowDownloads);
+        return new PooledEngines(hub(), new ModelPool(1L << 30, null), List.of(models), 0, 1, PullListener.NONE, s -> {}, allowDownloads);
     }
 
     static ApiError notServed(org.junit.jupiter.api.function.Executable call) {
