@@ -65,21 +65,23 @@ ComfyUI never hits this, because PyTorch on ROCm launches many small kernels ins
 its first refine step, and `journalctl -k` shows `amdgpu ... ring comp_... timeout` followed by a GPU reset. A second
 reset in a row can take the display down with it.
 
-**Why:** the refine's video self-attention is one flash-attention node over 47,040 tokens, about 3.6e13 FLOP. ggml's
-Vulkan backend runs a node as a single GPU dispatch, and on the Radeon 8060S that one would take 4.5 to 7.6 s, while
-amdgpu kills any job that runs longer than its `lockup_timeout` (2 s for compute on this kernel). Fewer nodes per
-submission can't help: one node is already the smallest unit.
+**Why:** at that size the refine works on 47,040 video tokens, and some single GPU dispatches run for seconds: the
+video self-attention (one flash-attention node, about 3.6e13 FLOP, 4.5 to 7.6 s on the Radeon 8060S) and each of
+LTX's int8 feed-forward matmuls (about 2.7 s). amdgpu kills any job that runs longer than its `lockup_timeout` (2 s for
+compute on this kernel). Fewer nodes per submission can't help: one node is already the smallest unit.
 
-**The fix:** Fornax's stable-diffusion.cpp carries a patch (`native/patches/stable-diffusion.cpp/0003`) that splits a
-long attention into chunks of query rows, each its own node over the same keys and values. The output is the same (a
-test clip came out bit-identical with and without it). `SD_FA_CHUNK_FLOPS` sets the size of one chunk in FLOPs: the
-default, 1e12, is 0.12 to 0.21 s on the 8060S, so a GPU several times slower still stays inside 2 s. Lower it for a
-slower GPU; `0` turns the split off.
+**The fix:** Fornax's stable-diffusion.cpp carries a patch (`native/patches/stable-diffusion.cpp/0003`) that splits
+long work into chunks of rows, each its own node: attention by query rows, linear layers and feed-forwards by token
+rows. Rows are independent, so the output is the same (test clips came out bit-identical with and without it). Two
+environment variables set the size of one chunk in FLOPs, and `0` turns that split off:
 
-The feed-forward layers can still be too long: at 47,040 tokens each of LTX's int8 feed-forward matmuls is one
-dispatch of about 6.3e12 operations, estimated at up to ~1.8 s on the 8060S. Until they are split too, render long
-clips on HIP (ROCm queues have no such timeout, and HIP is also faster; see
-[the video guide](/docs/guides/video/#long-clips)), or raise the timeout.
+- `SD_FA_CHUNK_FLOPS` for attention: the default, 1e12, is 0.12 to 0.21 s on the 8060S.
+- `SD_FF_CHUNK_FLOPS` for each matmul of a linear layer: the default, 4e11, is about 0.2 s for LTX's int8
+  feed-forward on the 8060S (0.27 s at worst).
+
+Both leave several times the margin to 2 s; lower them for a slower GPU. Keep `-Dfornax.vulkan.maxNodesPerSubmit` low
+too (1 or 2 for long video), since a submission of several chunks is still one job. HIP has no such timeout and is
+also faster (see [the video guide](/docs/guides/video/#long-clips)).
 
 **Fallback: raise the timeout.** amdgpu takes the timeout as a kernel parameter, in milliseconds, for the graphics,
 compute, SDMA and video queues in that order. On Fedora:

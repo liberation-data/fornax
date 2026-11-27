@@ -32,21 +32,30 @@ surprises you.
   `GGML_VK_MAX_NODES_PER_SUBMIT=8` (`-Dfornax.vulkan.maxNodesPerSubmit=8`) fixed it. ComfyUI never hit this, because PyTorch on ROCm launches many small
   kernels.
 - **Long video on Vulkan hits the timeout even at 8 nodes per submission.** A 13 s LTX clip (313 frames) refined at
-  1344×896 lost the device on the first refine step: its video self-attention is one `FLASH_ATTN_EXT` node over 47,040
-  tokens (3.6e13 FLOP), which ggml-vulkan runs as a single dispatch, and amdgpu's job timeout on this kernel is 2 s.
-  No submission size can split one node, so `native/patches/stable-diffusion.cpp/0003` splits it in
-  `ggml_ext_attention_ext`: when an attention's FLOPs exceed `SD_FA_CHUNK_FLOPS` (default 1e12, 0 turns it off), Q is
-  cut into row chunks, each its own `ggml_flash_attn_ext` node over the same K and V, and the outputs are concatenated
-  (a mask shared by all heads is sliced with the rows; any other mask keeps one node). Rows attend independently, so
-  the result is the same: clips at 512×320×49 (5 chunks per attention) and 1024×640×49 (4 chunks) came out
-  bit-identical, frames and audio. Four chunks cost ~1 s on a 37 s step at 1024×640×49 (each attention 43 ms against
-  40.5 ms, plus the concat); an `expand_graph` per chunk, as MiniMax-H3's head chunks use, cost 2 to 3 s more, so the
-  patch leaves it out. On the Radeon 8060S over Vulkan, LTX's self-attention ran at 5.9 TFLOPS at 1,120 tokens and
-  8.1 at 4,480, so the 47,040-token node would take 4.5 to 7.6 s whole and a 1e12 chunk takes 0.12 to 0.21 s. It is to be proposed
-  upstream. The int8 feed-forward matmuls are the next limit: one dispatch each, about 6.3e12 ops at
-  47,040 tokens, which step times put at up to ~1.8 s. HIP has no such timeout (ROCm work goes through KFD user
-  queues, which is why ComfyUI never hit it) and was about 2.7× faster per LTX step than Vulkan on the 8060S (44 s
-  against 119 s at 672×448×313, after a slower first step), so long clips still belong on HIP.
+  1344×896 lost the device on the first refine step. At 47,040 video tokens single dispatches outlast amdgpu's 2 s job
+  timeout, and no submission size can split one node: the video self-attention (one `FLASH_ATTN_EXT` node, 3.6e13 FLOP,
+  4.5 to 7.6 s) and each int8 feed-forward matmul (6.3e12 ops: about 2.7 s up, 1.8 s down). The perf logger doesn't
+  time the int8 matmuls, which are sd.cpp extension ops; a measurement-only build timed each extension dispatch on its
+  own (flush, wait idle, dispatch, wait idle). At 4,480 tokens the up-projection (4096→16384) took 258 ms (2.3 TOPS,
+  454 ms at worst), the down 174 ms, q/k/v/out 25 ms; time is linear in tokens.
+  `native/patches/stable-diffusion.cpp/0003-chunk-long-dispatches.patch` splits both:
+  - attention, in `ggml_ext_attention_ext`: past `SD_FA_CHUNK_FLOPS` (default 1e12) Q is cut into row chunks, each its
+    own `ggml_flash_attn_ext` node over the same K and V, and the outputs are concatenated (a mask shared by all heads
+    is sliced with the rows; any other mask keeps one node). LTX's self-attention ran at 5.9 TFLOPS at 1,120 tokens and
+    8.1 at 4,480, so a 1e12 chunk is 0.12 to 0.21 s;
+  - linear layers, in `Linear::forward`, and whole feed-forwards (up, activation, down), in `FeedForward::forward`:
+    past `SD_FF_CHUNK_FLOPS` (default 4e11, per matmul) the token rows are cut into chunks of whole 128-row tiles.
+    At 47,040 tokens that is 16 feed-forward chunks of 2,944 rows, measured at that shape at 188 ms up (271 ms at
+    worst) and 117 ms down, and 4 chunks for each attention projection (~65 ms). Layers reading one input (q, k, v)
+    share its row views, so its int8 quantization still runs once per chunk.
+  Rows are independent (the int8 activations are quantized per row), so the output is the same: 512×320×49 and
+  1024×640×49 clips came out bit-identical, frames and audio, with every split forced small (down to 128-row
+  feed-forward chunks) and with the defaults. At 1024×640×49 the defaults (two feed-forward chunks) left steps at
+  39.4 s against 40.2 s whole; forcing 6 feed-forward, 2 projection and 4 attention chunks made them 43.8 s. An
+  `expand_graph` per attention chunk, as MiniMax-H3's head chunks use, cost 2 to 3 s a step, so the patch has none.
+  The patch is to be proposed upstream. HIP has no such timeout (ROCm work goes through KFD user queues, which is why
+  ComfyUI never hit it) and was about 2.7× faster per LTX step than Vulkan on the 8060S (44 s against 119 s at
+  672×448×313, after a slower first step), so it stays the better backend for long clips.
 - **HIP graphs overflow a JVM thread's stack.** ggml's HIP backend captures the graph as a HIP graph, and ROCm's
   `hip::Graph::ScheduleOneNode` recurses once per node. On a JVM thread (smaller stack than a CLI's 8 MB main
   thread) LTX segfaults in libamdhip64 during text encoding. `GGML_CUDA_DISABLE_GRAPHS=1` fixes it, and Fornax sets it by default (`-Dfornax.gpu.graphs=true` turns graphs back on).

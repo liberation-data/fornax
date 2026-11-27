@@ -1,0 +1,227 @@
+diff --git a/src/core/ggml_extend.cpp b/src/core/ggml_extend.cpp
+index 52d9cfc..e30c0ad 100644
+--- a/src/core/ggml_extend.cpp
++++ b/src/core/ggml_extend.cpp
+@@ -1,6 +1,8 @@
+ #include "core/ggml_extend.h"
+ 
++#include <algorithm>
+ #include <cmath>
++#include <cstdlib>
+ #include <stdexcept>
+ #include <utility>
+ #include <vector>
+@@ -593,6 +595,17 @@ ggml_tensor* ggml_ext_cast_f32(GGMLRunnerContext* runner_ctx, ggml_tensor* a) {
+     }
+ }
+ 
++// FLOP budget for one flash-attention node; longer attentions are split by query rows. 1e12 is about 0.2 s on a
++// Radeon 8060S over Vulkan (~5 TFLOPS), well inside amdgpu's 2 s job timeout. SD_FA_CHUNK_FLOPS overrides it (0 disables
++// the split).
++static double sd_fa_chunk_flops() {
++    static const double budget = [] {
++        const char* env = std::getenv("SD_FA_CHUNK_FLOPS");
++        return env != nullptr ? std::strtod(env, nullptr) : 1e12;
++    }();
++    return budget;
++}
++
+ ggml_tensor* ggml_ext_attention_ext(GGMLRunnerContext* runner_ctx,
+                                     ggml_tensor* q,
+                                     ggml_tensor* k,
+@@ -690,11 +703,37 @@ ggml_tensor* ggml_ext_attention_ext(GGMLRunnerContext* runner_ctx,
+             mask_in = ggml_cast(ctx, mask_in, GGML_TYPE_F16);
+         }
+ 
+-        auto out = ggml_flash_attn_ext(ctx, q_in, k_in, v_in, mask_in, scale / kv_scale, 0, 0);
+-        if (!ggml_backend_supports_op(backend, out)) {
+-            return nullptr;
++        // A backend may run one FA node as a single GPU dispatch, and a long one outlasts driver watchdogs (amdgpu's
++        // 2 s job timeout lost the device on a 47k-token LTX video self-attention over Vulkan). Split the queries into
++        // row chunks of at most sd_fa_chunk_flops() each, every chunk its own node; the chunks share K and V. A mask is
++        // sliced with them when its rows stay contiguous (one mask shared by all heads and batches); any other mask
++        // keeps the single node. No expand_graph per chunk: the outputs live until the concat anyway, and the
++        // reordering cost LTX ~5% per step on Vulkan.
++        const double fa_flops = 2.0 * q_in->ne[1] * q_in->ne[2] * q_in->ne[3] * (k_in->ne[0] + v_in->ne[0]) * k_in->ne[1];
++        const double budget   = sd_fa_chunk_flops();
++        const bool sliceable  = mask_in == nullptr || (mask_in->ne[2] == 1 && mask_in->ne[3] == 1);
++        int64_t rows          = q_in->ne[1];
++        if (sliceable && budget > 0 && fa_flops > budget) {
++            const int64_t n_chunks = static_cast<int64_t>(std::ceil(fa_flops / budget));
++            rows                   = GGML_PAD((q_in->ne[1] + n_chunks - 1) / n_chunks, 64);
++        }
++        std::vector<ggml_tensor*> outs;
++        for (int64_t start = 0; start < q_in->ne[1]; start += rows) {
++            const int64_t n = std::min(rows, q_in->ne[1] - start);
++            auto q_rows     = n == q_in->ne[1] ? q_in
++                                               : ggml_view_4d(ctx, q_in, q_in->ne[0], n, q_in->ne[2], q_in->ne[3], q_in->nb[1],
++                                                              q_in->nb[2], q_in->nb[3], start * q_in->nb[1]);
++            auto mask_rows  = mask_in == nullptr || n == q_in->ne[1]
++                                  ? mask_in
++                                  : ggml_view_2d(ctx, mask_in, mask_in->ne[0], n, mask_in->nb[1], start * mask_in->nb[1]);
++            auto part       = ggml_flash_attn_ext(ctx, q_rows, k_in, v_in, mask_rows, scale / kv_scale, 0, 0);
++            if (!ggml_backend_supports_op(backend, part)) {
++                return nullptr;
++            }
++            ggml_prec_set_acc(part, GGML_PREC_F32);
++            outs.push_back(part);
+         }
+-        ggml_prec_set_acc(out, GGML_PREC_F32);
++        auto out = ggml_ext_vec_concat(runner_ctx, outs, 2);
+         if (kv_scale != 1.0f) {
+             out = ggml_ext_scale(runner_ctx, out, 1.0f / kv_scale);
+         }
+@@ -835,6 +874,48 @@ ggml_tensor* ggml_ext_timestep_embedding(GGMLRunnerContext* runner_ctx,
+     return ggml_timestep_embedding(ctx, timesteps, dim, max_period);
+ }
+ 
++// FLOP budget for one matmul of a linear layer; longer inputs are split by rows. 4e11 is about 0.2 s (0.27 s at worst)
++// for an LTX feed-forward int8 matmul on a Radeon 8060S over Vulkan, inside amdgpu's 2 s job timeout.
++// SD_FF_CHUNK_FLOPS overrides it (0 disables the split).
++static double sd_ff_chunk_flops() {
++    static const double budget = [] {
++        const char* env = std::getenv("SD_FF_CHUNK_FLOPS");
++        return env != nullptr ? std::strtod(env, nullptr) : 4e11;
++    }();
++    return budget;
++}
++
++ggml_tensor* ggml_ext_split_rows(GGMLRunnerContext* runner_ctx,
++                                 ggml_tensor* x,
++                                 double flops_per_row,
++                                 const std::function<ggml_tensor*(ggml_tensor*)>& fn) {
++    const double budget  = sd_ff_chunk_flops();
++    const int64_t n_rows = ggml_nrows(x);
++    if (budget <= 0 || x->type != GGML_TYPE_F32 || n_rows * flops_per_row <= budget) {
++        return nullptr;
++    }
++    auto ctx = runner_ctx->ggml_ctx;
++    // Whole 128-row tiles, so the int8 matmuls don't add a tail dispatch per chunk.
++    const int64_t rows = std::max<int64_t>(128, static_cast<int64_t>(budget / flops_per_row) / 128 * 128);
++    if (rows >= n_rows) {
++        return nullptr;
++    }
++    auto& views = runner_ctx->row_chunk_cache[{x, rows}];
++    if (views.empty()) {
++        auto flat = ggml_reshape_2d(ctx, ggml_ext_cont(runner_ctx, x), x->ne[0], n_rows);
++        for (int64_t start = 0; start < n_rows; start += rows) {
++            views.push_back(ggml_view_2d(ctx, flat, flat->ne[0], std::min(rows, n_rows - start), flat->nb[1], start * flat->nb[1]));
++        }
++    }
++    std::vector<ggml_tensor*> outs;
++    for (auto view : views) {
++        auto out = fn(view);
++        outs.push_back(ggml_reshape_2d(ctx, ggml_ext_cont(runner_ctx, out), out->ne[0], view->ne[1]));
++    }
++    auto out = ggml_ext_vec_concat(runner_ctx, outs, 1);
++    return ggml_reshape_4d(ctx, out, out->ne[0], x->ne[1], x->ne[2], x->ne[3]);
++}
++
+ ggml_tensor* ggml_ext_vec_concat(GGMLRunnerContext* runner_ctx, std::vector<ggml_tensor*>& tensors, int dim) {
+     auto ctx = runner_ctx->ggml_ctx;
+     while (tensors.size() > 1) {
+diff --git a/src/core/ggml_extend.h b/src/core/ggml_extend.h
+index 1f0a42c..b2bafe3 100644
+--- a/src/core/ggml_extend.h
++++ b/src/core/ggml_extend.h
+@@ -2,6 +2,7 @@
+ #define __SD_CORE_GGML_EXTEND_H__
+ 
+ #include <cstdint>
++#include <functional>
+ #include <vector>
+ 
+ #include "core/ggml_extensions.h"
+@@ -205,6 +206,13 @@ ggml_tensor* ggml_ext_timestep_embedding(GGMLRunnerContext* runner_ctx,
+ 
+ ggml_tensor* ggml_ext_vec_concat(GGMLRunnerContext* runner_ctx, std::vector<ggml_tensor*>& tensors, int dim);
+ 
++// Runs fn over row chunks of x (its rows being ne1 * ne2 * ne3) when rows * flops_per_row exceeds SD_FF_CHUNK_FLOPS, and
++// concatenates the results; nullptr when x fits in one piece. fn must treat rows independently.
++ggml_tensor* ggml_ext_split_rows(GGMLRunnerContext* runner_ctx,
++                                 ggml_tensor* x,
++                                 double flops_per_row,
++                                 const std::function<ggml_tensor*(ggml_tensor*)>& fn);
++
+ #ifndef SD_USE_UPSTREAM_GGML
+ ggml_tensor* ggml_ext_mul_mat_i8_tensorwise(GGMLRunnerContext* runner_ctx,
+                                             ggml_tensor* weight,
+diff --git a/src/core/ggml_runner.h b/src/core/ggml_runner.h
+index c18b92f..4c6c959 100644
+--- a/src/core/ggml_runner.h
++++ b/src/core/ggml_runner.h
+@@ -95,6 +95,8 @@ struct GGMLRunnerContext {
+     std::function<void(const std::string&, ggml_tensor*)> cache_tensor;
+     std::function<void(ggml_tensor*, const void*)> set_backend_tensor_data;
+     std::map<std::pair<ggml_tensor*, int>, ggml_tensor*> int8_convrot_cache;
++    // Row views made by ggml_ext_split_rows, per (input, rows): layers reading one input (q, k, v) share its chunks.
++    std::map<std::pair<ggml_tensor*, int64_t>, std::vector<ggml_tensor*>> row_chunk_cache;
+ 
+     void capture_tensor(const std::string& name, ggml_tensor* tensor) {
+         if (debug_tensors == nullptr || tensor == nullptr) {
+diff --git a/src/model/common/block.hpp b/src/model/common/block.hpp
+index d8e193a..320cc01 100644
+--- a/src/model/common/block.hpp
++++ b/src/model/common/block.hpp
+@@ -1,6 +1,8 @@
+ #ifndef __SD_MODEL_COMMON_BLOCK_HPP__
+ #define __SD_MODEL_COMMON_BLOCK_HPP__
+ 
++#include <algorithm>
++
+ #include "core/ggml_extend.h"
+ #include "core/ggml_runner.h"
+ #include "core/util.h"
+@@ -257,6 +259,9 @@ public:
+ };
+ 
+ class FeedForward : public GGMLBlock {
++protected:
++    double flops_per_row = 0;
++
+ public:
+     enum class Activation {
+         GEGLU,
+@@ -269,6 +274,8 @@ public:
+                 bool precision_fix    = false,
+                 bool bias             = true) {
+         int64_t inner_dim = dim * mult;
++        const int64_t up  = activation == Activation::GEGLU ? inner_dim * 2 : inner_dim;
++        flops_per_row     = 2.0 * std::max(dim * up, inner_dim * dim_out);
+         if (activation == Activation::GELU) {
+             blocks["net.0"] = std::shared_ptr<GGMLBlock>(new GELU(dim, inner_dim, bias));
+         } else {
+@@ -295,9 +302,13 @@ public:
+         auto net_2 = std::dynamic_pointer_cast<Linear>(blocks["net.2"]);
+         net_2->set_precision_flags(GGML_PRECISION_F32_VULKAN | GGML_PRECISION_F32_ROCM);
+ 
+-        x = net_0->forward(ctx, x);  // [ne3, ne2, ne1, inner_dim]
+-        x = net_2->forward(ctx, x);  // [ne3, ne2, ne1, dim_out]
+-        return x;
++        // Split long inputs here rather than in each Linear, so the inner_dim activations exist one chunk at a time.
++        auto run = [&](ggml_tensor* rows) {
++            rows = net_0->forward(ctx, rows);  // [ne3, ne2, ne1, inner_dim]
++            return net_2->forward(ctx, rows);  // [ne3, ne2, ne1, dim_out]
++        };
++        auto out = ggml_ext_split_rows(ctx, x, flops_per_row, run);
++        return out != nullptr ? out : run(x);
+     }
+ };
+ 
+diff --git a/src/model/common/ggml_block.hpp b/src/model/common/ggml_block.hpp
+index 0342d6d..9b079cd 100644
+--- a/src/model/common/ggml_block.hpp
++++ b/src/model/common/ggml_block.hpp
+@@ -241,6 +241,12 @@ public:
+     }
+ 
+     ggml_tensor* forward(GGMLRunnerContext* ctx, ggml_tensor* x) override {
++        // A long input is one long GPU dispatch; split its rows to stay inside driver watchdogs.
++        auto out = ggml_ext_split_rows(ctx, x, 2.0 * in_features * out_features, [&](ggml_tensor* rows) { return forward_rows(ctx, rows); });
++        return out != nullptr ? out : forward_rows(ctx, x);
++    }
++
++    ggml_tensor* forward_rows(GGMLRunnerContext* ctx, ggml_tensor* x) {
+         const bool force_prec_f32 = ggml_ext_force_prec_f32(ctx, this->force_prec_f32, precision_flags);
+         ggml_tensor* w            = params["weight"];
+         const float scale         = ctx->linear_scale > 0.f ? ctx->linear_scale : this->scale;

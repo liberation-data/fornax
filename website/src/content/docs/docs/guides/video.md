@@ -167,14 +167,14 @@ example).
 ## Long clips
 
 On Vulkan, a long clip can lose the GPU. A 13 s LTX clip (313 frames) refined at 1344×896 lost the device on its first
-refine step: its attention over 47,040 tokens ran as one GPU dispatch, longer than the amdgpu driver's 2 s compute
-timeout. Fornax's stable-diffusion.cpp now splits long attentions into short chunks (`SD_FA_CHUNK_FLOPS`, with the same
-output), but at that size each of LTX's feed-forward matmuls is still one dispatch of up to ~1.8 s, too close to the
-limit. See [Troubleshooting](/docs/troubleshooting/#device-lost-or-ring-timeout-on-long-video).
+refine step: its attention and feed-forward layers over 47,040 tokens each ran as one GPU dispatch, longer than the
+amdgpu driver's 2 s compute timeout. Fornax's stable-diffusion.cpp now splits that work into short chunks with the
+same output (`SD_FA_CHUNK_FLOPS`, `SD_FF_CHUNK_FLOPS`); for a long clip on Vulkan also pass
+`-Dfornax.vulkan.maxNodesPerSubmit=1`. See [Troubleshooting](/docs/troubleshooting/#device-lost-or-ring-timeout-on-long-video).
 
-So use HIP (ROCm) for long clips. It doesn't have that timeout: its work goes through user queues that the timeout
-doesn't cover. It was also about 2.7× faster per LTX step on the Radeon 8060S (44 s against 119 s at 672×448×313,
-after a slower first step). Build it with `native/build.sh hip`; see
+HIP (ROCm) is still the better backend for long clips. It doesn't have that timeout: its work goes through user
+queues that the timeout doesn't cover. It was also about 2.7× faster per LTX step on the Radeon 8060S (44 s against
+119 s at 672×448×313, after a slower first step). Build it with `native/build.sh hip`; see
 [Choosing a GPU backend](/docs/guides/gpu-backends/#hip-rocm). Fornax turns off ggml's HIP graphs by default, which
 would otherwise overflow a JVM thread's stack on LTX.
 
