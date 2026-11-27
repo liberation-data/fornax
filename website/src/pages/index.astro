@@ -859,8 +859,8 @@ const theme = 'vitesse-dark';
                             <h3>Your GPU, your OS.</h3>
                             <p>
                                 One Java API, and the native libraries for your platform. Vulkan and ROCm run the full test suite every
-                                night; Metal passes it on Apple silicon. The natives jar you add picks the backend; for ROCm, build the
-                                engines yourself.
+                                night; Metal passes it on Apple silicon. The natives jar you add picks the backend; for ROCm, you build the
+                                engines once. <a href="/docs/platforms/">Set up on your platform</a> has the steps for each.
                             </p>
                         </div>
                         <div class="backends">
@@ -1045,7 +1045,7 @@ const theme = 'vitesse-dark';
                                 <div class="shell" data-qs-pane="images" hidden><Code code={qsImages} lang="java" theme={theme} /></div>
                                 <div class="shell" data-qs-pane="songs" hidden><Code code={qsSongs} lang="java" theme={theme} /></div>
                                 <div class="shell" data-qs-pane="transcribe" hidden><Code code={qsTranscribe} lang="java" theme={theme} /></div>
-                                <p class="qs-note qs-done"><strong>That’s the whole shape.</strong> Add <code>fornax-tts</code>, <code>fornax-sd</code>, <code>fornax-acestep</code> or <code>fornax-whisper</code> next to <code>fornax-llama</code>, with no version and no second natives jar. Each takes a catalogue name or a Hugging Face reference. The <a href="/docs/">guides</a> go further. To build the engines yourself, for HIP or CUDA, see <a href="https://github.com/liberation-data/fornax#building">Building</a>.</p>
+                                <p class="qs-note qs-done"><strong>That’s the whole shape.</strong> Add <code>fornax-tts</code>, <code>fornax-sd</code>, <code>fornax-acestep</code> or <code>fornax-whisper</code> next to <code>fornax-llama</code>, with no version and no second natives jar. Each takes a catalogue name or a Hugging Face reference. The <a href="/docs/">guides</a> go further. For ROCm or CUDA, <a href="/docs/platforms/">Set up on your platform</a> has the steps.</p>
                             </div>
                         </div>
                         <div class="qs-bar">

@@ -70,7 +70,9 @@ checkpoint that mixes bf16 and f32 can then abort. See [Troubleshooting](/docs/t
 ## HIP (ROCm)
 
 For AMD GPUs, through ROCm. Building needs ROCm's HIP compiler, hipBLAS and rocBLAS. Set `HIP_ARCH` to your GPU's
-target (`gfx1151` is the Radeon 8060S in Strix Halo; `rocminfo` names yours):
+target (`gfx1151` is the Radeon 8060S in Strix Halo; `rocminfo` names yours).
+[Set up on your platform](/docs/platforms/#linux-amd-with-rocm) has the whole setup, from installing ROCm to pointing
+your app at the libraries.
 
 ```sh
 HIP_ARCH=gfx1100 native/build.sh hip
