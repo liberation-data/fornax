@@ -176,8 +176,10 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 [Benchmarks](https://fornax4j.org/docs/benchmarks/) sets these against each engine's own tool and against ComfyUI, with
 the command behind every figure.
 
-The build script also knows the **ROCm (HIP)**, **CUDA** and **Metal** backends of the underlying engines. HIP has
-run LTX-2.5 video on the same machine (about 2.7× faster per step than Vulkan, and the way to render long clips; see
+The build script also knows the **ROCm (HIP)**, **CUDA** and **Metal** backends of the underlying engines. HIP passes
+the test suite on the same machine (one rerank score drifts,
+[#80](https://github.com/liberation-data/fornax/issues/80)) and has run LTX-2.5 video there (about 2.7× faster per
+step than Vulkan, and the way to render long clips; see
 [engine notes](docs/engine-notes.md)), and Metal passes the test suite on an Apple M2 Max with 32 GB (macOS 27.2: chat, vision, embeddings and reranking, speech,
 transcription, stem separation, FLUX.2 [klein] images and upscaling, isolated workers and Dispatch; songs and video
 haven't been run on a Mac yet, nor has an Intel Mac). CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
@@ -450,7 +452,7 @@ error says what to install) unless `FORNAX_ALLOW_CPU=true` is set in the server'
 
 ## Roadmap
 
-- Test and document the HIP and CUDA builds, and songs and video on Metal; natives jars for HIP and CUDA.
+- Test and document the CUDA build, and songs and video on Metal; natives jars for HIP and CUDA.
 - Video through stable-diffusion.cpp (`sd_generate_video`: Wan, LTX).
 - `fornax-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `fornax-llama`).
 - An MLX module for Apple silicon, through `mlx-c`.

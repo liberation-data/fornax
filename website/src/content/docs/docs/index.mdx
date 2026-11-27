@@ -100,7 +100,7 @@ You choose a GPU backend when you build the native libraries; the Java code is t
 | Backend | GPUs | State |
 |---|---|---|
 | Vulkan | AMD, Intel, NVIDIA | what Fornax is tested on |
-| HIP (ROCm) | AMD | builds; has run LTX video on the 8060S, where it was faster than Vulkan |
+| HIP (ROCm) | AMD | passes the test suite on the 8060S (one rerank score drifts: [#80](https://github.com/liberation-data/fornax/issues/80)); runs LTX video faster than Vulkan |
 | CUDA | NVIDIA | builds from the same script; not tested yet |
 | Metal | Apple silicon and Intel Macs | passes the test suite on an M2 Max; songs, video and Intel Macs not run yet |
 | CPU | any | no GPU; slow, but useful to check a setup |
