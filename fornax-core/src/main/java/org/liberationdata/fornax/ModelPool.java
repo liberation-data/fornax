@@ -68,7 +68,11 @@ public final class ModelPool implements AutoCloseable {
     private final Map<String, Slot> slots = new LinkedHashMap<>();
     private final ScheduledExecutorService reaper;
     private volatile boolean closed;
-    /** Making room and reserving it are one step: two loads at once can't both take the same free space. */
+    /**
+     * Making room and reserving it are one step: two loads at once can't both take the same free space. Held only
+     * around the accounting and the unloading of idle models (which other loads wait for), never while a loader runs,
+     * and nothing blocks under it: makeRoom only tries other models' locks.
+     */
     private final Object budgetLock = new Object();
 
     public ModelPool(long budgetBytes, Duration idleTimeout) {
@@ -100,11 +104,16 @@ public final class ModelPool implements AutoCloseable {
                     makeRoom(sizeBytes, slot);
                     slot.reserved = sizeBytes;
                 }
+                slot.size = sizeBytes;
+                AutoCloseable loaded = null;
                 try {
-                    slot.size = sizeBytes;
-                    slot.model = loader.get();
+                    loaded = loader.get();
                 } finally {
-                    slot.reserved = 0;   // loaded (now counted by its size) or failed (given back)
+                    // One step, so makeRoom counts it by its reservation or by its size: never both, never neither.
+                    synchronized (budgetLock) {
+                        slot.model = loaded;
+                        slot.reserved = 0;   // loaded (now counted by its size) or failed (given back)
+                    }
                 }
             }
             slot.lastUsed = Instant.now();

@@ -123,6 +123,7 @@ class ModelPoolTest {
                 assertTrue(bLoading.await(10, TimeUnit.SECONDS));
                 // b's 40 is on its way: 40 idle + 40 b + 40 c is over 100, so the idle model goes before c loads
                 try (var c = pool.acquire("c", 40, () -> new Fake("c", log))) {
+                    assertNotNull(c.model());
                     assertTrue(log.contains("close idle"), log.toString());
                 }
             } finally {
@@ -143,6 +144,24 @@ class ModelPoolTest {
             pool.acquire("c", 60, () -> new Fake("c", log)).close();
             assertEquals(List.of("load idle", "load c"), log);
             assertEquals(100, pool.loadedBytes());
+        }
+    }
+
+    /** A loader that borrows another model (budgetLock isn't held while a loader runs), which counts the outer load. */
+    @Test
+    void aLoaderCanBorrowAnotherModel() {
+        List<String> log = new ArrayList<>();
+        try (var pool = new ModelPool(100, null)) {
+            pool.acquire("idle", 40, () -> new Fake("idle", log)).close();
+            try (var outer = pool.acquire("outer", 40, () -> {
+                // outer's 40 is on its way: 40 idle + 40 outer + 40 inner is over 100, so the idle model goes
+                try (var inner = pool.acquire("inner", 40, () -> new Fake("inner", log))) { assertNotNull(inner.model()); }
+                return new Fake("outer", log);
+            })) {
+                assertNotNull(outer.model());
+            }
+            assertEquals(List.of("load idle", "close idle", "load inner", "load outer"), log);
+            assertEquals(80, pool.loadedBytes());
         }
     }
 }
