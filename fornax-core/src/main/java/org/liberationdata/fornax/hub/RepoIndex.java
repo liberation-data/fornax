@@ -1,9 +1,7 @@
-package org.liberationdata.fornax.cli;
+package org.liberationdata.fornax.hub;
 
-import org.liberationdata.fornax.hub.HubException;
+import org.liberationdata.fornax.Json;
 import org.liberationdata.fornax.hub.HubException.Reason;
-import org.liberationdata.fornax.hub.HubToken;
-import org.liberationdata.fornax.llama.Json;
 
 import java.io.IOException;
 import java.net.URI;
@@ -12,62 +10,74 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * A repo's file list from the Hub's API, for {@code fornax pull org/name}'s GGUF picker, tags and globs. Only the list:
- * the files themselves are downloaded by {@link org.liberationdata.fornax.hub.FornaxHub}.
+ * A repo's file list from the Hub's API: what {@link FornaxHub#fetch} picks a model reference's files from, and
+ * {@code fornax pull org/name}'s GGUF picker, tags and globs. Only the list: {@link FornaxHub} downloads the files.
  */
-final class RepoIndex {
+public final class RepoIndex {
     /** A file in a repo, with its size (-1 when the Hub didn't say). */
-    record RepoFile(String path, long size) {}
+    public record RepoFile(String path, long size) {}
 
     /** A repo's files at a revision; {@code commit} is the commit the revision named when asked. */
-    record RepoInfo(String repo, String commit, List<RepoFile> files) {
-        Optional<RepoFile> file(String path) { return files.stream().filter(f -> f.path().equals(path)).findFirst(); }
+    public record RepoInfo(String repo, String commit, List<RepoFile> files) {
+        public Optional<RepoFile> file(String path) { return files.stream().filter(f -> f.path().equals(path)).findFirst(); }
     }
 
     private final URI endpoint;
     private final String token;
     private final boolean offline;
-    private final HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL)
-            .connectTimeout(Duration.ofSeconds(30)).build();
+    // redirects are followed by hand, so the token goes to the endpoint only (Java 22's client forwards it anywhere)
+    private final HttpClient http;
 
-    RepoIndex(URI endpoint, String token) { this(endpoint, token, false); }
+    /** The Hub at {@code endpoint}, with {@code token} (or null) for private and gated repos, online. */
+    public RepoIndex(URI endpoint, String token) { this(endpoint, token, false); }
 
     /** {@code offline}: {@link #info} fails at once, as {@code FornaxHub} does for a missing file under HF_HUB_OFFLINE. */
-    RepoIndex(URI endpoint, String token, boolean offline) {
+    public RepoIndex(URI endpoint, String token, boolean offline) { this(endpoint, token, offline, HubHttp.defaultClient()); }
+
+    /** {@code http} must not follow redirects ({@link FornaxHub.Builder#httpClient}): they're followed by hand. */
+    RepoIndex(URI endpoint, String token, boolean offline, HttpClient http) {
+        this.http = http;
         this.endpoint = URI.create(endpoint.toString().replaceAll("/+$", ""));
         this.token = token;
         this.offline = offline;
     }
 
     /** {@code HF_ENDPOINT} (default https://huggingface.co), the token {@link HubToken#find()} finds and HF_HUB_OFFLINE, as FornaxHub uses. */
-    static RepoIndex standard() {
+    public static RepoIndex standard() {
         String off = System.getenv("HF_HUB_OFFLINE");
         boolean offline = off != null && java.util.Set.of("1", "true", "yes", "on").contains(off.trim().toLowerCase(java.util.Locale.ROOT));
         return new RepoIndex(endpoint(), HubToken.find().orElse(null), offline);
     }
 
-    static URI endpoint() {
+    /** {@code HF_ENDPOINT}, else https://huggingface.co. */
+    public static URI endpoint() {
         String ep = System.getenv("HF_ENDPOINT");
         return URI.create(ep == null || ep.isBlank() ? "https://huggingface.co" : ep.strip());
     }
 
     /** The repo's files at {@code revision} (a branch, tag or commit). */
-    RepoInfo info(String repo, String revision) throws IOException {
+    public RepoInfo info(String repo, String revision) throws IOException {
         if (offline) throw new HubException(Reason.OFFLINE, repo, repo + ": listing its files needs the Hub, and HF_HUB_OFFLINE "
-                + "is set. Unset it to pull from a repo; fornax chat " + repo + ":TAG uses what is already in the cache.");
+                + "is set. Unset it to download from " + repo + "; a model already in the cache is used without the Hub.");
         URI uri = URI.create(endpoint + "/api/models/" + repo + "/revision/" + encode(revision) + "?blobs=true");
-        HttpRequest.Builder req = HttpRequest.newBuilder(uri).header("User-Agent", "fornax-cli");
-        if (token != null) req.header("Authorization", "Bearer " + token);
-        HttpResponse<String> r;
-        try { r = http.send(req.build(), HttpResponse.BodyHandlers.ofString()); }
-        catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IOException("interrupted", e); }
+        HttpResponse<String> r = null;
+        for (int hops = 0; hops < 10; hops++) {   // the Hub's own redirects (a renamed repo) keep the token; others don't get it
+            HttpRequest.Builder req = HttpRequest.newBuilder(uri).header("User-Agent", "fornax");
+            if (token != null && HubHttp.sendsToken(uri, endpoint)) req.header("Authorization", "Bearer " + token);
+            try { r = http.send(req.build(), HttpResponse.BodyHandlers.ofString()); }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IOException("interrupted", e); }
+            if (r.statusCode() < 300 || r.statusCode() >= 400) break;
+            String loc = r.headers().firstValue("Location").orElseThrow(() ->
+                    new HubException(Reason.PROTOCOL, repo, repo + ": a redirect without a Location"));
+            uri = uri.resolve(loc);
+        }
+        if (r.statusCode() >= 300 && r.statusCode() < 400) throw new HubException(Reason.PROTOCOL, repo, repo + ": too many redirects");
         if (r.statusCode() != 200) throw failure(r.statusCode(), repo, revision);
         Object json = Json.parse(r.body());
         List<RepoFile> files = new ArrayList<>();

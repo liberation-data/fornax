@@ -32,6 +32,13 @@ const [fornaxStars, studioStars] = await Promise.all([repoStars('liberation-data
 const stars = (n?: number) => (!n ? '' : `★ ${n.toLocaleString('en')}`);
 // Download Fornax Studio (the hero, the closing call) goes to the buttons, or to the section that says they are coming.
 const studioHref = studio ? '#get-studio' : '#studio';
+/* Copy-and-paste installs for Linux: dnf installs straight from a URL; apt needs the file first. */
+const linuxInstalls = (studio?.linux ?? []).flatMap((d) => {
+    const file = d.url.split('/').pop() ?? '';
+    if (file.endsWith('.rpm')) return [{ distro: 'Fedora / RHEL', command: `sudo dnf install ${d.url}` }];
+    if (file.endsWith('.deb')) return [{ distro: 'Debian / Ubuntu', command: `curl -LO ${d.url} && sudo apt install ./${file}` }];
+    return [];
+});
 const DESCRIPTION = 'Open models as plain Java calls: chat, vision, documents, images, songs, video and speech, running on your GPU, inside your JVM.';
 
 // The link preview: the video's title card (logo, fornax4j, tagline), 1200×630, at an absolute URL on the site's domain.
@@ -47,36 +54,46 @@ const photo = async (width: number) => {
     return { avif: avif.src, css: `image-set(url('${avif.src}') type('image/avif'), url('${webp.src}') type('image/webp'), url('${jpeg.src}') type('image/jpeg'))` };
 };
 const [photoLarge, photoSmall] = await Promise.all([photo(1920), photo(960)]);
-// The explainer, from scripts/video.sh. public/video/ is gitignored (the video isn't cleared to publish yet), so the
-// section and the hero's pill to it show only where the video has been made. Its HLS segments, end frame and captions
+// The explainer, from scripts/video.sh (public/video/ is committed). The section and the hero's pill to it show only
+// where the video is there. Its HLS segments, end frame and captions
 // are each used where they are there. Its length is the playlist's (the sum of its segments), so it follows the video
 // when it is cut again; without one, it is what video.sh last printed.
-/* Copy-and-paste installs for Linux: dnf installs straight from a URL; apt needs the file first. */
-const linuxInstalls = (studio?.linux ?? []).flatMap((d) => {
-    const file = d.url.split('/').pop() ?? '';
-    if (file.endsWith('.rpm')) return [{ distro: 'Fedora / RHEL', command: `sudo dnf install ${d.url}` }];
-    if (file.endsWith('.deb')) return [{ distro: 'Debian / Ubuntu', command: `curl -LO ${d.url} && sudo apt install ./${file}` }];
-    return [];
-});
 const hasExplainer = existsSync('public/video/explainer.mp4');
 /* Every video URL carries the web copy's hash, so a new cut is never played from a browser's cached old one (GitHub
    Pages lets browsers keep files for 10 minutes, and the file names stay the same). */
 const VIDEO_V = hasExplainer ? createHash('sha256').update(readFileSync('public/video/explainer.mp4')).digest('hex').slice(0, 10) : '';
 const v = (path: string) => `${path}?v=${VIDEO_V}`;
 const PLAYLIST = 'public/video/hls/index.m3u8';
-const seconds = existsSync(PLAYLIST)
-    ? Math.round([...readFileSync(PLAYLIST, 'utf8').matchAll(/#EXTINF:([\d.]+)/g)].reduce((sum, [, it]) => sum + Number(it), 0))
-    : 128;
+const playlist = existsSync(PLAYLIST) ? readFileSync(PLAYLIST, 'utf8') : undefined;
+const seconds = playlist ? Math.round([...playlist.matchAll(/#EXTINF:([\d.]+)/g)].reduce((sum, [, it]) => sum + Number(it), 0)) : 128;
 const VIDEO = {
     title: 'Fornax in two minutes',
     length: `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`,
     spoken: `${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds`,
-    hls: existsSync(PLAYLIST) ? v('/video/hls/index.m3u8') : undefined,
+    hls: playlist ? v('/video/hls/index.m3u8') : undefined,
+    // The playlist's header segment, for the player to fetch ahead: video.sh names it after the cut's hash.
+    hlsInit: playlist?.match(/#EXT-X-MAP:URI="([^"]+)"/)?.[1],
     end: existsSync('public/video/explainer-end.jpg') ? v('/video/explainer-end.jpg') : undefined,
     captions: existsSync('public/video/explainer.vtt') ? v('/video/explainer.vtt') : undefined,
     share: 'https://fornax4j.org/#video',
     shareText: 'Fornax: open generative models inside your JVM.',
 };
+// The poster, from video.sh's JPEG (1920x1080, ~650 KB), as AVIF, WebP and JPEG at the player's widths, as the splash
+// is: the browser takes the smallest that fills the player, and, the player being below the fold, only when it nears.
+// A glob, so a checkout without the video still builds.
+const posterJpeg = Object.values(import.meta.glob<ImageMetadata>('../../public/video/explainer-poster.jpg', { eager: true, import: 'default' }))[0];
+// The player is the page's width less its gutters, up to 960 px.
+const POSTER_SIZES = '(max-width: 1024px) 100vw, 960px';
+const poster = posterJpeg
+    ? Object.fromEntries(
+          await Promise.all(
+              (['avif', 'webp', 'jpeg'] as const).map(async (format) => {
+                  const it = await getImage({ src: posterJpeg, format, widths: [960, 1280, 1920], quality: format === 'avif' ? 55 : 72 });
+                  return [format, it.srcSet.attribute];
+              })
+          )
+      )
+    : undefined;
 const photoVars = `--photo: ${photoLarge.css}; --photo-small: ${photoSmall.css}; --lines: url('${lines.src}');`;
 const logoSmall = await getImage({ src: logo, width: 144, format: 'png' });
 
@@ -112,35 +129,96 @@ String res = llm.chatJson("""
 }`
 };
 
-const depend = `// build.gradle.kts: an engine module, and the natives jar for the OS and arch building it
-val natives = when {
+// The quick start (#start): four steps, each a frame with tabs where there's a choice to make.
+const qsGradle = `// build.gradle.kts
+plugins { application }
+repositories { mavenCentral() }
+val natives = when {   // the natives jar for the OS and arch building it
     !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
     System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
     else -> "macos-x86_64-metal"
 }
 dependencies {
-    implementation("org.fornax4j:fornax-llama:0.2.0")
-    runtimeOnly("org.fornax4j:fornax-natives-$natives:0.2.0")
-}`;
-
-const download = `fornax pull qwen3-4b
-# or, with the Hugging Face CLI:
-hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf`;
-
-const hello = `var weights = HfCache.find("unsloth/Qwen3-4B-Instruct-2507-GGUF",
-        "Qwen3-4B-Instruct-2507-Q4_K_M.gguf").orElseThrow();
-try (var llm = new LlamaModel(weights.toString())) {
-    llm.chat(List.of(Message.user("Write a haiku about a fornax.")),
-            Options.DEFAULT, System.out::print);
+    implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
+    implementation("org.fornax4j:fornax-llama")
+    runtimeOnly("org.fornax4j:fornax-natives-$natives")
 }
-// run with --enable-native-access=ALL-UNNAMED`;
+application {
+    mainClass = "Hello"
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+}`;
+const qsMaven = `<!-- pom.xml: Maven picks the natives jar for the machine building it -->
+<properties>
+    <maven.compiler.release>22</maven.compiler.release>
+</properties>
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>org.fornax4j</groupId>
+            <artifactId>fornax-bom</artifactId>
+            <version>0.2.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+<dependencies>
+    <dependency>
+        <groupId>org.fornax4j</groupId>
+        <artifactId>fornax-llama</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.fornax4j</groupId>
+        <artifactId>fornax-natives</artifactId>
+        <type>pom</type>
+        <scope>runtime</scope>
+    </dependency>
+</dependencies>`;
+const qsHello = `// src/main/java/Hello.java
+import org.liberationdata.fornax.llama.LlamaModel;
+import org.liberationdata.fornax.llama.LlamaModel.*;
+import java.util.List;
 
-const build = `native/build.sh vulkan     # or hip | cuda | metal | cpu
-./gradlew build
-./gradlew single           # an LLM writes a song, ACE-Step sings it, FLUX.2 klein paints the cover
-./gradlew image --args='klein out.png "a neon sign that says FORNAX"'`;
+public class Hello {
+    public static void main(String[] args) {
+        // Downloaded on first use, then loaded onto the GPU
+        try (var llm = new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M")) {
+            llm.chat(List.of(Message.user("Write a haiku about a fornax. Just the haiku.")),
+                    Options.DEFAULT, System.out::print);
+        }
+    }
+}`;
+const qsRunGradle = `./gradlew run`;
+const qsRunMaven = `MAVEN_OPTS=--enable-native-access=ALL-UNNAMED mvn -q compile exec:java -Dexec.mainClass=Hello`;
+const qsSpeech = `try (var tts = new TtsModel("kokoro")) {   // a catalogue alias
+    tts.speak("Hello from the JVM.", "am_michael").writeWav(new File("hello.wav"));
+}`;
+const qsImages = `var config = DiffusionModel.Config.builder().model("flux2-klein").build();
+try (var images = new DiffusionModel(config)) {
+    BufferedImage img = images.generate(
+            new DiffusionModel.Request("a neon sign that says FORNAX", 1024, 1024, 20, 4.0, 7)).get(0);
+    ImageIO.write(img, "png", new File("sign.png"));
+}`;
+const qsSongs = `try (var songs = new AceStepModel("ace-step")) {   // its four files, fetched on first use
+    songs.generate(requestJson).audio().writeWav(new File("song.wav"));
+}`;
+const qsTranscribe = `try (var whisper = new WhisperModel("whisper-base.en")) {
+    Transcript t = whisper.transcribe(Audio.readWav(new File("hello.wav")));
+    System.out.println(t.text());   // and t.segments(), with word timings
+}`;
+// A real run of qsHello (Qwen3 4B Q4_K_M, Radeon 8060S, Vulkan): loaded in 0.7 s, 58 tokens/s.
+const qsOutput = `<span class="prompt">$</span> ./gradlew run
+Fornax breathes warm flame—
+crackling, ancient, deep in stone,
+life forged in stillness.`;
+const QS_STEPS: [string, string, string][] = [
+    ['add', 'Add Fornax', 'The BOM, an engine and the natives for your machine.'],
+    ['hello', 'Write hello', 'A model is an object. Chat is a method call.'],
+    ['run', 'Run it', 'Streamed token by token from your GPU, in your JVM.'],
+    ['more', 'Add another engine', 'Speech, images, songs, transcripts: the same shape.'],
+];
 
-const installs = ['implementation("org.fornax4j:fornax-llama:0.2.0")', 'hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf'];
+const installs = ['implementation("org.fornax4j:fornax-llama:0.2.0")', 'fornax pull qwen3-4b'];
 const theme = 'vitesse-dark';
 ---
 
@@ -222,6 +300,9 @@ const theme = 'vitesse-dark';
             .repo-menu .count { color: var(--glow); font-size: 14px; font-weight: 700; white-space: nowrap; }
             .repo-menu .hint { margin: 4px 12px 6px; font-size: 13px; color: #b39c8c; }
             @media (max-width: 760px) { .nav { padding: 20px 16px; } .nav-links { gap: 18px; font-size: 15px; } .nav-links .wide { display: none; } }
+            /* On a narrow phone the links wrap and GitHub can start a line, where a menu hung from its right edge would run
+               off the left of the screen: there it hangs from the nav instead, across it between the gutters. */
+            @media (max-width: 480px) { .repo-menu { position: static; } .repo-menu .menu { top: calc(100% - 10px); left: 16px; right: 16px; min-width: 0; } }
 
             .splash { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px 16px 96px; }
             .emblem { width: 132px; height: 132px; border: 3px solid #fff; border-radius: 50%; display: grid; place-items: center; background: rgba(20, 8, 3, 0.35); }
@@ -288,6 +369,9 @@ const theme = 'vitesse-dark';
             .dark .flames { position: absolute; inset: 0; z-index: -2; pointer-events: none; }
             .dark .flames img { position: absolute; left: 0; top: -12%; width: 100%; height: 124%; object-fit: cover; object-position: center 60%; opacity: 0; transition: opacity 0.16s linear; will-change: opacity, transform; }
             .dark .flames img.on { opacity: 1; }
+            /* Still (the script's own query): only the first frame shows, so the rest, out of the layout, are never fetched;
+               lazy, they would be, being in view under it. */
+            @media (prefers-reduced-motion: reduce), (max-width: 800px) { .dark .flames img:not(:first-child) { display: none; } }
             .dark::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(rgba(23, 13, 8, 0.9) 0%, rgba(23, 13, 8, 0.8) 40%, rgba(23, 13, 8, 0.58) 100%); }
             .dark .eyebrow { color: var(--accent); }
             .dark h2 { color: #fff; }
@@ -400,11 +484,48 @@ const theme = 'vitesse-dark';
             .start-section { padding: 96px 32px; background: #fff; border-top: 1px solid var(--line); }
             .start-section header { max-width: 820px; display: flex; flex-direction: column; gap: 16px; margin-bottom: 40px; }
             .start-section header p:not(.eyebrow) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
-            .stepper { display: flex; flex-direction: column; gap: 36px; }
-            .stepper > div { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 32px; }
-            @media (max-width: 860px) { .stepper > div { grid-template-columns: minmax(0, 1fr); gap: 14px; } }
-            .stepper h3 { margin: 0 0 8px; font-size: 21px; }
-            .stepper p { margin: 0; font-size: 16px; line-height: 1.6; color: var(--muted); }
+            /* The quick start: a step list beside one frame at a time, with Back and Next. Without script every frame shows,
+               one under another, each with its own title and all its panes: a plain list of steps. */
+            .qs { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 20px 36px; }
+            .qs-steps, .qs-bar, .qs-tabs { display: none; }
+            .qs.on .qs-steps { display: flex; flex-direction: column; gap: 6px; }
+            .qs.on .qs-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+            .qs.on .qs-bar { display: flex; grid-column: 2; align-items: center; justify-content: space-between; gap: 16px; }
+            .qs:not(.on) .qs-frames { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 40px; }
+            .qs:not(.on) .qs-frame[hidden], .qs:not(.on) [data-qs-pane][hidden] { display: block; }
+            .qs:not(.on) [data-qs-pane] + [data-qs-pane] { margin-top: 12px; }
+            .qs.on .qs-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+            .qs-title { margin: 0 0 12px; font-size: 21px; }
+            .qs-steps button { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; border: 1px solid transparent; border-radius: 12px; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+            .qs-steps button:hover { background: var(--paper); }
+            .qs-steps button[aria-selected="true"] { background: var(--paper); border-color: var(--line); }
+            .qs-steps .num { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); font-weight: 700; font-size: 14px; color: var(--muted); }
+            .qs-steps button[aria-selected="true"] .num { background: var(--ember); border-color: var(--ember); color: #fff; }
+            .qs-steps .words { display: flex; flex-direction: column; gap: 3px; }
+            .qs-steps strong { font-size: 17px; }
+            .qs-steps .words span { font-size: 14.5px; line-height: 1.45; color: var(--muted); }
+            .qs-frame { min-width: 0; }
+            .qs-tabs button { padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: #fff; font: inherit; font-size: 14px; color: var(--muted); cursor: pointer; }
+            .qs-tabs button[aria-pressed="true"] { border-color: var(--ember); color: var(--ink); font-weight: 500; }
+            .qs-out { margin: 12px 0 0; padding: 14px 18px; border-radius: 12px; background: #120a06; border: 1px solid #3a2519; color: #f3e6da; font-family: 'JetBrains Mono', monospace; font-size: 13.5px; line-height: 1.65; white-space: pre-wrap; }
+            .qs-out .prompt { color: #c98a5e; }
+            .qs-note { margin: 14px 0 0; font-size: 15.5px; line-height: 1.6; color: var(--muted); }
+            .qs-done strong { color: var(--ink); }
+            .qs-where { margin: 0; font-size: 14px; color: var(--muted); }
+            .qs-controls { display: flex; gap: 8px; }
+            .qs-controls button { padding: 9px 18px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; }
+            .qs-controls .qs-next { background: var(--ember); border-color: var(--ember); color: #fff; }
+            .qs-controls button:disabled { opacity: 0.4; cursor: default; }
+            @media (max-width: 860px) {
+                .qs { grid-template-columns: minmax(0, 1fr); }
+                .qs.on .qs-steps { flex-direction: row; overflow-x: auto; gap: 4px; }
+                .qs-steps button { flex: none; padding: 10px 12px; }
+                .qs-steps .words span { display: none; }
+                /* Four steps across a phone: numbers, with the title only for the step shown. */
+                .qs-steps button:not([aria-selected="true"]) .words { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+                .qs-steps button { align-items: center; }
+                .qs.on .qs-bar { grid-column: 1; }
+            }
             .shell { align-self: start; min-width: 0; border-radius: 12px; overflow: hidden; border: 1px solid #3a2519; background: #120a06; }
             .shell pre.astro-code { margin: 0; padding: 16px 18px; font-size: 13.5px; line-height: 1.65; overflow-x: auto; background: transparent !important; }
 
@@ -530,8 +651,12 @@ const theme = 'vitesse-dark';
             {hasExplainer && (
                 <section class="explainer" id="video">
                     <div class="wrap">
-                        <div class="player" data-video={v('/video/explainer.mp4')} data-hls={VIDEO.hls} data-captions={VIDEO.captions} data-title={VIDEO.title}>
-                            <img src={v('/video/explainer-poster.jpg')} alt="" width="1920" height="1080" decoding="async" />
+                        <div class="player" data-video={v('/video/explainer.mp4')} data-hls={VIDEO.hls} data-hls-init={VIDEO.hlsInit} data-captions={VIDEO.captions} data-title={VIDEO.title}>
+                            <picture>
+                                {poster && <source type="image/avif" srcset={poster.avif} sizes={POSTER_SIZES} />}
+                                {poster && <source type="image/webp" srcset={poster.webp} sizes={POSTER_SIZES} />}
+                                <img src={v('/video/explainer-poster.jpg')} srcset={poster?.jpeg} sizes={POSTER_SIZES} alt="" width="1920" height="1080" loading="lazy" decoding="async" />
+                            </picture>
                             <button type="button" class="play" aria-label={`Watch · ${VIDEO.length}, the video: ${VIDEO.title} (${VIDEO.spoken})`}>
                                 <span><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>Watch · {VIDEO.length}</span>
                             </button>
@@ -593,7 +718,7 @@ const theme = 'vitesse-dark';
                         <div data-pane="tools" hidden><Code code={samples.tools} lang="java" theme={theme} /></div>
                         <div data-pane="songs" hidden><Code code={samples.songs} lang="java" theme={theme} /></div>
                         <div data-pane="images" hidden><Code code={samples.images} lang="java" theme={theme} /></div>
-                        <p class="note">Fornax doesn’t download anything: <code>HfCache</code> finds weights in your Hugging Face cache, or pass file paths.</p>
+                        <p class="note">A catalogue name or a Hugging Face reference downloads into your Hugging Face cache on first use; a file path never downloads anything.</p>
                     </div>
                 </div>
             </section>
@@ -673,20 +798,21 @@ const theme = 'vitesse-dark';
                             <p>Backends:</p>
                             <div class="backends">
                                 <span class="ok">Vulkan <small>tested</small></span>
-                                <span>ROCm (HIP) <small>untested</small></span>
+                                <span>ROCm (HIP) <small>builds</small></span>
                                 <span>CUDA <small>untested</small></span>
                                 <span>Metal <small>untested</small></span>
                             </div>
                             <p style="font-size: 16px">
-                                The build script knows the ROCm, CUDA and Metal backends of the underlying engines, but those Fornax builds
-                                haven’t been tested yet. Reports and fixes welcome.
+                                The build script knows the ROCm, CUDA and Metal backends of the underlying engines. HIP has run LTX video
+                                on the same machine, faster than Vulkan; the CUDA and Metal builds haven’t been tested yet. Reports and
+                                fixes welcome.
                             </p>
                         </div>
                         <div class="table-card">
                             <table>
                                 <thead><tr><th scope="col">Model</th><th scope="col">Result</th></tr></thead>
                                 <tbody>
-                                    <tr><td>Qwen3 4B Instruct (Q4_K_M)</td><td class="num">~60 tokens/s</td></tr>
+                                    <tr><td>Qwen3 4B Instruct (Q4_K_M)</td><td class="num">~75 tokens/s</td></tr>
                                     <tr><td>ACE-Step 1.5 XL turbo</td><td class="num">3 min 20 s song in 57 s</td></tr>
                                     <tr><td>ACE-Step 1.5 turbo</td><td class="num">60 s song in ~15 s</td></tr>
                                     <tr><td>YuE2 3B (Q8_0)</td><td class="num">60 s song in ~60 s</td></tr>
@@ -695,7 +821,7 @@ const theme = 'vitesse-dark';
                                     <tr><td>Whisper large-v3-turbo (q5_0)</td><td class="num">55 s of speech in 1.8 s, timed word by word</td></tr>
                                     <tr><td>HTDemucs v4</td><td class="num">3 min 9 s song into four stems in 26 s</td></tr>
                                 </tbody>
-                                <caption>Qwen3’s tokens are streamed through a Java callback. One Strix Halo laptop, Vulkan.</caption>
+                                <caption>Qwen3’s tokens are streamed through a Java callback. One Strix Halo laptop, Vulkan. <a href="/docs/benchmarks/">Benchmarks</a> sets these against each engine’s own tool.</caption>
                             </table>
                         </div>
                     </div>
@@ -837,7 +963,7 @@ const theme = 'vitesse-dark';
                         <a href="https://github.com/embabel/embabel-agent">Embabel Agent</a> plans with goals and actions on the JVM. Fornax
                         runs local models in the same process: chat and tool calls, vision, embeddings, speech, images, songs and video. A
                         <code>fornax-embabel</code> module, to give Embabel's agents those models, is
-                        <a href="https://github.com/liberation-data/fornax/issues/9">in progress</a>.
+                        <a href={`${REPO}/issues/9`}>in progress</a>.
                     </p>
                     <p class="embabel-links"><a href="https://embabel.com">embabel.com</a> · <a href="https://github.com/embabel/embabel-agent">Embabel Agent on GitHub</a></p>
                 </div>
@@ -846,29 +972,70 @@ const theme = 'vitesse-dark';
             <section class="start-section" id="start">
                 <div class="wrap">
                     <header>
-                        <p class="eyebrow">Getting started</p>
-                        <h2>Add Fornax, fetch a model, run.</h2>
+                        <p class="eyebrow">Quick start</p>
+                        <h2>From an empty project to a streamed reply.</h2>
                         <p>
-                            Fornax is on Maven Central as <code>org.fornax4j</code>. You need Java 22 or newer (Kiln 0.1.0 itself needs 25),
-                            and on Linux your GPU’s Vulkan driver, which desktop installs already have (if not: <a href="/docs/gpu-drivers/">Installing GPU drivers</a>). Macs need nothing more.
+                            You need Java 22 or newer, and on Linux your GPU’s Vulkan driver, which desktop installs already have
+                            (if not: <a href="/docs/gpu-drivers/">Installing GPU drivers</a>). Macs need nothing more.
                         </p>
                     </header>
-                    <div class="stepper">
-                        <div>
-                            <div><h3>1. Add Fornax</h3><p>An engine module, and the natives jar for your OS and GPU. Fornax unpacks the engine into its cache and loads it, so there’s no native build. Maven works the same way: see <a href="/docs/maven-and-gradle/">Maven and Gradle</a>.</p></div>
-                            <div class="shell"><Code code={depend} lang="kotlin" theme={theme} /></div>
+                    <div class="qs">
+                        <div class="qs-steps" role="tablist" aria-label="Quick start" aria-orientation="vertical">
+                            {QS_STEPS.map(([id, title, line], n) => (
+                                <button type="button" role="tab" id={`qs-step-${id}`} aria-controls={`qs-${id}`} aria-selected={String(n === 0)} tabindex={n === 0 ? 0 : -1}>
+                                    <span class="num">{n + 1}</span>
+                                    <span class="words"><strong>{title}</strong><span>{line}</span></span>
+                                </button>
+                            ))}
                         </div>
-                        <div>
-                            <div><h3>2. Fetch a model</h3><p>With <a href="/docs/guides/cli/"><code>fornax pull</code></a> and an alias from Fornax’s catalogue. To get <code>fornax</code>, install <a href="#studio">Fornax Studio</a> and choose <strong>Install fornax command</strong> from its menu (coming in the next Studio release), or build it from source with <code>./gradlew :fornax-cli:installDist</code>. Or use the Hugging Face CLI: both fill the one Hugging Face cache (<code>HF_HUB_CACHE</code>, <code>HF_HOME/hub</code> or <code>~/.cache/huggingface/hub</code>), where <code>HfCache</code> finds the weights.</p></div>
-                            <div class="shell"><Code code={download} lang="sh" theme={theme} /></div>
+                        <div class="qs-frames">
+                            <div class="qs-frame" id="qs-add">
+                                <h3 class="qs-title">1. Add Fornax</h3>
+                                <div class="qs-tabs" role="group" aria-label="Build tool">
+                                    <button type="button" aria-pressed="true" data-qs="gradle">Gradle</button>
+                                    <button type="button" aria-pressed="false" data-qs="maven">Maven</button>
+                                </div>
+                                <div class="shell" data-qs-pane="gradle"><Code code={qsGradle} lang="kotlin" theme={theme} /></div>
+                                <div class="shell" data-qs-pane="maven" hidden><Code code={qsMaven} lang="xml" theme={theme} /></div>
+                                <p class="qs-note">One natives jar holds every engine’s libraries, so there’s no native build. Fornax unpacks the one it needs into its cache the first time it loads.</p>
+                            </div>
+                            <div class="qs-frame" id="qs-hello" hidden>
+                                <h3 class="qs-title">2. Write hello</h3>
+                                <div class="shell"><Code code={qsHello} lang="java" theme={theme} /></div>
+                                <p class="qs-note">The first run downloads Qwen3 4B (2.5 GB) into the Hugging Face cache, which <code>hf</code>, Fornax Studio and the <a href="/docs/guides/cli/"><code>fornax</code> command</a> share. To fetch it ahead of time: <code>fornax pull qwen3-4b</code>.</p>
+                            </div>
+                            <div class="qs-frame" id="qs-run" hidden>
+                                <h3 class="qs-title">3. Run it</h3>
+                                <div class="qs-tabs" role="group" aria-label="Build tool">
+                                    <button type="button" aria-pressed="true" data-qs="gradle">Gradle</button>
+                                    <button type="button" aria-pressed="false" data-qs="maven">Maven</button>
+                                </div>
+                                <div class="shell" data-qs-pane="gradle"><Code code={qsRunGradle} lang="sh" theme={theme} /></div>
+                                <div class="shell" data-qs-pane="maven" hidden><Code code={qsRunMaven} lang="sh" theme={theme} /></div>
+                                <pre class="qs-out" aria-label="What it prints" set:html={qsOutput} />
+                                <p class="qs-note">A real run on a Radeon 8060S: loaded in 0.7 s, then 58 tokens a second, printed as they come. The JVM needs <code>--enable-native-access=ALL-UNNAMED</code>: Gradle’s <code>application</code> block passes it, and Maven’s <code>exec:java</code> runs the app inside Maven’s own JVM, so it goes in <code>MAVEN_OPTS</code>. <a href="https://github.com/liberation-data/fornax/tree/main/samples/hello-fornax">samples/hello-fornax</a> is this app, ready to copy.</p>
+                            </div>
+                            <div class="qs-frame" id="qs-more" hidden>
+                                <h3 class="qs-title">4. Add another engine</h3>
+                                <div class="qs-tabs" role="group" aria-label="Engine">
+                                    <button type="button" aria-pressed="true" data-qs="speech">Speech</button>
+                                    <button type="button" aria-pressed="false" data-qs="images">Images</button>
+                                    <button type="button" aria-pressed="false" data-qs="songs">Songs</button>
+                                    <button type="button" aria-pressed="false" data-qs="transcribe">Transcripts</button>
+                                </div>
+                                <div class="shell" data-qs-pane="speech"><Code code={qsSpeech} lang="java" theme={theme} /></div>
+                                <div class="shell" data-qs-pane="images" hidden><Code code={qsImages} lang="java" theme={theme} /></div>
+                                <div class="shell" data-qs-pane="songs" hidden><Code code={qsSongs} lang="java" theme={theme} /></div>
+                                <div class="shell" data-qs-pane="transcribe" hidden><Code code={qsTranscribe} lang="java" theme={theme} /></div>
+                                <p class="qs-note qs-done"><strong>That’s the whole shape.</strong> Add <code>fornax-tts</code>, <code>fornax-sd</code>, <code>fornax-acestep</code> or <code>fornax-whisper</code> next to <code>fornax-llama</code>, with no version and no second natives jar. Each takes a catalogue name or a Hugging Face reference. The <a href="/docs/">guides</a> go further. To build the engines yourself, for HIP or CUDA, see <a href="https://github.com/liberation-data/fornax#building">Building</a>.</p>
+                            </div>
                         </div>
-                        <div>
-                            <div><h3>3. Run it</h3><p>A chat reply, streamed token by token from your GPU, inside your JVM. <a href="https://github.com/liberation-data/fornax/tree/main/samples/hello-fornax"><code>samples/hello-fornax</code></a> is this as a project to copy, for Gradle and Maven.</p></div>
-                            <div class="shell"><Code code={hello} lang="java" theme={theme} /></div>
-                        </div>
-                        <div>
-                            <div><h3>4. Or build the engines</h3><p>For HIP or CUDA, or to run the repository’s examples: JDK 25, CMake, Ninja, a C++17 compiler and your GPU’s SDK. <code>native/build.sh</code> clones the engines at their pinned commits; point your app at the result with <code>-Dfornax.library.path</code>.</p></div>
-                            <div class="shell"><Code code={build} lang="sh" theme={theme} /></div>
+                        <div class="qs-bar">
+                            <p class="qs-where" aria-live="polite">Step <span>1</span> of {QS_STEPS.length}</p>
+                            <div class="qs-controls">
+                                <button type="button" class="qs-back" aria-label="Back to the previous step" disabled>Back</button>
+                                <button type="button" class="qs-next" aria-label="Next step">Next</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -883,7 +1050,6 @@ const theme = 'vitesse-dark';
                     <ul>
                         <li><span>Test and document the HIP, CUDA and Metal builds; natives jars for HIP and CUDA.</span></li>
                                                 <li><span><code>fornax-embabel</code>: an Embabel Agent <code>LlmService</code> and <code>LocalModelSource</code>.</span></li>
-                        <li><span>An optional OpenAI-compatible server.</span></li>
                         <li><span>An MLX module for Apple silicon, through <code>mlx-c</code>.</span></li>
                         <li><span>A Kotlin layer with coroutine <code>Flow</code> streaming.</span></li>
                     </ul>
@@ -960,8 +1126,12 @@ const theme = 'vitesse-dark';
                     const queue = () => { if (!queued) { queued = true; requestAnimationFrame(update); } };
                     addEventListener('scroll', queue, { passive: true });
                     addEventListener('resize', queue);
-                    still.addEventListener('change', () => { if (!still.matches) for (const f of frames) f.loading = 'eager'; queue(); });
-                    if (!still.matches) for (const f of frames) f.loading = 'eager';
+                    // All six frames load once the section is within a screen of view, so it crackles from the first
+                    // scroll there; a visitor who never gets that far (or sees the still frame) never fetches them.
+                    let near = false;
+                    const warm = () => { if (near && !still.matches) for (const f of frames) f.loading = 'eager'; };
+                    new IntersectionObserver((entries) => { near = entries.some((it) => it.isIntersecting); warm(); }, { rootMargin: '100% 0px' }).observe(flames);
+                    still.addEventListener('change', () => { warm(); queue(); });
                     update();
                 }
             }
@@ -989,6 +1159,73 @@ const theme = 'vitesse-dark';
                     for (const other of tabs) other.setAttribute('aria-pressed', String(other === tab));
                     for (const pane of document.querySelectorAll<HTMLElement>('[data-pane]')) pane.hidden = pane.dataset.pane !== tab.dataset.tab;
                 });
+            }
+        </script>
+
+        <script>
+            // The quick start: the step list and Back/Next show one frame; a build tool chosen in one frame is chosen in
+            // every frame (Gradle or Maven, remembered for the next visit where the browser allows it).
+            {
+                const qs = document.querySelector<HTMLElement>('.qs');
+                if (qs) {
+                    qs.classList.add('on');
+                    // Tab roles only once the tabs work: without script the frames are a plain list of steps.
+                    for (const b of qs.querySelectorAll<HTMLElement>('.qs-steps [role="tab"]')) {
+                        const frame = document.getElementById(b.getAttribute('aria-controls')!)!;
+                        frame.setAttribute('role', 'tabpanel');
+                        frame.setAttribute('aria-labelledby', b.id);
+                    }
+                    const steps = [...qs.querySelectorAll<HTMLButtonElement>('.qs-steps [role="tab"]')];
+                    const frames = steps.map((b) => document.getElementById(b.getAttribute('aria-controls')!)!);
+                    const where = qs.querySelector('.qs-where span')!;
+                    const back = qs.querySelector<HTMLButtonElement>('.qs-back')!;
+                    const next = qs.querySelector<HTMLButtonElement>('.qs-next')!;
+                    let at = 0;
+                    const go = (k: number, focus = false) => {
+                        at = Math.max(0, Math.min(steps.length - 1, k));
+                        steps.forEach((b, i) => { b.setAttribute('aria-selected', String(i === at)); b.tabIndex = i === at ? 0 : -1; });
+                        frames.forEach((f, i) => { f.hidden = i !== at; });
+                        where.textContent = String(at + 1);
+                        // A button disabled under the keyboard would drop focus to the page: hand it to the other one.
+                        const lost = document.activeElement;
+                        back.disabled = at === 0;
+                        next.disabled = at === steps.length - 1;
+                        if (lost === back && back.disabled) next.focus();
+                        else if (lost === next && next.disabled) back.focus();
+                        if (focus) steps[at].focus();
+                        // On a phone the steps are a row that scrolls sideways: keep the chosen one in view, without moving the page.
+                        const list = steps[at].parentElement!;
+                        if (list.scrollWidth > list.clientWidth) list.scrollTo({ left: steps[at].offsetLeft - list.offsetLeft - 8, behavior: 'smooth' });
+                    };
+                    steps.forEach((b, i) => b.addEventListener('click', () => go(i)));
+                    qs.querySelector('.qs-steps')!.addEventListener('keydown', (e) => {
+                        const key = (e as KeyboardEvent).key;
+                        // Arrows wrap round, as the ARIA tabs pattern has it.
+                        const n = steps.length;
+                        const k = { ArrowDown: (at + 1) % n, ArrowRight: (at + 1) % n, ArrowUp: (at - 1 + n) % n, ArrowLeft: (at - 1 + n) % n, Home: 0, End: n - 1 }[key];
+                        if (k !== undefined) { e.preventDefault(); go(k, true); }
+                    });
+                    back.addEventListener('click', () => go(at - 1));
+                    next.addEventListener('click', () => go(at + 1));
+
+                    const pick = (group: Element, choice: string) => {
+                        for (const t of group.querySelectorAll<HTMLButtonElement>('.qs-tabs button')) t.setAttribute('aria-pressed', String(t.dataset.qs === choice));
+                        for (const p of group.querySelectorAll<HTMLElement>('[data-qs-pane]')) p.hidden = p.dataset.qsPane !== choice;
+                    };
+                    const tools = ['gradle', 'maven'];
+                    const pickTool = (tool: string) => { for (const f of frames) if (f.querySelector(`[data-qs="${tool}"]`)) pick(f, tool); };
+                    for (const f of frames) for (const t of f.querySelectorAll<HTMLButtonElement>('.qs-tabs button')) {
+                        t.addEventListener('click', () => {
+                            const choice = t.dataset.qs!;
+                            if (tools.includes(choice)) {
+                                pickTool(choice);
+                                try { localStorage.setItem('fornax.buildTool', choice); } catch { /* no storage: a choice for this visit only */ }
+                            } else pick(f, choice);
+                        });
+                    }
+                    try { const saved = localStorage.getItem('fornax.buildTool'); if (saved && tools.includes(saved)) pickTool(saved); } catch { /* none */ }
+                    go(0);
+                }
             }
         </script>
 
@@ -1134,9 +1371,11 @@ const theme = 'vitesse-dark';
             // Once the page has loaded: the playlist and its header (a few hundred bytes each), and hls.js where it will
             // play, so a press doesn't wait for them. The segments are left until then.
             addEventListener('load', () => {
-                const hls = document.querySelector<HTMLElement>('.explainer .player')?.dataset.hls;
+                const { hls, hlsInit } = document.querySelector<HTMLElement>('.explainer .player')?.dataset ?? {};
                 if (!hls) return;
-                for (const file of ['index.m3u8', 'init.mp4']) void fetch(new URL(file, new URL(hls, location.href))).catch(() => {});
+                // The playlist at its own address, ?v= and all, and the header beside it, as the player will ask for them.
+                const playlist = new URL(hls, location.href);
+                for (const url of [playlist, ...(hlsInit ? [new URL(hlsInit, playlist)] : [])]) void fetch(url).catch(() => {});
                 if (!nativeHls(document.createElement('video'))) void loadHls();
             });
         </script>

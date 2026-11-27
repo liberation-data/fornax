@@ -36,6 +36,34 @@ class CatalogTest {
         assertTrue(sharded.available());
     }
 
+    @Test void speechModelsAreNotChatModelsThoughTheirArchitectureIs() throws Exception {
+        // Soprano (text to speech) is a qwen3 GGUF; its projector makes audio. Qwen3-ASR's takes audio.
+        file("Qwen/Qwen3-0.6B-GGUF", "a", "Qwen3-0.6B-Q8_0.gguf", 10);
+        bytes("ggml-org/Soprano-1.1-80M-GGUF", "a", "Soprano-1.1-80M-F32.gguf", GgufHeaderTest.gguf("general.architecture", "qwen3"));
+        bytes("ggml-org/Soprano-1.1-80M-GGUF", "a", "mmproj-Soprano-1.1-80M-F16.gguf",
+                GgufHeaderTest.gguf("clip.has_gen_audio_encoder", true, "clip.gen.audio.projector_type", "soprano"));
+        bytes("ggml-org/Qwen3-ASR-1.7B-GGUF", "a", "Qwen3-ASR-1.7B-Q8_0.gguf", GgufHeaderTest.gguf("general.architecture", "qwen3vl"));
+        bytes("ggml-org/Qwen3-ASR-1.7B-GGUF", "a", "mmproj-Qwen3-ASR-1.7B-Q8_0.gguf",
+                GgufHeaderTest.gguf("clip.has_audio_encoder", true, "clip.audio.projector_type", "qwen3a"));
+        // An audio chat model hears (and here speaks) but chats too: it's in Chat as well.
+        bytes("LiquidAI/LFM3-Audio-2B-GGUF", "a", "LFM3-Audio-2B-Q8_0.gguf", GgufHeaderTest.gguf("general.architecture", "lfm3"));
+        bytes("LiquidAI/LFM3-Audio-2B-GGUF", "a", "mmproj-LFM3-Audio-2B-F16.gguf", GgufHeaderTest.gguf("clip.has_audio_encoder", true,
+                "clip.audio.projector_type", "lfm3a", "clip.has_gen_audio_encoder", true, "clip.gen.audio.projector_type", "lfm3a_gen"));
+        // A vision model kept outside the vision presets still chats.
+        bytes("some/Vision-GGUF", "a", "Vision-Q4_K_M.gguf", GgufHeaderTest.gguf("general.architecture", "gemma3"));
+        bytes("some/Vision-GGUF", "a", "mmproj-F16.gguf", GgufHeaderTest.gguf("clip.has_vision_encoder", true));
+
+        assertEquals(List.of("chat:LiquidAI/LFM3-Audio-2B-GGUF/LFM3-Audio-2B-Q8_0.gguf", "chat:Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf",
+                        "chat:some/Vision-GGUF/Vision-Q4_K_M.gguf"),
+                new Catalog(root).chatModels().stream().map(Catalog.Model::id).sorted().toList());
+    }
+
+    private void bytes(String repo, String snapshot, String path, byte[] content) throws Exception {
+        Path p = root.resolve("models--" + repo.replace("/", "--")).resolve("snapshots").resolve(snapshot).resolve(path);
+        Files.createDirectories(p.getParent());
+        Files.write(p, content);
+    }
+
     @Test void aPresetIsAvailableOnlyWithAllItsFiles() throws Exception {
         String ace = "Serveurperso/ACE-Step-1.5-GGUF";
         file(ace, "a", "Qwen3-Embedding-0.6B-Q8_0.gguf", 1);

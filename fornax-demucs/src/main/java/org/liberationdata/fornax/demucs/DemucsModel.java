@@ -5,6 +5,7 @@ import org.liberationdata.fornax.Call;
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.ModelThread;
 import org.liberationdata.fornax.NativeLibrary;
+import org.liberationdata.fornax.hub.ModelReferences;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -14,6 +15,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 
@@ -150,12 +152,18 @@ public final class DemucsModel implements AutoCloseable {
     private final List<String> sources;
     private final int sampleRate, channels;
 
+    private static final ModelReferences.Engine ENGINE = new ModelReferences.Engine("DemucsModel", "stem-separation models",
+            Set.of(), Set.of("gguf"), "a stems.cpp GGUF");
+
     /**
+     * @param modelPath a stems.cpp GGUF, or a model reference to one, downloaded on first use:
+     *                  {@code thepatch/htdemucs-GGUF:htdemucs-42M-v1.0-F32.gguf}
      * @param gpu false runs on the CPU (on a machine with no GPU, also set {@code -Dfornax.allowCpu=true}: Fornax refuses
      *            to load its GPU build there otherwise)
      * @param cpuThreads threads for the CPU backend; 0 for one per physical core
      */
     public DemucsModel(String modelPath, boolean gpu, int cpuThreads) {
+        modelPath = ModelReferences.path(modelPath, ENGINE);
         try (Arena a = Arena.ofConfined()) {
             MemorySegment device = gpu ? MemorySegment.NULL : a.allocateFrom("cpu");
             handle = (MemorySegment) CREATE.invokeExact(a.allocateFrom(modelPath), device, cpuThreads);
@@ -173,7 +181,7 @@ public final class DemucsModel implements AutoCloseable {
         thread = new ModelThread(name, () -> destroy(h), () -> setCancel(h, 1), () -> setCancel(h, 0));
     }
 
-    /** A stems.cpp GGUF, on the GPU. */
+    /** A stems.cpp GGUF or a reference to one, on the GPU. */
     public DemucsModel(String modelPath) { this(modelPath, true, 0); }
 
     public DemucsModel(Weights w) { this(w.path(), true, 0); }

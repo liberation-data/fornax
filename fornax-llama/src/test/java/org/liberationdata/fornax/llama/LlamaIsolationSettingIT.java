@@ -30,4 +30,18 @@ class LlamaIsolationSettingIT {
         assertTrue(worker.isClosed());
         assertFalse(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false), "the worker stopped with the model");
     }
+
+    @Test
+    void theSettingIsolatesAnEmbeddingModelToo() {
+        var w = LlamaModel.Weights.QWEN3_EMBEDDING_0_6B;
+        assumeTrue(w.downloaded(), "model not downloaded: " + w.downloadCommand());
+        System.setProperty("fornax.isolation", "process");
+        try (var model = new LlamaModel(w, LlamaModel.Mode.EMBED)) {
+            assertTrue(model.isIsolated());
+            assertEquals(1024, model.embeddingSize());
+            assertEquals(1024, model.embed("a glaze that crawls").length);
+        } finally {
+            System.clearProperty("fornax.isolation");
+        }
+    }
 }

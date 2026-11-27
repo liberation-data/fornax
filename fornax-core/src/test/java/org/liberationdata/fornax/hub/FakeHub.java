@@ -109,9 +109,29 @@ final class FakeHub implements AutoCloseable {
 
     int gets(File f) { AtomicInteger n = gets.get(f.etag()); return n == null ? 0 : n.get(); }
 
+    /** Requests for a repo's file list (/api/models/<repo>/revision/<rev>), as "repo@rev". */
+    final List<String> listings = new CopyOnWriteArrayList<>();
+
+    // /api/models/<org>/<name>/revision/<rev>: the repo's files, as the Hub's API lists them
+    private void list(HttpExchange x) throws IOException {
+        String[] seg = x.getRequestURI().getPath().split("/", 7);
+        if (seg.length < 7 || !seg[5].equals("revision")) { send(x, 404, null); return; }
+        String repo = seg[3] + "/" + seg[4], rev = seg[6];
+        listings.add(repo + "@" + rev);
+        var mine = files.values().stream().filter(f -> f.repo().equals(repo)).sorted(java.util.Comparator.comparing(File::path)).toList();
+        if (mine.isEmpty()) { send(x, 404, "Repository not found"); return; }
+        if (gated.contains(repo) && !("Bearer " + token).equals(x.getRequestHeaders().getFirst("Authorization"))) { send(x, 401, "gated"); return; }
+        if (!rev.equals("main") && !rev.equals(commit(repo))) { send(x, 404, "Revision not found"); return; }
+        StringBuilder b = new StringBuilder("{\"sha\":\"" + commit(repo) + "\",\"siblings\":[");
+        for (int i = 0; i < mine.size(); i++)
+            b.append(i == 0 ? "" : ",").append("{\"rfilename\":\"").append(mine.get(i).path()).append("\",\"size\":").append(mine.get(i).content().length).append('}');
+        send(x, 200, b.append("]}").toString());
+    }
+
     // /<org>/<name>/resolve/<rev>/<path>
     private void hub(HttpExchange x) throws IOException {
         try (x) {
+            if (x.getRequestURI().getPath().startsWith("/api/models/")) { list(x); return; }
             String[] seg = x.getRequestURI().getPath().split("/", 6);
             if (seg.length < 6 || !seg[3].equals("resolve")) { send(x, 404, null); return; }
             String repo = seg[1] + "/" + seg[2], rev = seg[4], path = seg[5];

@@ -17,7 +17,10 @@ include 'fornax-acestep'  // acestep.cpp: ACE-Step 1.5 songs
 include 'fornax-yue2'     // yue2.cpp: YuE2 songs
 include 'fornax-whisper'  // whisper.cpp: speech to text with word timings
 include 'fornax-demucs'   // stems.cpp: HTDemucs stem separation (vocals and backing)
-include 'fornax-cli'      // the fornax command: pull, list, chat, test, info
+include 'fornax-bom'      // the BOM: every published module's version, imported once
+include 'fornax-natives'  // the natives jar for the host: Maven picks it by OS profile
+include 'fornax-server'   // an OpenAI-compatible HTTP server for the engines, JDK only
+include 'fornax-cli'      // the fornax command: pull, list, chat, test, info, server
 include 'fornax-examples' // runnable demos (not published)
 include 'fornax-bench'    // A/B against ComfyUI's HTTP API (not published)
 include 'fornax-studio-server' // the local HTTP backend Fornax Studio (the desktop app) starts (not published)
@@ -28,6 +31,7 @@ include 'fornax-studio-server' // the local HTTP backend Fornax Studio (the desk
 def nativePlatforms = providers.gradleProperty('fornax.natives')
         .getOrElse('linux-x86_64-vulkan,macos-aarch64-metal,macos-x86_64-metal').split(',')*.trim()
 def requireNatives = providers.gradleProperty('fornax.natives.require').getOrElse('false').toBoolean()
+gradle.ext.nativePlatforms = nativePlatforms  // every platform a release publishes a natives jar for
 gradle.ext.nativesDirs = [:]  // platform -> its build/native/ directory, for the natives jars in build.gradle
 nativePlatforms.each { platform ->
     // native/build.sh names a directory by `uname -m`, which is arm64 on macOS

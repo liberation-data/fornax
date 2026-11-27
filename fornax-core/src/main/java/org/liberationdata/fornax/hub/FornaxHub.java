@@ -4,6 +4,7 @@ import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.hub.HubException.Reason;
 import org.liberationdata.fornax.hub.HubHttp.Cancel;
 import org.liberationdata.fornax.hub.HubHttp.RemoteFile;
+import org.liberationdata.fornax.hub.ModelSet.Kind;
 import org.liberationdata.fornax.hub.ModelSet.Part;
 import org.liberationdata.fornax.hub.ModelSet.Source;
 import org.liberationdata.fornax.hub.ModelStatus.PartStatus;
@@ -34,6 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -76,17 +78,19 @@ public final class FornaxHub {
     private final long reserveBytes;
     private final boolean offline;
     private final List<ModelSet> catalogue;
+    private final RepoIndex index;
 
     private FornaxHub(Builder b) {
         this.cache = new CacheLayout(b.cacheRoot != null ? b.cacheRoot : HfCache.root());
         this.folders = b.folders != null ? b.folders : ModelFolders.configured();
         URI endpoint = b.endpoint != null ? b.endpoint : defaultEndpoint();
         String token = b.tokenSet ? b.token : HubToken.find().orElse(null);
-        this.http = new HubHttp(URI.create(endpoint.toString().replaceAll("/+$", "")), token,
-                b.httpClient != null ? b.httpClient : HubHttp.defaultClient(), b.retryDelay);
+        HttpClient client = b.httpClient != null ? b.httpClient : HubHttp.defaultClient();
+        this.http = new HubHttp(URI.create(endpoint.toString().replaceAll("/+$", "")), token, client, b.retryDelay);
         this.reserveBytes = b.reserveBytes;
         this.offline = b.offline != null ? b.offline : envFlag("HF_HUB_OFFLINE");
         this.catalogue = b.catalogue != null ? List.copyOf(b.catalogue) : ModelCatalog.all();
+        this.index = new RepoIndex(endpoint, token, offline, client);   // one client: the builder's, if given
     }
 
     /**
@@ -135,6 +139,83 @@ public final class FornaxHub {
             if (p.isPresent()) return Optional.of(new Located(p.get(), Where.HF_CACHE));
         }
         return folders.find(part).map(p -> new Located(p, Where.MODEL_FOLDER));
+    }
+
+    // ---- by reference ----
+
+    /**
+     * Whether s names a model to {@link #fetch} rather than a file: it isn't an existing path, and it is a catalogue
+     * alias ({@code qwen3-4b}) or reads as a {@link ModelRef} ({@code owner/repo:Q4_K_M}, but not
+     * {@code folder/model.gguf}, which is a path that isn't there).
+     */
+    public boolean isReference(String s) {
+        if (s == null || s.isBlank()) return false;
+        try { if (Files.exists(Path.of(s))) return false; } catch (java.nio.file.InvalidPathException notAPath) { /* "a:b" on Windows */ }
+        return alias(s).isPresent() || ModelRef.looksLikeReference(s);
+    }
+
+    /**
+     * A model by name, its files downloaded into the cache if they aren't already there, by role. The name is a
+     * catalogue alias ({@code qwen3-4b}, {@code qwen3-vl-4b}: every file the set needs, such as a {@code "gguf"}
+     * and its {@code "mmproj"}) or a {@link ModelRef} ({@code owner/repo[@revision][:tag]}: the file the tag picks,
+     * as {@code "gguf"}, or {@code "model"} for a file that isn't a GGUF, with any further parts of a split GGUF
+     * under their paths). A model already in the cache needs no network, so this works under {@code HF_HUB_OFFLINE}
+     * once it has been downloaded.
+     *
+     * @throws IllegalArgumentException for a name that is neither (a URL says which reference to use instead), or a
+     *         tag that matches several files
+     * @throws HubException for a repo or tag that isn't there, and as {@link #pull} throws
+     */
+    public Map<String, Path> fetch(String ref, PullListener listener) throws IOException {
+        Objects.requireNonNull(ref, "ref");
+        Optional<ModelSet> alias = alias(ref);
+        return pull(alias.isPresent() ? alias.get() : resolve(ModelRef.parse(ref)), listener);
+    }
+
+    /**
+     * The set a reference names, without downloading it: from the cache when the model is there (for the default
+     * revision or a commit), else from the repo's file list on the Hub, a branch or tag pinned to the commit it names.
+     */
+    public ModelSet resolve(ModelRef ref) throws IOException {
+        boolean commit = ref.revision() != null && CacheLayout.isCommit(ref.revision());
+        if (ref.revision() == null || commit) {   // a commit's snapshot never changes, so it needs no Hub either
+            Map<String, Path> cached = commit ? snapshotFiles(ref.repo(), ref.revision()) : HfCache.files(cache.root(), ref.repo());
+            List<String> files = ref.pick(cached.keySet(), false);
+            if (!files.isEmpty() && cached.keySet().containsAll(files)) return refSet(ref, commit ? ref.revision() : "main", files);
+        }
+        String revision = ref.revision() == null ? "main" : ref.revision();
+        RepoIndex.RepoInfo info = index.info(ref.repo(), revision);
+        // a named revision is pinned to the commit it names now, so main's copy of the same file in the cache isn't taken for it
+        return refSet(ref, ref.revision() == null ? revision : info.commit(),
+                ref.pick(info.files().stream().map(RepoIndex.RepoFile::path).toList(), true));
+    }
+
+    /** The complete files in one snapshot of repo, by path. */
+    private Map<String, Path> snapshotFiles(String repo, String commit) throws IOException {
+        Path snap = cache.snapshots(repo).resolve(commit);
+        Map<String, Path> out = new LinkedHashMap<>();
+        if (!Files.isDirectory(snap)) return out;
+        try (var w = Files.walk(snap)) {   // follows links; drops dangling ones (a download in progress)
+            for (Path f : w.filter(Files::isRegularFile).sorted().toList()) out.put(snap.relativize(f).toString().replace('\\', '/'), f);
+        }
+        return out;
+    }
+
+    /** The sets this hub knows by name. */
+    List<ModelSet> catalogue() { return catalogue; }
+
+    /** The set in this hub's catalogue with this id or alias. */
+    Optional<ModelSet> alias(String name) { return catalogue.stream().filter(m -> m.isNamed(name.strip())).findFirst(); }
+
+    /** One part per file: the first as "gguf" (or "model"), a split GGUF's others by path. */
+    private static ModelSet refSet(ModelRef ref, String revision, List<String> files) {
+        List<Part> parts = new ArrayList<>();
+        for (int i = 0; i < files.size(); i++) {
+            String f = files.get(i);
+            String role = i > 0 ? f : GgufFiles.isGguf(f) ? "gguf" : "model";
+            parts.add(new Part(role, List.of(new Source(ref.repo(), f, revision))));
+        }
+        return new ModelSet(ref.toString(), Kind.CHAT, ref.toString(), ref.repo(), parts, null, false, List.of());
     }
 
     // ---- status ----

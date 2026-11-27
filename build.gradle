@@ -1,6 +1,7 @@
 // Fornax: in-process generative models for the JVM via Java's Foreign Function & Memory API.
 
 import com.vanniktech.maven.publish.JavaLibrary
+import com.vanniktech.maven.publish.JavaPlatform
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.SourcesJar
 
@@ -13,7 +14,10 @@ def os = System.getProperty('os.name').toLowerCase().contains('mac') ? 'macos' :
 def arch = System.getProperty('os.arch').replace('amd64', 'x86_64').replace('aarch64', 'arm64')
 def nativeDir = file("build/native/${os}-${arch}-${findProperty('fornax.backend')}")
 
-subprojects {
+// The BOM and the natives POM are POMs, not Java libraries.
+def pomOnly = ['fornax-bom', 'fornax-natives']
+
+configure(subprojects.findAll { !(it.name in pomOnly) }) {
     apply plugin: 'java-library'
 
     repositories { mavenCentral() }
@@ -54,7 +58,7 @@ subprojects {
 }
 
 // What goes to Maven Central, as org.fornax4j:<project name>. The version is gradle.properties' unless -Pversion=...
-def published = [
+ext.published = [
     'fornax-core'   : 'Fornax core: native library loading, model download and Hugging Face cache lookup, audio, the model pool and vector search',
     'fornax-llama'  : 'Fornax llama: GGUF language, vision language, embedding and reranker models through llama.cpp, in-process via Java FFM',
     'fornax-tts'    : 'Fornax TTS: text to speech through llama.cpp (mtmd), in-process via Java FFM',
@@ -63,20 +67,27 @@ def published = [
     'fornax-yue2'   : 'Fornax YuE2: YuE2 songs through yue2.cpp, in-process via Java FFM',
     'fornax-whisper': 'Fornax Whisper: speech to text with word timings through whisper.cpp, in-process via Java FFM',
     'fornax-demucs' : 'Fornax Demucs: stem separation (vocals, drums, bass, ...) with HTDemucs through stems.cpp, in-process via Java FFM',
+    'fornax-server' : 'Fornax server: an OpenAI-compatible HTTP API (chat, embeddings, images, speech, transcription) over the Fornax engines, JDK only',
 ]
-configure(subprojects.findAll { published.containsKey(it.name) || it.name.startsWith('fornax-natives-') }) { p ->
+configure(subprojects.findAll { published.containsKey(it.name) || it.name.startsWith('fornax-natives') || it.name == 'fornax-bom' }) { p ->
+    if (p.name in pomOnly) apply plugin: 'java-platform'  // before the publishing plugin's configure below
     apply plugin: 'com.vanniktech.maven.publish'
     def natives = p.name.startsWith('fornax-natives-')
     mavenPublishing {
-        configure(natives ? new JavaLibrary(new JavadocJar.Empty(), new SourcesJar.Empty())
+        configure(p.name in pomOnly ? new JavaPlatform()
+                : natives ? new JavaLibrary(new JavadocJar.Empty(), new SourcesJar.Empty())
                           : new JavaLibrary(new JavadocJar.Javadoc(), new SourcesJar.Sources()))
         publishToMavenCentral()
         signAllPublications()
         coordinates('org.fornax4j', p.name, p.version.toString())
         pom {
             name = p.name
-            description = natives ? "Fornax's native engine libraries for ${p.name - 'fornax-natives-'}: llama.cpp, " +
+            description = p.name == 'fornax-bom' ? 'Fornax BOM: the versions of every Fornax module and natives jar of this release'
+                    : p.name == 'fornax-natives' ? "Fornax natives for the host: Maven picks this OS and arch's natives jar"
+                    : natives ? "Fornax's native engine libraries for ${p.name - 'fornax-natives-'}: llama.cpp, " +
                     'stable-diffusion.cpp, acestep.cpp, yue2.cpp, whisper.cpp and stems.cpp, each built into one self-contained library' : published[p.name]
+            if (p.name == 'fornax-natives') withXml { p.nativesProfiles(asNode()) }
+            if (p.name == 'fornax-bom') withXml { p.markNativesPom(asNode()) }
             inceptionYear = '2026'
             url = 'https://fornax4j.org'
             licenses {
@@ -111,6 +122,9 @@ configure(subprojects.findAll { it.name.startsWith('fornax-natives-') }) { p ->
     def ext = platform.startsWith('macos-') ? 'dylib' : 'so'
     tasks.named('jar', Jar) {
         from(libs) { include "*.$ext"; into "org/fornax4j/natives/$platform" }
+        // The name the JDK would derive from the file name has a segment that starts with a digit ("64"), which the
+        // module path rejects, so name it: org.fornax4j.natives.linux_x86_64_vulkan.
+        manifest { attributes 'Automatic-Module-Name': "org.fornax4j.natives.${platform.replace('-', '_')}" }
         // A release ships every engine; a local build may have only some of them.
         def required = providers.gradleProperty('fornax.natives.require').map { it.toBoolean() }.getOrElse(false)
         if (required) doFirst {
@@ -130,6 +144,39 @@ project(':fornax-examples') {
         implementation project(':fornax-whisper')
         implementation project(':fornax-demucs')
     }
+    // The docs' Java blocks: src/snippets/java, compiled (never run) by every build, and copied into README.md and the
+    // website's pages by scripts/Snippets.java. checkSnippets fails the build when a doc's block differs from its
+    // region, so an API change that breaks an example breaks the build. ./gradlew syncSnippets rewrites the blocks.
+    sourceSets { snippets { compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output } }
+    // SnippetsTest calls the script's methods, so the tests compile it too
+    sourceSets { test { java { srcDir rootProject.file('scripts') } } }
+    // the language-models guide's JSON examples use Jackson, as an app would
+    dependencies { snippetsImplementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0' }
+    // the OpenAI-server guide starts a FornaxServer
+    dependencies { snippetsImplementation project(':fornax-server') }
+    def snippetJava = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+    def docs = rootProject.fileTree(rootProject.projectDir) { include 'README.md', 'website/src/content/docs/**/*.md', 'website/src/content/docs/**/*.mdx' }
+    def checkSnippets = tasks.register('checkSnippets', Exec) {
+        group = 'verification'
+        description = 'Fails when a Java block in the docs differs from its snippet (or has none)'
+        dependsOn 'compileSnippetsJava'
+        inputs.files(docs, sourceSets.snippets.java, rootProject.file('scripts/Snippets.java'))
+        def stamp = layout.buildDirectory.file('check-snippets.ok')
+        outputs.file(stamp)
+        workingDir = rootProject.projectDir
+        executable = snippetJava.get().executablePath.asFile
+        args 'scripts/Snippets.java', '--check'
+        doLast { stamp.get().asFile.text = 'ok' }
+    }
+    tasks.register('syncSnippets', Exec) {
+        group = 'documentation'
+        description = 'Copies each snippet region into its Java block in the docs'
+        dependsOn 'compileSnippetsJava'
+        workingDir = rootProject.projectDir
+        executable = snippetJava.get().executablePath.asFile
+        args 'scripts/Snippets.java'
+    }
+    tasks.named('check') { dependsOn checkSnippets }
     // ./gradlew chat --args='"your prompt"'   image --args='klein out.png "a prompt"'   song   yue2
     // speak --args='out.wav "text" am_michael' -Pmodel=kokoro
     // see --args='image.png "question"' -Pmodel=qwen3-vl-4b -Pschema=schema.json   invoice   defects
@@ -196,6 +243,15 @@ project(':fornax-demucs') {
     }
 }
 
+project(':fornax-server') {
+    dependencies {
+        api project(':fornax-llama')
+        implementation project(':fornax-sd')
+        implementation project(':fornax-tts')
+        implementation project(':fornax-whisper')
+    }
+}
+
 project(':fornax-cli') {
     apply plugin: 'application'
     // The natives, as the samples take them: a fornax-natives jar, here every one this build has (settings.gradle
@@ -210,6 +266,9 @@ project(':fornax-cli') {
         implementation project(':fornax-sd')
         implementation project(':fornax-acestep')
         implementation project(':fornax-yue2')
+        implementation project(':fornax-tts')
+        implementation project(':fornax-whisper')
+        implementation project(':fornax-server')
         // 0.1.0's natives jar says Java 25 in its metadata (it holds no classes), so ask for it as 25
         natives.each { n -> runtimeOnly(n) { attributes { attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25) } } }
     }
@@ -246,7 +305,23 @@ project(':fornax-bench') {
         implementation project(':fornax-acestep')
         implementation project(':fornax-sd')
         implementation project(':fornax-yue2')
+        implementation project(':fornax-llama')
         implementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0'
+    }
+    // ./gradlew :fornax-bench:benchmarks --args='out/benchmarks chat image' -Pllama.bench=... -Psd.cli=...
+    // Fornax against llama.cpp's llama-bench and stable-diffusion.cpp's sd-cli, built from the pins in native/engines.properties.
+    tasks.register('benchmarks', JavaExec) {
+        group = 'fornax examples'
+        description = "Fornax against each engine's own command-line tool, on the same model files and settings"
+        classpath = sourceSets.main.runtimeClasspath
+        mainClass = 'org.liberationdata.fornax.bench.Benchmarks'
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+        systemProperty 'fornax.library.path', nativeDir.absolutePath
+        systemProperty 'fornax.backend', findProperty('fornax.backend')  // so results.json names the natives it ran
+        workingDir = rootProject.projectDir
+        def cli = gradle.startParameter.projectProperties
+        ['llama.bench', 'sd.cli'].each { p -> if (cli.containsKey(p)) systemProperty p, cli[p] }
     }
     // ./gradlew bench --args='out/bench acestep yue2 qwen-image'
     tasks.register('bench', JavaExec) {

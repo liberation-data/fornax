@@ -4,9 +4,15 @@ import org.liberationdata.fornax.Audio;
 import org.liberationdata.fornax.Call;
 import org.liberationdata.fornax.ModelThread;
 import org.liberationdata.fornax.NativeLibrary;
+import org.liberationdata.fornax.hub.ModelReferences;
+import org.liberationdata.fornax.hub.ModelSet;
 
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 
@@ -43,7 +49,33 @@ public final class Yue2Model implements AutoCloseable {
     private final MemorySegment handle;
     private final ModelThread thread;
 
+    private static final ModelReferences.Engine SET = new ModelReferences.Engine("Yue2Model", "YuE2 song models",
+            Set.of(ModelSet.Kind.SONG), Set.of(), "a YuE2 set");
+    private static final ModelReferences.Engine FILE = new ModelReferences.Engine("Yue2Model",
+            "one file per path here (pass a set's name alone for the whole set)", Set.of(), Set.of("gguf"), "a GGUF");
+
+    /** The catalogue set with this name ({@code "yue2"}), kept loaded with the engine's own sequence limit, downloaded on first use. */
+    public Yue2Model(String model) { this(model, true, 0); }
+
+    /** {@link #Yue2Model(String)} with the loading options of {@link #Yue2Model(String, String, boolean, int)}. */
+    public Yue2Model(String model, boolean keepLoaded, int maxSeq) { this(ModelReferences.set(model, SET, "yue2.cpp"), keepLoaded, maxSeq); }
+
+    private Yue2Model(Map<String, Path> files, boolean keepLoaded, int maxSeq) {
+        this(files.get("model").toString(), files.get("vae").toString(), keepLoaded, maxSeq);
+    }
+
+    /**
+     * Either path may be a model reference instead ({@code Serveurperso/YuE2-GGUF:YuE2-Vae-F32.gguf}), downloaded on
+     * first use.
+     *
+     * @param keepLoaded keep every stage's weights loaded between generations
+     * @param maxSeq the LM's sequence limit, or 0 for the engine's own
+     */
     public Yue2Model(String modelPath, String vaePath, boolean keepLoaded, int maxSeq) {
+        ModelReferences.check(Objects.requireNonNull(modelPath, "modelPath"), FILE);   // both refused before any download
+        ModelReferences.check(Objects.requireNonNull(vaePath, "vaePath"), FILE);
+        modelPath = ModelReferences.path(modelPath, FILE);
+        vaePath = ModelReferences.path(vaePath, FILE);
         try (Arena a = Arena.ofConfined()) {
             handle = (MemorySegment) CREATE.invokeExact(a.allocateFrom(modelPath), a.allocateFrom(vaePath), keepLoaded ? 1 : 0, maxSeq);
         } catch (Throwable t) { throw new RuntimeException(t); }

@@ -3,7 +3,9 @@ package org.liberationdata.fornax.cli;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.liberationdata.fornax.hub.FornaxHub;
+import org.liberationdata.fornax.hub.HubException;
 import org.liberationdata.fornax.hub.ModelFolders;
+import org.liberationdata.fornax.hub.ModelSet.Kind;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -23,6 +25,7 @@ class ModelsTest {
         put(cache, "some/Multi-GGUF", "m-Q8_0.gguf");
         put(cache, "some/Multi-GGUF", "mmproj-m-F16.gguf");
         put(cache, "Serveurperso/ACE-Step-1.5-GGUF", "vae-BF16.gguf");   // one part of the ACE-Step sets
+        put(cache, "ggerganov/whisper.cpp", "ggml-base.en.bin");
         return FornaxHub.builder().cacheRoot(cache).modelFolders(ModelFolders.none()).offline(true).build();
     }
 
@@ -63,8 +66,61 @@ class ModelsTest {
         assertFalse(several.getMessage().contains("mmproj"), several.getMessage());
         var none = assertThrows(Main.Failure.class, () -> Models.resolve("some/Multi-GGUF:IQ2", hub));
         assertTrue(none.getMessage().contains("fornax pull some/Multi-GGUF:IQ2"), none.getMessage());
+        var revision = assertThrows(Main.Failure.class, () -> Models.resolve("some/Multi-GGUF@dev:Q8_0", hub));
+        assertTrue(revision.getMessage().contains("drop @dev"), revision.getMessage());
         var unknown = assertThrows(Main.Failure.class, () -> Models.resolve("what", hub));
         assertTrue(unknown.getMessage().contains("qwen3-4b"), unknown.getMessage());
+    }
+
+    @Test
+    void fetchTakesOneKindAndPullsWhatIsMissing() throws Exception {
+        var hub = hub();
+        var err = new ByteArrayOutputStream();
+        var ps = new PrintStream(err, true, StandardCharsets.UTF_8);
+        var whisper = Models.fetch("whisper-base.en", Kind.TRANSCRIPTION, "transcribe", true, hub, ps, false);
+        assertEquals("ggml-base.en.bin", whisper.file("model").getFileName().toString());
+        assertEquals("whisper-base.en", whisper.set().id());
+        assertEquals("", err.toString(StandardCharsets.UTF_8), "nothing to download, so nothing said");
+
+        Path file = Files.writeString(root.resolve("my.bin"), "x");   // a path, for a command that loads one file
+        assertEquals(file, Models.fetch(file.toString(), Kind.TRANSCRIPTION, "transcribe", true, hub, ps, false).file("model"));
+        assertEquals(Path.of("Qwen3-0.6B-Q8_0.gguf"), Models.fetch("Qwen/Qwen3-0.6B-GGUF:Q8_0", Kind.VISION, "see", true, hub, ps, false)
+                .file("gguf").getFileName());
+
+        // missing: pulled, which offline stops at the first file, after saying what it is fetching
+        var offline = assertThrows(HubException.class, () -> Models.fetch("whisper-large-v3-turbo", Kind.TRANSCRIPTION, "transcribe", true, hub, ps, false));
+        assertEquals(HubException.Reason.OFFLINE, offline.reason());
+        assertTrue(err.toString(StandardCharsets.UTF_8).contains("[fornax] downloading whisper-large-v3-turbo: Whisper large-v3-turbo"), err.toString());
+    }
+
+    @Test
+    void fetchRefusesTheWrongKindAndUnknownNamesBeforeDownloading() throws Exception {
+        var hub = hub();
+        var ps = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+        var chat = assertThrows(Main.Failure.class, () -> Models.fetch("qwen3-4b", Kind.IMAGE, "image", false, hub, ps, false));
+        assertEquals("qwen3-4b is a chat model; image takes an image model: flux2-klein, qwen-image, qwen-image-edit", chat.getMessage());
+        var song = assertThrows(Main.Failure.class, () -> Models.fetch("flux2-klein", Kind.SONG, "song", false, hub, ps, false));
+        assertTrue(song.getMessage().startsWith("flux2-klein is an image model; song takes a song model: ace-step-turbo"), song.getMessage());
+        var stt = assertThrows(Main.Failure.class, () -> Models.fetch("kokoro", Kind.TRANSCRIPTION, "transcribe", true, hub, ps, false));
+        assertTrue(stt.getMessage().contains("takes a speech-to-text model: whisper-large-v3-turbo, whisper-base.en"), stt.getMessage());
+        var ref = assertThrows(Main.Failure.class, () -> Models.fetch("some/Multi-GGUF:Q8_0", Kind.IMAGE, "image", false, hub, ps, false));
+        assertTrue(ref.getMessage().contains("not a reference"), ref.getMessage());
+        var unknown = assertThrows(Main.Failure.class, () -> Models.fetch("what", Kind.SONG, "song", false, hub, ps, false));
+        assertTrue(unknown.getMessage().startsWith("No such model: what") && unknown.getMessage().contains("ace-step-turbo"), unknown.getMessage());
+        var unknownFile = assertThrows(Main.Failure.class, () -> Models.fetch("what.bin", Kind.TRANSCRIPTION, "transcribe", true, hub, ps, false));
+        assertTrue(unknownFile.getMessage().startsWith("No such file or model: what.bin"), unknownFile.getMessage());
+        var notWhisper = assertThrows(Main.Failure.class, () -> Models.fetch("Qwen/Qwen3-0.6B-GGUF:Q8_0", Kind.TRANSCRIPTION, "transcribe", true, hub, ps, false));
+        assertTrue(notWhisper.getMessage().contains("not a whisper.cpp model"), notWhisper.getMessage());
+    }
+
+    @Test
+    void aNameThatCannotBeAPathIsStillAName() {
+        // On Windows a reference's ':' is no path at all (InvalidPathException); a NUL is the same on every OS.
+        String notAPath = "acme/x\0y";
+        assertFalse(Models.withoutMmproj(notAPath));
+        var ps = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+        var e = assertThrows(Main.Failure.class, () -> Models.fetch(notAPath, Kind.SPEECH, "speak", true, hub(), ps, false));
+        assertTrue(e.getMessage().startsWith("No such file or model"), e.getMessage());
     }
 
     @Test

@@ -70,6 +70,7 @@ export default defineConfig({
                         { slug: 'docs/guides/songs' },
                         { slug: 'docs/guides/models' },
                         { slug: 'docs/guides/cli', badge: { text: 'Next', variant: 'default' } },
+                        { slug: 'docs/guides/openai-server', badge: { text: 'Next', variant: 'default' } },
                         { slug: 'docs/guides/model-pool' },
                         { slug: 'docs/guides/threading', badge: { text: 'Next', variant: 'default' } },
                         { slug: 'docs/guides/isolation', badge: { text: 'Next', variant: 'default' } },
@@ -77,6 +78,7 @@ export default defineConfig({
                         { slug: 'docs/guides/gpu-backends' }
                     ]
                 },
+                { label: 'Benchmarks', items: [{ slug: 'docs/benchmarks' }] },
                 { label: 'Troubleshooting', items: [{ slug: 'docs/troubleshooting' }] },
                 { label: 'Reference', items: [{ slug: 'docs/reference' }] }
             ]

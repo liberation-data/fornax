@@ -30,7 +30,8 @@ import java.util.function.Supplier;
  * <ul>
  *   <li>A model loads on first {@link #acquire} and stays loaded after its lease closes.</li>
  *   <li>Loading a model that would exceed the budget first unloads idle models, least recently used first.
- *       Models in use are never unloaded; if they alone exceed the budget, the load goes ahead anyway.</li>
+ *       Models in use are never unloaded; if they alone exceed the budget, the load goes ahead anyway. A model
+ *       counts against the budget from the moment its load starts, so two loads at once make room for both.</li>
  *   <li>Models idle longer than {@code idleTimeout} are unloaded in the background ({@code null} = never).</li>
  *   <li>A model has one user at a time (engine instances aren't thread-safe): {@code acquire} waits for it.</li>
  * </ul>
@@ -55,6 +56,8 @@ public final class ModelPool implements AutoCloseable {
         final Semaphore use = new Semaphore(1, true);
         volatile AutoCloseable model;
         volatile long size;
+        /** The size of the model while its loader runs, held against the budget so a concurrent load counts it. */
+        volatile long reserved;
         volatile Instant lastUsed = Instant.now();
 
         Slot(String key) { this.key = key; }
@@ -65,6 +68,12 @@ public final class ModelPool implements AutoCloseable {
     private final Map<String, Slot> slots = new LinkedHashMap<>();
     private final ScheduledExecutorService reaper;
     private volatile boolean closed;
+    /**
+     * Making room and reserving it are one step: two loads at once can't both take the same free space. Held only
+     * around the accounting and the unloading of idle models (which other loads wait for), never while a loader runs,
+     * and nothing blocks under it: makeRoom only tries other models' locks.
+     */
+    private final Object budgetLock = new Object();
 
     public ModelPool(long budgetBytes, Duration idleTimeout) {
         this.budget = budgetBytes;
@@ -91,9 +100,21 @@ public final class ModelPool implements AutoCloseable {
         slot.use.acquireUninterruptibly();
         try {
             if (slot.model == null) {
-                makeRoom(sizeBytes, slot);
-                slot.model = loader.get();
+                synchronized (budgetLock) {
+                    makeRoom(sizeBytes, slot);
+                    slot.reserved = sizeBytes;
+                }
                 slot.size = sizeBytes;
+                AutoCloseable loaded = null;
+                try {
+                    loaded = loader.get();
+                } finally {
+                    // One step, so makeRoom counts it by its reservation or by its size: never both, never neither.
+                    synchronized (budgetLock) {
+                        slot.model = loaded;
+                        slot.reserved = 0;   // loaded (now counted by its size) or failed (given back)
+                    }
+                }
             }
             slot.lastUsed = Instant.now();
         } catch (RuntimeException | Error e) {
@@ -149,6 +170,13 @@ public final class ModelPool implements AutoCloseable {
         return n;
     }
 
+    /** Bytes reserved by models loading now, which {@link #loadedBytes} counts once they have loaded. */
+    private long reservedBytes() {
+        long n = 0;
+        for (Slot s : snapshot()) n += s.reserved;
+        return n;
+    }
+
     /** Total size of the given files: a reasonable estimate of what loading them takes. */
     public static long sizeOf(Path... files) {
         long n = 0;
@@ -173,7 +201,7 @@ public final class ModelPool implements AutoCloseable {
         List<Slot> idle = new ArrayList<>();
         for (Slot s : snapshot()) if (s != requester && s.model != null) idle.add(s);
         idle.sort(Comparator.comparing(s -> s.lastUsed));
-        long loaded = loadedBytes();
+        long loaded = loadedBytes() + reservedBytes();
         for (Slot s : idle) {
             if (loaded + needed <= budget) break;
             if (!s.use.tryAcquire()) continue;  // in use: never evicted

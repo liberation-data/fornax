@@ -10,8 +10,9 @@
 > - **Settings:** `kiln.*` properties are now `fornax.*`, and `KILN_*` environment variables are now `FORNAX_*`.
 > - **Studio:** Fornax Studio keeps using an existing `~/.kiln-studio`.
 
+<!-- snippet: Readme#chat -->
 ```java
-try (var llm = new LlamaModel("Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {   // weights load onto the GPU once
+try (var llm = new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M")) {   // downloaded on first use, then loaded onto the GPU
     llm.chat(List.of(Message.user("Name a country song about a robot.")), Options.DEFAULT, System.out::print);
 }
 ```
@@ -40,13 +41,13 @@ Fornax binds native inference engines with Java's Foreign Function & Memory API 
 
 Images and songs work the same way, and a vision language model takes images in:
 
+<!-- snippet: Readme#models -->
 ```java
-try (var songs = new AceStepModel(lm, textEncoder, dit, vae, true)) {
+try (var songs = new AceStepModel("ace-step")) {   // a catalogue set: its four files, downloaded on first use
     songs.generate(requestJson).audio().writeWav(new File("song.wav"));
 }
 
-try (var images = new DiffusionModel(DiffusionModel.Config.builder()
-        .diffusionModel(flux).vae(vae).llm(textEncoder).build())) {
+try (var images = new DiffusionModel(DiffusionModel.Config.builder().model("flux2-klein").build())) {
     BufferedImage img = images.generate(new DiffusionModel.Request("a neon sign", 1024, 1024, 20, 4.0, 7)).get(0);
 }
 
@@ -80,10 +81,39 @@ On Linux, the GPU's Vulkan driver must be installed (it usually is; if not, see
 [Installing GPU drivers](https://fornax4j.org/docs/gpu-drivers/)). With no GPU, Fornax stops rather than run on the CPU,
 unless `-Dfornax.allowCpu=true` (or `FORNAX_ALLOW_CPU=true`).
 
-Gradle (`build.gradle.kts`), choosing the natives jar for the machine that builds:
+Maven: import the BOM, then add modules without versions. `fornax-natives` brings in the natives jar for the machine
+that builds (Maven activates its profiles by OS and arch):
+
+```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>org.fornax4j</groupId>
+            <artifactId>fornax-bom</artifactId>
+            <version>0.2.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
+<dependencies>
+    <dependency>
+        <groupId>org.fornax4j</groupId>
+        <artifactId>fornax-llama</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.fornax4j</groupId>
+        <artifactId>fornax-natives</artifactId>
+        <type>pom</type>
+        <scope>runtime</scope>
+    </dependency>
+</dependencies>
+```
+
+Gradle (`build.gradle.kts`), which doesn't run Maven's profiles, so it names the natives jar for the machine that builds:
 
 ```kotlin
-val fornaxVersion = "0.2.0"
 val fornaxNatives = when {
     !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
     System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
@@ -91,49 +121,10 @@ val fornaxNatives = when {
 }
 
 dependencies {
-    implementation("org.fornax4j:fornax-llama:$fornaxVersion")
-    runtimeOnly("org.fornax4j:fornax-natives-$fornaxNatives:$fornaxVersion")
+    implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
+    implementation("org.fornax4j:fornax-llama")
+    runtimeOnly("org.fornax4j:fornax-natives-$fornaxNatives")
 }
-```
-
-Maven, with a profile per platform that the OS activates and that names the natives jar:
-
-```xml
-<properties>
-    <fornax.version>0.2.0</fornax.version>
-</properties>
-
-<dependencies>
-    <dependency>
-        <groupId>org.fornax4j</groupId>
-        <artifactId>fornax-llama</artifactId>
-        <version>${fornax.version}</version>
-    </dependency>
-    <dependency>
-        <groupId>org.fornax4j</groupId>
-        <artifactId>fornax-natives-${fornax.natives}</artifactId>
-        <version>${fornax.version}</version>
-        <scope>runtime</scope>
-    </dependency>
-</dependencies>
-
-<profiles>
-    <profile>
-        <id>fornax-linux-x86_64</id>
-        <activation><os><name>Linux</name><arch>amd64</arch></os></activation>
-        <properties><fornax.natives>linux-x86_64-vulkan</fornax.natives></properties>
-    </profile>
-    <profile>
-        <id>fornax-macos-aarch64</id>
-        <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
-        <properties><fornax.natives>macos-aarch64-metal</fornax.natives></properties>
-    </profile>
-    <profile>
-        <id>fornax-macos-x86_64</id>
-        <activation><os><family>mac</family><arch>x86_64</arch></os></activation>
-        <properties><fornax.natives>macos-x86_64-metal</fornax.natives></properties>
-    </profile>
-</profiles>
 ```
 
 Run with `--enable-native-access=ALL-UNNAMED`. The first time an engine loads, Fornax extracts its library from the
@@ -149,20 +140,17 @@ Vulkan. For ROCm (HIP), CUDA or anything else, build the libraries yourself (see
 
 ## Quick start (from source)
 
-The fastest way to see Fornax work: build the engines, fetch three models, and run the demo. One Java program
-has Qwen3 4B write a country song, ACE-Step 1.5 sing it and FLUX.2 [klein] paint its cover, all in one JVM.
+The fastest way to see Fornax work: build the engines and run the demo. One Java program has Qwen3 4B write a
+country song, ACE-Step 1.5 sing it and FLUX.2 [klein] paint its cover, all in one JVM.
 
 ```sh
 native/build.sh vulkan            # or hip | cuda | metal | cpu (see Building)
-./gradlew :fornax-cli:installDist   # the fornax command (see The fornax command)
-export PATH="$PWD/fornax-cli/build/install/fornax-cli/bin:$PATH"
-fornax pull qwen3-4b                # Qwen3 4B Instruct
-fornax pull ace-step                # ACE-Step 1.5 turbo with its 4B lyric LM: four files
-fornax pull flux2-klein             # FLUX.2 [klein]: three files, from three repos
 ./gradlew single                  # writes single/single.wav, single/cover.png and single/lyrics.txt
 ```
 
-`hf download` works too (the files are listed under [Models](#models)); both use the Hugging Face cache.
+The first run downloads the three models into the Hugging Face cache, logging each file; later runs need no network.
+To fetch them ahead of time, run `fornax pull qwen3-4b`, `fornax pull ace-step-turbo` and `fornax pull flux2-klein`,
+or `hf download` (the files are listed under [Models](#models)).
 To try models without writing code, use [Fornax Studio](https://github.com/liberation-data/fornax-studio).
 
 ## Status
@@ -172,7 +160,7 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 
 | Model | Result |
 |---|---|
-| Qwen3 4B Instruct (Q4_K_M) | ~60 tokens/s, streamed through a Java callback |
+| Qwen3 4B Instruct (Q4_K_M) | ~75 tokens/s, streamed through a Java callback: as fast as llama.cpp's own `llama-bench` |
 | Qwen3-Embedding 0.6B (Q8_0) | ~420 embeddings/s (20-token passages, 256 to a batch), matching `llama-embedding`'s vectors (cosine 1.000000) |
 | Qwen3-VL 4B Instruct (Q4_K_M) | a 1000×1300 invoice to schema-checked JSON (vendor, date, 4 line items, totals) in ~6 s; images read in 0.4 to 1.6 s, then ~60 tokens/s |
 | PaddleOCR-VL 1.6 (0.9B) | the same invoice's text (prompt "OCR:") in ~1.5 s, ~200 tokens/s |
@@ -184,6 +172,9 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 | HTDemucs v4 (F32) | a 3 min 9 s song split into four stems in 26 s (7.3 s of audio per second; about 2.9 on the CPU) |
 | FLUX.2 [klein] base 4B (fp8) | 768×768, 12 steps in ~130 s |
 | Qwen-Image 2512 (fp8) | 1024×1024, 20 steps in ~13 min |
+
+[Benchmarks](https://fornax4j.org/docs/benchmarks/) sets these against each engine's own tool and against ComfyUI, with
+the command behind every figure.
 
 The build script also knows the **ROCm (HIP)**, **CUDA** and **Metal** backends of the underlying engines. HIP has
 run LTX-2.5 video on the same machine (about 2.7× faster per step than Vulkan, and the way to render long clips; see
@@ -245,6 +236,7 @@ Loaded in `Mode.EMBED` or `Mode.RERANK`, a `LlamaModel` is an embedding model or
 pooled embeddings output (as `llama-embedding` and `llama-server --embedding` / `--reranking` run them), for search
 over your own documents (RAG) with no vector database: `fornax-core`'s `Vectors.topK` scans the vectors in memory.
 
+<!-- snippet: Readme#search -->
 ```java
 try (var emb = new LlamaModel(LlamaModel.Weights.QWEN3_EMBEDDING_0_6B, LlamaModel.Mode.EMBED)) {
     float[][] docs = emb.embed(passages);                                       // L2-normalised, batched
@@ -346,10 +338,18 @@ fornax list                                       # the catalogue, what is downl
 fornax rm flux2-klein                             # delete a model's files from the cache
 fornax chat qwen3-4b "Write a haiku about a fornax"
 fornax chat qwen3-4b                              # interactive; /reset, /exit
+fornax image flux2-klein "a brick kiln at dusk"   # -> image.png; --width --height --steps --cfg --seed --out
+fornax song ace-step-turbo "acoustic folk, warm vocal" --lyrics words.txt --seconds 60   # -> song.wav
+fornax speak "Hello from Fornax"                  # kokoro -> speech.wav; --voice, --list-voices
+fornax transcribe speech.wav                      # whisper-base.en; --words for each word's times
+fornax see qwen3-vl-4b image.png "What is by the door?"
+fornax server -m qwen3-4b                         # an OpenAI-compatible API at http://127.0.0.1:54154/v1
 fornax test flux2-klein                           # load, generate a little, report speed
 fornax info                                       # Java, native libraries, cache, token
 ```
 
+`image`, `song`, `speak`, `transcribe` and `see` download a model that isn't in the cache yet, as `fornax pull` would,
+and write to `--out` (else `image.png`, `song.wav` or `speech.wav` here, numbered rather than overwrite one).
 A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--think` shows them. A gated repo
 (LTX-2.5) needs its terms accepted on huggingface.co and `HF_TOKEN` (or `hf auth login`); the error says so.
 
@@ -372,6 +372,31 @@ at other native libraries. The launcher, `bin/fornax`, takes its Java, its jars 
 
 Check each model's license before you use what it makes. Some are non-commercial: YuE2's weights are
 CC BY-NC 4.0, for example.
+
+## The OpenAI-compatible server
+
+`fornax server` (or `FornaxServer`, in the `fornax-server` module, JDK only) serves Fornax's models over an
+OpenAI-compatible HTTP API, so any OpenAI client, agent framework or tool can use them with no Java code:
+
+```sh
+fornax server -m qwen3-4b
+curl -s localhost:54154/v1/chat/completions -d '{"messages":[{"role":"user","content":"Hi"}]}'
+```
+
+<!-- snippet: OpenAiServer#readme -->
+```java
+try (var server = FornaxServer.builder().model("qwen3-4b").build().start()) {
+    server.await();   // OpenAI base URL: server.url(), http://127.0.0.1:54154/v1
+}
+```
+
+It serves `POST /v1/chat/completions` (streaming, tools and `tool_calls`, `response_format` JSON schemas, `stop`,
+images for a vision model), `GET /v1/models`, `POST /v1/embeddings`, `POST /v1/images/generations` (base64 PNGs),
+`POST /v1/audio/speech` (WAV) and `POST /v1/audio/transcriptions` (a WAV file). A request may name the `-m`
+models and catalogue models already downloaded (with `--allow-downloads`, any model Fornax loads: alias,
+`org/name:TAG` or path, downloaded on first use), kept loaded in a `ModelPool` within `--budget-gb`. It listens on 127.0.0.1, refuses a foreign `Host` (DNS rebinding) and web pages unless `--cors`
+allows their origin, and with `--api-key` needs `Authorization: Bearer`. See
+[OpenAI-compatible server](https://fornax4j.org/docs/guides/openai-server/).
 
 ## Examples
 
@@ -402,15 +427,20 @@ second argument. The request formats are the engines' own (see
 
 `fornax-studio-server` is the backend of [Fornax Studio](https://github.com/liberation-data/fornax-studio), a desktop app for
 trying models: a JDK-only HTTP server on localhost (`com.sun.net.httpserver`, replies streamed as server-sent events)
-that lists what in the Hugging Face cache Fornax can run, keeps models in a `ModelPool`, and serves chat (with a
-tool-calling demo through `chatJson`), images, songs (ACE-Step and YuE2), video clips with sound (LTX-2.5, whose .mp4
-needs ffmpeg) and questions about an image for a vision model (Qwen3-VL, PaddleOCR-VL, MedGemma), as text or held to a
-JSON schema. The app starts it; to run it on its own:
+that lists what in the Hugging Face cache Fornax can run, downloads Fornax's model sets into it (`FornaxHub`), keeps
+models in a `ModelPool`, and serves chat (with a tool-calling demo through `chatJson`), images, songs (ACE-Step and
+YuE2), video clips with sound (LTX-2.5, whose .mp4 needs ffmpeg) and questions about an image for a vision model
+(Qwen3-VL, PaddleOCR-VL, MedGemma), as text or held to a JSON schema. The app starts it; to run it on its own:
 
 ```sh
 ./gradlew studioServer                    # http://127.0.0.1:5191; -Pport=, -Pbudget=<GB>, -Pstub=image,song,video
 ./gradlew :fornax-studio-server:studioJar   # one runnable jar, which the app ships
 ```
+
+It answers only its own callers: a request whose `Host` isn't `127.0.0.1`, `localhost` or `[::1]` at its port (DNS
+rebinding), or that carries an `Origin` (a web page in the browser), is refused with a 403. When `FORNAX_STUDIO_SECRET`
+is set in its environment (the app makes one each launch), every route but `/api/health` also needs it in the
+`X-Fornax-Studio-Secret` header.
 
 On Linux, as with every Fornax engine, a GPU build refuses to load a model on a machine with no usable GPU (the request's
 error says what to install) unless `FORNAX_ALLOW_CPU=true` is set in the server's environment.
@@ -420,7 +450,6 @@ error says what to install) unless `FORNAX_ALLOW_CPU=true` is set in the server'
 - Test and document the HIP and CUDA builds, and songs and video on Metal; natives jars for HIP and CUDA.
 - Video through stable-diffusion.cpp (`sd_generate_video`: Wan, LTX).
 - `fornax-embabel`: an Embabel Agent `LlmService` and `LocalModelSource` (needs tool-call parsing in `fornax-llama`).
-- An optional OpenAI-compatible server.
 - An MLX module for Apple silicon, through `mlx-c`.
 - A Kotlin layer with coroutine `Flow` streaming.
 

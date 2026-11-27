@@ -13,6 +13,7 @@ The class is `WhisperModel`.
 hf download ggerganov/whisper.cpp ggml-large-v3-turbo-q5_0.bin
 ```
 
+<!-- snippet: SpeechToText#transcribe -->
 ```java
 import org.liberationdata.fornax.Audio;
 import org.liberationdata.fornax.whisper.Transcript;
@@ -45,6 +46,7 @@ of the one before.
 
 ## Subtitles and word timings
 
+<!-- snippet: SpeechToText#subtitles -->
 ```java
 Files.writeString(Path.of("talk.srt"), t.srt());          // one cue per segment
 Files.writeString(Path.of("talk.vtt"), t.vtt());          // WebVTT
@@ -70,6 +72,7 @@ For a model file that isn't one of the `Weights`, give its alignment heads, or `
 Whisper's timestamp tokens instead. Those are rougher: in the same test, starts were up to 0.5 s off and ends ran into
 the next sentence.
 
+<!-- snippet: SpeechToText#files -->
 ```java
 new WhisperModel("/models/ggml-small.en.bin", WhisperModel.Alignment.SMALL_EN);
 new WhisperModel("/models/ggml-custom.bin");                 // no DTW
@@ -88,6 +91,16 @@ speed: about 50% longer than without DTW in the test above.
 `new WhisperModel(Weights)` finds the file in the Hugging Face cache; if it isn't there, it fails with the
 `hf download` command that fetches it. `Weights.named("base.en")` finds one by name.
 
+The path can also be a [model reference](/docs/guides/models/#by-reference) or a catalogue alias, downloaded on first
+use. One that names a `Weights` file gets that entry's alignment:
+
+<!-- snippet: SpeechToText#references -->
+```java
+new WhisperModel("whisper-base.en");                                   // an alias, with DTW
+new WhisperModel("ggerganov/whisper.cpp:ggml-large-v3-turbo-q8_0.bin");  // a file in a repo, with DTW
+new WhisperModel("ggerganov/whisper.cpp:ggml-small.en.bin", WhisperModel.Alignment.SMALL_EN);
+```
+
 | `Weights` | File | Size | Notes |
 |---|---|---|---|
 | `LARGE_V3_TURBO` | `ggml-large-v3-turbo-q5_0.bin` | 574 MB | the default: 99 languages, close to large-v3's accuracy, much faster |
@@ -102,6 +115,7 @@ licensed.
 `WhisperModel.Options` is a record. `Options.DEFAULT` detects the language and decodes with a beam of 5, the way
 whisper.cpp's CLI does.
 
+<!-- snippet: SpeechToText#options -->
 ```java
 var options = WhisperModel.Options.DEFAULT
         .withLanguage("de")             // null or "auto" detects it; an English-only model always transcribes English
@@ -146,6 +160,7 @@ only its own timestamps. The VAD model is under 1 MB and runs on the CPU:
 hf download ggml-org/whisper-vad ggml-silero-v6.2.0.bin
 ```
 
+<!-- snippet: SpeechToText#vad -->
 ```java
 var options = WhisperModel.Options.DEFAULT.withVad(WhisperModel.VadWeights.SILERO_V6_2_0);
 // or a file, with whisper.cpp's VAD settings to tune
@@ -188,6 +203,7 @@ All of them stop the repeats. They differ in what else they change:
 A `Listener` hears about the transcription as it runs, on the calling thread: `progress(percent)`, and each
 `segment(segment)` once Whisper has finished it, with its words. The call still returns the whole `Transcript`.
 
+<!-- snippet: SpeechToText#listener -->
 ```java
 Transcript t = stt.transcribe(audio, WhisperModel.Options.DEFAULT, new WhisperModel.Listener() {
     @Override public void progress(int percent) { System.out.printf("%d%%%n", percent); }
