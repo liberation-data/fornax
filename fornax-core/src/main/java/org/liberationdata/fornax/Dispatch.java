@@ -39,7 +39,9 @@ import java.util.function.Function;
  * <ul>
  *   <li><b>Workers run one request at a time.</b> The GPU is the scarce resource, so a worker is the unit of
  *   concurrency: {@code workers} requests run at once, each with its model to itself. A model is loaded in one worker
- *   at a time; a worker may hold several.</li>
+ *   at a time; a worker may hold several. The exception is a model registered with a concurrency above 1 (a language
+ *   model with slots, which decodes its requests together): once loaded, it takes up to that many requests at once on
+ *   its worker, unless a request ranked above them is waiting for a worker.</li>
  *   <li><b>Affinity.</b> A request for a loaded model waits for that model's worker. A request for a model that isn't
  *   loaded takes an idle worker (one that hasn't just crashed first, then the one with the fewest bytes loaded) and
  *   loads it there.</li>
@@ -147,7 +149,17 @@ public final class Dispatch implements AutoCloseable {
      * @param sizeBytes the memory it takes once loaded, as for {@link ModelPool#acquire} ({@link ModelPool#sizeOf})
      */
     public <M extends AutoCloseable> Model<M> register(String key, long sizeBytes, Function<Worker, M> loader) {
-        Model<M> m = new Model<>(Objects.requireNonNull(key), sizeBytes, Objects.requireNonNull(loader));
+        return register(key, sizeBytes, 1, loader);
+    }
+
+    /**
+     * {@link #register(String, long, Function)} for a model that runs up to {@code concurrency} requests at once, such
+     * as {@code w -> LlamaModel.isolated(w, gguf, -1, 4096, 4)} with 4: requests for it share its worker instead of
+     * queueing for it. Count its slots' context in {@code sizeBytes} ({@code LlamaModel.kvCacheBytes}).
+     */
+    public <M extends AutoCloseable> Model<M> register(String key, long sizeBytes, int concurrency, Function<Worker, M> loader) {
+        if (concurrency < 1) throw new IllegalArgumentException("concurrency must be at least 1");
+        Model<M> m = new Model<>(Objects.requireNonNull(key), sizeBytes, concurrency, Objects.requireNonNull(loader));
         lock.lock();
         try {
             if (closed) throw new IllegalStateException("dispatch is closed");
@@ -164,7 +176,7 @@ public final class Dispatch implements AutoCloseable {
         lock.lock();
         try {
             List<Entry> out = new ArrayList<>();
-            for (Loaded l : loaded.values()) out.add(new Entry(l.spec.key, l.spec.size, l.lane.index, l.ready, l.lane.running == l, l.lastUsed));
+            for (Loaded l : loaded.values()) out.add(new Entry(l.spec.key, l.spec.size, l.lane.index, l.ready, l.inUse > 0, l.lastUsed));
             out.sort(Comparator.comparing(Entry::lastUsed));
             return out;
         } finally { lock.unlock(); }
@@ -203,18 +215,22 @@ public final class Dispatch implements AutoCloseable {
 
     /**
      * A model registered with a dispatch: what you make requests for. Each request waits in the dispatch's queue until
-     * it is granted the model, which it then has to itself.
+     * it is granted the model, which it then has to itself (or shares with up to {@link #concurrency()} - 1 others).
      */
     public final class Model<M extends AutoCloseable> {
         private final String key;
         private final long size;
+        private final int concurrency;
         private final Function<Worker, M> loader;
 
-        private Model(String key, long size, Function<Worker, M> loader) {
-            this.key = key; this.size = size; this.loader = loader;
+        private Model(String key, long size, int concurrency, Function<Worker, M> loader) {
+            this.key = key; this.size = size; this.concurrency = concurrency; this.loader = loader;
         }
 
         public String key() { return key; }
+
+        /** How many requests it runs at once. */
+        public int concurrency() { return concurrency; }
 
         /**
          * Runs {@code body} with the model once the request is granted, and holds the model until the future it
@@ -326,11 +342,11 @@ public final class Dispatch implements AutoCloseable {
 
     // ---- scheduling ----
 
-    /** One worker process, which runs one request at a time. */
+    /** One worker process, which runs one request at a time (or several, for one model with a concurrency). */
     private static final class Lane {
         final int index;
         final Worker worker;
-        Loaded running;           // guarded by lock: the model of the request running here (or loading for it)
+        Loaded running;           // guarded by lock: the model of the requests running here (or loading for one)
         boolean crashed;          // guarded by lock: it died during the last request here
 
         Lane(int index, Worker worker) { this.index = index; this.worker = worker; }
@@ -342,6 +358,7 @@ public final class Dispatch implements AutoCloseable {
         final Lane lane;
         volatile AutoCloseable model;
         boolean ready;            // guarded by lock: loaded
+        int inUse;                // guarded by lock: requests granted it and not yet released
         long lastUsedNanos = System.nanoTime();
         Instant lastUsed = Instant.now();
         volatile boolean started; // the worker had started when the current request was granted it
@@ -376,20 +393,34 @@ public final class Dispatch implements AutoCloseable {
         long now = System.nanoTime();
         List<Request> order = new ArrayList<>(queue);
         order.sort(Comparator.<Request>comparingLong(r -> rank(r, now)).thenComparingLong(r -> r.seq));
-        boolean roomBlocked = false;
+        boolean roomBlocked = false, workerWanted = false;
+        java.util.Set<Lane> laneWanted = new java.util.HashSet<>();
         for (Request r : order) {
             Loaded l = loaded.get(r.spec.key);
             if (l != null) {                                     // affinity: wait for the model's own worker
-                if (l.lane.running != null) continue;
+                if (l.lane.running != null) {
+                    // a model with a concurrency takes more requests while it runs, unless one ranked above them is
+                    // waiting for this worker (or any), which would otherwise wait for as long as they keep coming
+                    boolean join = l.lane.running == l && l.ready && l.inUse < l.spec.concurrency
+                            && !workerWanted && !laneWanted.contains(l.lane);
+                    if (!join) {
+                        if (l.lane.running != l) laneWanted.add(l.lane);
+                        continue;
+                    }
+                }
                 queue.remove(r);
                 l.lane.running = l;
+                l.inUse++;
                 hits++;
                 starts.add(() -> start(r, l, List.of()));
                 continue;
             }
             if (roomBlocked) continue;                           // a request ranked higher is waiting for room
             Lane lane = idleLane();
-            if (lane == null) continue;
+            if (lane == null) {
+                workerWanted = true;
+                continue;
+            }
             long free = capacity() - usedBytes();
             List<Loaded> victims = new ArrayList<>();
             if (free < r.spec.size) {
@@ -416,6 +447,7 @@ public final class Dispatch implements AutoCloseable {
             Loaded nl = new Loaded(r.spec, lane);
             loaded.put(r.spec.key, nl);
             lane.running = nl;
+            nl.inUse = 1;
             queue.remove(r);
             loads++;
             starts.add(() -> start(r, nl, victims));
@@ -473,6 +505,7 @@ public final class Dispatch implements AutoCloseable {
                 lock.lock();
                 try {
                     loaded.remove(l.spec.key, l);
+                    l.inUse = 0;
                     lane.running = null;
                     if (isCrash(t)) dropped = crashedLocked(lane);
                 } finally { lock.unlock(); }
@@ -496,6 +529,7 @@ public final class Dispatch implements AutoCloseable {
         }
         Grant<?> g = new Grant<>(l);
         if (!r.grant.complete(g)) g.release(null);  // cancelled meanwhile: the model stays loaded
+        else if (l.spec.concurrency > 1) reschedule();   // ready now: requests waiting for it may share it
     }
 
     /** Gives a model back, after a request; drops the worker's models if it died meanwhile. */
@@ -507,7 +541,8 @@ public final class Dispatch implements AutoCloseable {
         List<Loaded> dropped = List.of();
         lock.lock();
         try {
-            if (lane.running == l) lane.running = null;
+            if (l.inUse > 0) l.inUse--;
+            if (lane.running == l && l.inUse == 0) lane.running = null;
             l.lastUsedNanos = System.nanoTime();
             l.lastUsed = Instant.now();
             if (crash && !closed) dropped = crashedLocked(lane);

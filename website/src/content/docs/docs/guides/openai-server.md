@@ -144,7 +144,9 @@ the model's header, besides its files). A client that hangs up, or whose deadlin
 A streaming client that reads more slowly than the model generates is never waited for, which would hold up every
 slot: once it falls a whole buffer behind (1024 pieces), its request stops with an error event
 ([overflow](/docs/guides/threading/#streaming)).
-Vision models still answer one request at a time, since a model with slots takes no images yet. The
+Vision models still answer one request at a time, since a model with slots takes no images yet. Under
+`FORNAX_ISOLATION=process` ([isolation](/docs/guides/isolation/)) each model runs in a worker process of its own,
+and one with slots batches there. The
 [benchmarks](/docs/benchmarks/) show what it buys: tokens a second across clients, and their wait for the first token.
 
 The `-m` models are downloaded first if need be (after the port is taken, so a port in use or a bad `--host` is said

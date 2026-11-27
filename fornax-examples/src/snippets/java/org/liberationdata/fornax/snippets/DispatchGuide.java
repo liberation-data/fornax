@@ -27,6 +27,17 @@ class DispatchGuide {
         // --8<-- [end:dispatch]
     }
 
+    void slots(Dispatch dispatch, Path gguf, List<LlamaModel.Message> messages) {
+        // --8<-- [start:slots]
+        int slots = 4, context = 4096;
+        long size = ModelPool.sizeOf(gguf) + LlamaModel.kvCacheBytes(gguf.toString(), slots * context);
+        var qwen = dispatch.register("qwen3-4b", size, slots,
+                worker -> LlamaModel.isolated(worker, gguf.toString(), -1, context, slots));
+        // up to four of these decode together in qwen's worker; more wait for a free slot
+        qwen.submit(QoS.INTERACTIVE, llm -> llm.chatAsync(messages, LlamaModel.Options.DEFAULT));
+        // --8<-- [end:slots]
+    }
+
     void submit(Dispatch.Model<LlamaModel> qwen, List<LlamaModel.Message> messages, LlamaModel.Options options,
                 Flow.Subscriber<String> subscriber, String schema, String requestJson) {
         // --8<-- [start:submit]

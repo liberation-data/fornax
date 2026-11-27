@@ -27,6 +27,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -125,8 +126,16 @@ public final class Worker implements AutoCloseable {
      * worker from the same config.
      * @throws WorkerCrashedException if the worker died while creating it (a model that crashes its engine as it loads)
      */
-    public Instance open(String serviceClass, byte[] config) {
-        Instance i = new Instance(ids.incrementAndGet(), serviceClass, config == null ? new byte[0] : config);
+    public Instance open(String serviceClass, byte[] config) { return open(serviceClass, config, 1); }
+
+    /**
+     * {@link #open(String, byte[])} for a service that runs up to {@code lanes} calls at once (its
+     * {@link WorkerService#lanes()}: a language model with slots), so that many of {@link Instance#invoke} run
+     * together instead of one after another.
+     */
+    public Instance open(String serviceClass, byte[] config, int lanes) {
+        if (lanes < 1) throw new IllegalArgumentException("lanes must be at least 1");
+        Instance i = new Instance(ids.incrementAndGet(), serviceClass, config == null ? new byte[0] : config, lanes);
         instances.put(i.id, i);
         try {
             i.ensureOpen();
@@ -516,25 +525,33 @@ public final class Worker implements AutoCloseable {
     }
 
     /**
-     * One service in the worker: a loaded model. Calls run one at a time, in arrival order. After a worker crash, the
-     * next call creates the service again in the new worker (reloading its model) before it runs.
+     * One service in the worker: a loaded model. Calls run one at a time, in arrival order (or up to {@code lanes} at
+     * once, for one opened with lanes). After a worker crash, the next call creates the service again in the new
+     * worker (reloading its model) before it runs.
      */
     public final class Instance implements AutoCloseable {
         private final long id;
         private final String serviceClass;
         private final byte[] config;
-        private final ReentrantLock calls = new ReentrantLock(true);
-        private int openedIn = -1;              // guarded by calls: the worker generation it was created in
-        private volatile long inFlight = -1;
-        private volatile Incarnation inFlightOn;
+        private final int lanes;
+        private final Semaphore calls;                                        // fair: calls start in arrival order
+        private final ReentrantLock opening = new ReentrantLock();
+        private int openedIn = -1;              // guarded by opening: the worker generation it was created in
+        private final Map<Long, Incarnation> inFlight = new ConcurrentHashMap<>();   // call id -> where it was sent
+        private final Map<Call, Long> byCall = new ConcurrentHashMap<>();
         private volatile boolean closed;
 
-        private Instance(long id, String serviceClass, byte[] config) {
+        private Instance(long id, String serviceClass, byte[] config, int lanes) {
             this.id = id; this.serviceClass = serviceClass; this.config = config;
+            this.lanes = lanes;
+            this.calls = new Semaphore(lanes, true);
         }
 
         /** The worker this instance lives in. */
         public Worker worker() { return Worker.this; }
+
+        /** How many calls run at once. */
+        public int lanes() { return lanes; }
 
         /** {@link #invoke(String, byte[], Call, Consumer)} with no events and no Call. */
         public byte[] invoke(String method, byte[] args) { return invoke(method, args, null, null); }
@@ -543,65 +560,82 @@ public final class Worker implements AutoCloseable {
          * Runs a call in the worker and waits for its result, blocking (a virtual thread unmounts meanwhile).
          * Events are handed to {@code events} on this thread, in order. A consumer that throws stops the call.
          * @param call the ModelThread call this runs in, if any: a consumer's exception is recorded there, and its
-         *             cancel arrives through {@link #cancel()} (pass {@code instance::cancel} as the ModelThread's
-         *             native cancel)
+         *             cancel arrives through {@link #cancel()} or {@link #cancel(Call)} (pass {@code instance::cancel}
+         *             as the ModelThread's native cancel, or for one with lanes as its per-call cancel)
          * @throws WorkerCrashedException if the worker died during the call (or while restarting for it)
          * @throws RuntimeException the worker's exception, as the same class where it can be rebuilt here
          *         ({@link IllegalStateException}, {@link java.util.concurrent.CancellationException}, ...)
          */
         public byte[] invoke(String method, byte[] args, Call call, Consumer<byte[]> events) {
-            calls.lock();
+            calls.acquireUninterruptibly();
             try {
                 if (closed) throw new IllegalStateException("this instance is closed");
                 Incarnation inc = ensureOpen();
                 long callId = ids.incrementAndGet();
                 Pending p = inc.register(callId);
-                inFlightOn = inc;
-                inFlight = callId;
+                inFlight.put(callId, inc);
+                if (call != null) byCall.put(call, callId);
                 try {
                     inc.send(Frames.CALL, callId, id, method, args);
-                    if (call != null && call.stopRequested()) cancel();  // a cancel that came before inFlight was set
+                    if (call != null && call.stopRequested()) cancel(call);  // a cancel that came before it was sent
                     byte[] result = p.await(events, call, inc);
                     succeeded();
                     return result;
                 } finally {
-                    inFlight = -1;
+                    if (call != null) byCall.remove(call, callId);
+                    inFlight.remove(callId);
                     inc.pending.remove(callId);
                 }
             } finally {
-                calls.unlock();
+                calls.release();
             }
         }
 
-        /** Stops the call in flight, if any, as the engine's own cancel does (an LLM returns the text so far). */
+        /** Stops every call in flight, as the engine's own cancel does (an LLM returns the text so far). */
         public void cancel() {
-            long c = inFlight;
-            Incarnation inc = inFlightOn;
-            if (c < 0 || inc == null || inc.dead) return;
-            try { inc.send(Frames.CANCEL, c, 0, null, null); } catch (RuntimeException ignored) { /* it died: the call fails anyway */ }
+            for (Map.Entry<Long, Incarnation> e : inFlight.entrySet()) cancel(e.getKey(), e.getValue());
         }
 
-        /** The running worker, with this service created in it. Caller holds calls (or is open()). */
+        /** Stops the call in flight for {@code call}, if any, and only that one. */
+        public void cancel(Call call) {
+            Long c = byCall.get(call);
+            if (c == null) return;
+            Incarnation inc = inFlight.get(c);
+            if (inc != null) cancel(c, inc);
+        }
+
+        private void cancel(long callId, Incarnation inc) {
+            if (inc.dead) return;
+            try { inc.send(Frames.CANCEL, callId, 0, null, null); } catch (RuntimeException ignored) { /* it died: the call fails anyway */ }
+        }
+
+        /** The running worker, with this service created in it. */
         private Incarnation ensureOpen() {
-            Incarnation inc = running();
-            if (openedIn == inc.gen) return inc;
-            long callId = ids.incrementAndGet();
-            Pending p = inc.register(callId);
+            opening.lock();
             try {
-                inc.send(Frames.OPEN, callId, id, serviceClass, config);
-                p.await(null, null, inc);
-                openedIn = inc.gen;
-                return inc;
+                Incarnation inc = running();
+                if (openedIn == inc.gen) return inc;
+                long callId = ids.incrementAndGet();
+                Pending p = inc.register(callId);
+                try {
+                    inc.send(Frames.OPEN, callId, id, serviceClass, config);
+                    p.await(null, null, inc);
+                    openedIn = inc.gen;
+                    return inc;
+                } finally {
+                    inc.pending.remove(callId);
+                }
             } finally {
-                inc.pending.remove(callId);
+                opening.unlock();
             }
         }
 
-        /** Frees the service in the worker (the worker keeps running). Idempotent. */
+        /** Frees the service in the worker (the worker keeps running), once the calls in flight return. Idempotent. */
         @Override public void close() {
             if (closed) return;
             cancel();
-            calls.lock();
+            calls.acquireUninterruptibly(lanes);
+            opening.lock();
             try {
                 if (closed) return;
                 closed = true;
@@ -621,7 +655,8 @@ public final class Worker implements AutoCloseable {
                     inc.pending.remove(callId);
                 }
             } finally {
-                calls.unlock();
+                opening.unlock();
+                calls.release(lanes);
             }
         }
     }

@@ -190,7 +190,54 @@ class WorkerTest {
         }
     }
 
+    /**
+     * What an isolated model with slots does: an instance with lanes, under a parent ModelThread with as many, whose
+     * per-call cancel is the instance's. Both spins start together (one lane would hold the second back until the first
+     * stopped), and cancelling one leaves the other running.
+     */
+    @Test
+    void anInstanceWithLanesRunsItsCallsTogetherAndStopsEachOnItsOwn() throws Exception {
+        var svc = worker(FAST).open(SERVICE, str("lanes:2"), 2);
+        assertEquals(2, svc.lanes());
+        try (var model = new ModelThread("isolated", 2, svc::close, svc::cancel)) {
+            var aStarted = new CompletableFuture<Void>();
+            var bStarted = new CompletableFuture<Void>();
+            CompletableFuture<byte[]> a = model.submit(c -> svc.invoke("spin", null, c, x -> aStarted.complete(null)));
+            CompletableFuture<byte[]> b = model.submit(c -> svc.invoke("spin", null, c, x -> bStarted.complete(null)));
+            CompletableFuture.allOf(aStarted, bStarted).get(30, TimeUnit.SECONDS);
+
+            a.cancel(true);
+            assertThrows(CancellationException.class, a::join);
+            // a's call stopped in the worker, so its lane is free while b still spins
+            assertEquals("free", new Wire.In(model.submit(c -> svc.invoke("echo", str("free"), c, null)).get(30, TimeUnit.SECONDS)).string());
+            assertFalse(b.isDone(), "the other call runs on");
+
+            model.cancel();
+            assertEquals("stopped", new Wire.In(b.get(30, TimeUnit.SECONDS)).string());
+        }
+    }
+
+    @Test
+    void lanesMustBeAtLeastOne() {
+        assertThrows(IllegalArgumentException.class, () -> worker(FAST).open(SERVICE, null, 0));
+    }
+
     // ---- crashes ----
+
+    /** A crash with several calls in flight on an instance with lanes fails all of them; the next call reloads it. */
+    @Test
+    void aCrashFailsEveryCallInFlightOnAnInstanceWithLanes() throws Exception {
+        Worker w = worker(FAST);
+        var svc = w.open(SERVICE, str("lanes:2"), 2);
+        long first = pid(svc);
+        var started = new CompletableFuture<Void>();
+        CompletableFuture<byte[]> spin = CompletableFuture.supplyAsync(() -> svc.invoke("spin", null, null, x -> started.complete(null)));
+        started.get(30, TimeUnit.SECONDS);
+        assertThrows(WorkerCrashedException.class, () -> svc.invoke("abort", null));
+        var e = assertThrows(java.util.concurrent.ExecutionException.class, () -> spin.get(30, TimeUnit.SECONDS));
+        assertInstanceOf(WorkerCrashedException.class, e.getCause());
+        assertNotEquals(first, pid(svc), "the next call started a new worker");
+    }
 
     @Test
     void anAbortFailsTheCallAndTheNextCallRestartsTheWorker() {

@@ -432,4 +432,108 @@ class DispatchTest {
         }
         assertThrows(IllegalStateException.class, lease::model);
     }
+
+    // ---- a model with a concurrency (slots) ----
+
+    /** A TestService that runs {@code lanes} calls at once, registered with that concurrency. */
+    Dispatch.Model<Worker.Instance> slotted(Dispatch d, String key, int lanes) {
+        return d.register(key, 1, lanes, w -> {
+            var i = w.open(SERVICE, WorkerTest.str("lanes:" + lanes), lanes);
+            instances.put(key, i);
+            loadsOf.merge(key, 1, Integer::sum);
+            return i;
+        });
+    }
+
+    @Test
+    void aModelWithAConcurrencyTakesThatManyRequestsAtOnceOnItsWorker() throws Exception {
+        var d = dispatch(1, 10);
+        var a = slotted(d, "a", 2);
+        assertEquals(2, a.concurrency());
+        var first = hold(a);
+        var second = hold(a);                     // granted while the first still holds the only worker
+        assertEquals(1, loadsOf.get("a"), "loaded once");
+        var third = a.submit(QoS.INTERACTIVE, i -> CompletableFuture.completedFuture("third"));
+        awaitQueued(d, 1, 0);
+        assertTrue(d.entries().getFirst().inUse());
+        first.complete(null);
+        assertEquals("third", third.get(30, TimeUnit.SECONDS));
+        second.complete(null);
+        var s = d.stats();
+        assertEquals(1, s.loads());
+        assertEquals(2, s.hits());
+    }
+
+    @Test
+    void requestsArrivingTogetherForAModelWithAConcurrencyLoadItOnceThenShareIt() throws Exception {
+        var d = dispatch(1, 10);
+        var a = slotted(d, "a", 3);
+        var gate = new CompletableFuture<Object>();
+        var running = new CountDownLatch(3);
+        List<CompletableFuture<Object>> fs = new ArrayList<>();
+        for (int i = 0; i < 3; i++) fs.add(a.submit(QoS.INTERACTIVE, m -> { running.countDown(); return gate; }));
+        assertTrue(running.await(30, TimeUnit.SECONDS), "all three ran at once, after the one load");
+        assertEquals(1, loadsOf.get("a"));
+        gate.complete("done");
+        for (var f : fs) assertEquals("done", f.get(30, TimeUnit.SECONDS));
+    }
+
+    /**
+     * A request ranked above them that is waiting for the worker stops more requests joining a model with a
+     * concurrency, or a stream of them would hold the worker for good.
+     */
+    @Test
+    void aRequestWaitingForTheWorkerStopsMoreJoiningAModelWithAConcurrency() throws Exception {
+        var d = dispatch(1, 10);
+        var a = slotted(d, "a", 3);
+        var b = model(d, "b");
+        var gate = hold(a);
+        List<String> order = Collections.synchronizedList(new ArrayList<>());
+        var fb = record(b, QoS.INTERACTIVE, "b", order);
+        awaitQueued(d, 1, 0);
+        var fa = record(a, QoS.INTERACTIVE, "a", order);
+        awaitQueued(d, 2, 0);                     // a has free slots, but b came first
+        gate.complete(null);
+        fb.get(30, TimeUnit.SECONDS);
+        fa.get(30, TimeUnit.SECONDS);
+        assertEquals(List.of("b", "a"), order);
+    }
+
+    @Test
+    void aLowerRankedRequestForAnotherModelDoesntStopJoining() throws Exception {
+        var d = dispatch(1, 10);
+        var a = slotted(d, "a", 3);
+        var b = model(d, "b");
+        var gate = hold(a);
+        var fb = record(b, QoS.BATCH, "b", Collections.synchronizedList(new ArrayList<>()));
+        awaitQueued(d, 0, 1);
+        assertEquals("a", a.submit(QoS.INTERACTIVE, i -> CompletableFuture.completedFuture("a")).get(30, TimeUnit.SECONDS));
+        assertFalse(fb.isDone());
+        gate.complete(null);
+        fb.get(30, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void aCrashFailsEveryRequestSharingTheWorkerAndTheModelReloads() throws Exception {
+        var d = dispatch(1, 10);
+        var a = slotted(d, "a", 2);
+        long first = pid(a);
+        var spinning = new CountDownLatch(1);
+        var spin = a.submit(QoS.INTERACTIVE, i -> CompletableFuture.supplyAsync(
+                () -> i.invoke("spin", null, null, x -> spinning.countDown())));
+        assertTrue(spinning.await(30, TimeUnit.SECONDS));
+        var abort = a.submit(QoS.INTERACTIVE, i -> CompletableFuture.supplyAsync(() -> i.invoke("abort", null)));
+        for (var f : List.of(spin, abort)) {
+            var e = assertThrows(ExecutionException.class, () -> f.get(30, TimeUnit.SECONDS));
+            assertInstanceOf(WorkerCrashedException.class, e.getCause(), String.valueOf(e.getCause()));
+        }
+        assertNotEquals(first, pid(a), "the next request runs in a new worker");
+        assertTrue(d.stats().crashes() >= 1);
+    }
+
+    @Test
+    void aConcurrencyBelowOneIsRefused() {
+        var d = dispatch(1, 10);
+        assertThrows(IllegalArgumentException.class, () -> d.register("a", 1, 0, w -> w.open(SERVICE, null)));
+    }
 }

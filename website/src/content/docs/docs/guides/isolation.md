@@ -52,7 +52,8 @@ Isolation covers `LlamaModel` today. The worker itself is generic: other engines
 Within `LlamaModel` it covers every mode: chat and vision (`Mode.CHAT`), embeddings (`Mode.EMBED`) and reranking
 (`Mode.RERANK`). Pass the mode as the constructor takes it: `LlamaModel.isolated(Weights.QWEN3_EMBEDDING_0_6B,
 Mode.EMBED)`, `isolated(gguf, gpuLayers, contextSize, Mode.RERANK)`, or `isolated(worker, gguf, gpuLayers, contextSize,
-mode)` for a shared worker. Embeddings come back through shared memory once a batch is large, so a big `embed` costs
+mode)` for a shared worker. A chat model with [slots](/docs/guides/language-models/#many-requests-at-once-slots)
+batches in its worker: `isolated(gguf, gpuLayers, contextSize, slots)`. Embeddings come back through shared memory once a batch is large, so a big `embed` costs
 little more than in-process.
 
 ## When to choose it
