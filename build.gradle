@@ -261,7 +261,7 @@ project(':fornax-cli') {
     // includes a platform when native/build.sh has built it). -Pfornax.cli.nativesVersion=0.2.0 takes this platform's
     // from Maven Central instead, for a build without natives of its own.
     def publishedNatives = findProperty('fornax.cli.nativesVersion')
-    def hostPlatform = os != 'macos' ? 'linux-x86_64-vulkan' : (arch == 'arm64' ? 'macos-aarch64-metal' : 'macos-x86_64-metal')
+    def hostPlatform = os != 'macos' ? 'linux-x86_64-vulkan' : 'macos-aarch64-metal'  // no Intel Mac natives (#123)
     def natives = publishedNatives ? ["org.fornax4j:fornax-natives-${hostPlatform}:${publishedNatives}".toString()]
                                    : gradle.nativesDirs.keySet().collect { project(":fornax-natives-${it}") }
     dependencies {

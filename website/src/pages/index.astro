@@ -133,11 +133,8 @@ String res = llm.chatJson("""
 const qsGradle = `// build.gradle.kts
 plugins { application }
 repositories { mavenCentral() }
-val natives = when {   // the natives jar for the OS and arch building it
-    !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
-    System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
-    else -> "macos-x86_64-metal"
-}
+val natives =   // the natives jar for the OS and arch building it
+    if (System.getProperty("os.name").startsWith("Mac")) "macos-aarch64-metal" else "linux-x86_64-vulkan"
 dependencies {
     implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
     implementation("org.fornax4j:fornax-llama")

@@ -12,7 +12,7 @@ and you're done. ROCm and CUDA mean building the engines once for your GPU.
 |---|---|---|---|
 | [Linux, Vulkan](#linux-amd-intel-or-nvidia-with-vulkan) | AMD, Intel, NVIDIA | published | tested nightly |
 | [Linux, ROCm](#linux-amd-with-rocm) | AMD | build them yourself | tested nightly |
-| [macOS, Metal](#macos-with-metal) | Apple silicon, Intel Macs | published | tested on Apple silicon |
+| [macOS, Metal](#macos-with-metal) | Apple silicon | published | tested |
 | [NVIDIA, CUDA](#nvidia-with-cuda) | NVIDIA | build them yourself | not tested yet |
 | [Windows](#windows) | | build them yourself (experimental) | not tested on a GPU yet |
 
@@ -104,18 +104,18 @@ passes the test suite on a Radeon 8060S (one rerank score drifts, [#80](https://
 
 ## macOS, with Metal
 
-macOS 13.3 or newer, on Apple silicon or Intel. Nothing to install: Metal is part of macOS. Fornax passes its test
+macOS 13.3 or newer, on Apple silicon (Intel Macs aren't supported). Nothing to install: Metal is part of macOS. Fornax passes its test
 suite on an Apple M2 Max.
 
 <Steps>
 
-1. **Add Fornax to your build**, with the natives jar for your Mac:
+1. **Add Fornax to your build**, with the macOS natives jar:
 
    ```kotlin
    dependencies {
        implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
        implementation("org.fornax4j:fornax-llama")
-       runtimeOnly("org.fornax4j:fornax-natives-macos-aarch64-metal")   // macos-x86_64-metal on an Intel Mac
+       runtimeOnly("org.fornax4j:fornax-natives-macos-aarch64-metal")
    }
    ```
 

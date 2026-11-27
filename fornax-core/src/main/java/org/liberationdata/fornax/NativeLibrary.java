@@ -65,10 +65,20 @@ public final class NativeLibrary {
         try {
             return new NativeLibrary(name, SymbolLookup.libraryLookup(file, Arena.global()));
         } catch (IllegalArgumentException e) {
-            throw new UnsatisfiedLinkError("Fornax could not find " + file + " (searched " + dirs + ", the classpath for a "
-                    + "fornax-natives jar, and the platform loader). Add the org.fornax4j:fornax-natives-<os>-<arch>-<backend> "
-                    + "dependency, or set -Dfornax.library.path=<dir> or -Dfornax." + name + ".lib=<file>.");
+            throw new UnsatisfiedLinkError(notFound(name, file, dirs, BundledNatives.platform(System.getProperty("os.name"),
+                    System.getProperty("os.arch"))));
         }
+    }
+
+    /** The message when no copy of library {@code name} was found; on an Intel Mac, says there are no natives for one. */
+    static String notFound(String name, String file, List<String> dirs, String platform) {
+        String m = "Fornax could not find " + file + " (searched " + dirs + ", the classpath for a fornax-natives jar, and "
+                + "the platform loader). ";
+        if (platform.equals("macos-x86_64"))
+            return m + "Fornax publishes macOS natives for Apple silicon only, not Intel Macs. To try it on an Intel Mac, "
+                    + "build the libraries with native/build.sh metal and set -Dfornax.library.path=<dir>.";
+        return m + "Add the org.fornax4j:fornax-natives-<os>-<arch>-<backend> dependency, or set "
+                + "-Dfornax.library.path=<dir> or -Dfornax." + name + ".lib=<file>.";
     }
 
     /** Opens the library file at {@code path}, and on Linux makes sure a GPU build has a GPU ({@link GpuCheck}). */

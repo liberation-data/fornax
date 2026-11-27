@@ -86,7 +86,6 @@ The natives jars:
 |---|---|---|
 | `fornax-natives-linux-x86_64-vulkan` | Linux x86-64 (glibc 2.39+: Ubuntu 24.04, Fedora 40 or newer) | Vulkan (AMD, Intel, NVIDIA) |
 | `fornax-natives-macos-aarch64-metal` | macOS 13.3+ on Apple silicon | Metal |
-| `fornax-natives-macos-x86_64-metal` | macOS 13.3+ on Intel | Metal |
 
 No Windows natives jar yet: `native/build.sh` builds the engines in MSYS2's UCRT64 shell, experimentally
 ([#83](https://github.com/liberation-data/fornax/issues/83)).
@@ -128,11 +127,8 @@ that builds (Maven activates its profiles by OS and arch):
 Gradle (`build.gradle.kts`), which doesn't run Maven's profiles, so it names the natives jar for the machine that builds:
 
 ```kotlin
-val fornaxNatives = when {
-    !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
-    System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
-    else -> "macos-x86_64-metal"
-}
+val fornaxNatives =
+    if (System.getProperty("os.name").startsWith("Mac")) "macos-aarch64-metal" else "linux-x86_64-vulkan"
 
 dependencies {
     implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
@@ -197,7 +193,7 @@ the test suite on the same machine (one rerank score drifts,
 step than Vulkan, and the way to render long clips; see
 [engine notes](docs/engine-notes.md)), and Metal passes the test suite on an Apple M2 Max with 32 GB (macOS 27.2: chat, vision, embeddings and reranking, speech,
 transcription, stem separation, FLUX.2 [klein] images and upscaling, isolated workers and Dispatch; songs and video
-haven't been run on a Mac yet, nor has an Intel Mac). CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
+haven't been run on a Mac yet). Intel Macs aren't supported. CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
 build the native libraries. Reports and fixes welcome.
 
 ## How it works
