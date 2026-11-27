@@ -27,6 +27,16 @@ Through Fornax, llama.cpp runs as fast as it does in its own benchmark: the firs
 generation is within 2% of it. Fornax's peak memory is a little higher because the model loads with a 4096-token
 context, where llama-bench sizes its own to the test.
 
+## Serving many clients
+
+<BenchTable id="serving" />
+
+With 4 slots, `fornax server --parallel 4` keeps pace with llama-server's own `-np 4` at every load: within 3% on
+throughput, with the same time to the first token. Against one slot (`--parallel 1`, the default, where requests take
+turns), four clients get 2.8 times the tokens a second between them, and wait 0.7 s for their first token instead of
+11.5 s. Past the slots (8 clients) both servers queue the rest, so throughput stays where 4 left it and the wait grows.
+The extra slots cost about 0.9 GB here: their KV cache, 4 × 2048 tokens.
+
 ## Images
 
 <BenchTable id="image" />
