@@ -247,6 +247,8 @@ public final class FornaxServer implements AutoCloseable {
             status[0] = ex.getResponseCode();
         } catch (ApiError e) {
             status[0] = error(ex, e);
+            // a 500's body has its paths cut (ApiError.body): the log keeps them for whoever runs the server
+            if (e.status == 500) log.accept("error in " + method + " " + path + ": " + e.getMessage());
         } catch (CancellationException e) {
             status[0] = 499;   // the client went away mid-stream: there is no one to tell
         } catch (RuntimeException | IOException | Error e) {

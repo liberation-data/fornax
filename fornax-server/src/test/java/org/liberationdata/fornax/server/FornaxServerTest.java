@@ -221,6 +221,21 @@ class FornaxServerTest {
         assertEquals("no /a/b here", get(ApiError.badRequest("no /a/b here", null).body(), "error", "message"), "only a 500");
     }
 
+    /** A model that won't load on a request: the caller gets the file name, the server's log the whole path. */
+    @Test void aServerErrorOnARequestIsLoggedWithItsPath() throws Exception {
+        var logged = new java.util.concurrent.ConcurrentLinkedQueue<String>();
+        engines.failure = ApiError.server("qwen3-4b: /home/someone/.cache/m.gguf: permission denied");
+        engines.failAfter = 0;
+        try (var logging = FornaxServer.builder().port(0).engines(engines).log(logged::add).build().start()) {
+            var r = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + logging.port() + "/v1/chat/completions"))
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}")).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(500, r.statusCode());
+            assertEquals("qwen3-4b: m.gguf: permission denied", get(json(r), "error", "message"));
+        }
+        assertTrue(logged.stream().anyMatch(s -> s.contains("/home/someone/.cache/m.gguf")), logged.toString());
+    }
+
     /** A directory with a space in it (a Windows user name, macOS's Application Support) is a directory all the same. */
     @Test void withoutPathsCutsDirectoriesWithSpacesAndDriveLetterSlashes() {
         assertEquals("open model.gguf failed", ApiError.withoutPaths("open C:\\Users\\John Smith\\.cache\\model.gguf failed"));

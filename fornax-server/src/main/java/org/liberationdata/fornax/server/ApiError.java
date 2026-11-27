@@ -39,7 +39,7 @@ final class ApiError extends RuntimeException {
 
     /**
      * A 500. Its {@link #body} cuts each local path in the message to its file name ({@link #withoutPaths}); its
-     * message keeps them, for whoever runs the server ({@link FornaxServer#start} fails with it).
+     * message keeps them, for whoever runs the server ({@link FornaxServer#start} fails with it; a request's is logged).
      */
     static ApiError server(String message) { return new ApiError(500, "server_error", message, null, null); }
 

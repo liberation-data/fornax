@@ -19,8 +19,8 @@ import java.util.regex.Pattern;
  *       refused (a rebound name); bound to another address, the server is meant to be reached by other names, and
  *       the API key is what keeps callers out</li>
  *   <li>a request with an {@code Origin} (a browser sends one with every cross-origin request, and with every POST) is
- *       refused unless the origin is one allowed with {@code --cors}; an allowed one gets CORS headers, and its
- *       preflight an answer</li>
+ *       refused unless the origin is one allowed with {@code --cors}; an allowed one gets CORS headers (on a refusal too,
+ *       so its page can read why), and its preflight an answer</li>
  *   <li>with an API key, a request without {@code Authorization: Bearer <key>} is refused (compared in constant
  *       time); a preflight carries no credentials, so it needs none</li>
  * </ul>
