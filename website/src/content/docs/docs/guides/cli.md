@@ -13,6 +13,16 @@ fornax image flux2-klein "a brick kiln at dusk"      # downloads the model first
 
 ## Installing it
 
+- **Nothing to install, with [JBang](https://www.jbang.dev)** (from Fornax 0.2.0). JBang runs the `fornax` command from
+  Maven Central, with the natives for your platform, on a Java 22 or newer that it fetches if you have none:
+
+  ```sh
+  jbang fornax@fornax4j chat qwen3-4b "Write a haiku about a kiln"
+  jbang image@fornax4j flux2-klein "a brick kiln at dusk"      # also song@, speak@, transcribe@, see@ and server@
+  ```
+
+  `jbang app install fornax@fornax4j` puts it on your `PATH` as `fornax`. The aliases are in
+  [jbang-catalog.json](https://github.com/liberation-data/fornax/blob/main/jbang-catalog.json).
 - **With Fornax Studio** (coming in the next Fornax Studio release): choose **Install fornax command** from Studio's menu.
   Studio writes a `fornax` launcher into a folder on your `PATH` (`~/.local/bin` on Linux; `/usr/local/bin`, or
   `~/.local/bin`, on macOS). That `fornax` runs on Studio's own Java and engines, so it needs nothing else installed.

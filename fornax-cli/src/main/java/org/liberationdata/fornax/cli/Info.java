@@ -69,9 +69,16 @@ final class Info {
     }
 
     /** The fornax-natives jars on the classpath, by file name (the launcher's lib folder has the platform's). */
-    static List<String> nativesJars() {
-        return Arrays.stream(System.getProperty("java.class.path", "").split(java.io.File.pathSeparator))
-                .map(e -> Path.of(e).getFileName()).filter(n -> n != null && n.toString().startsWith("fornax-natives-"))
+    static List<String> nativesJars() { return nativesJars(System.getProperty("java.class.path", "")); }
+
+    /**
+     * The fornax-natives jars on this classpath. Jars only: JBang puts the org.fornax4j:fornax-natives POM itself on the
+     * classpath too (its profiles are how the platform's jar was picked), and that is no natives jar.
+     */
+    static List<String> nativesJars(String classpath) {
+        return Arrays.stream(classpath.split(java.io.File.pathSeparator))
+                .map(e -> Path.of(e).getFileName()).filter(n -> n != null && n.toString().startsWith("fornax-natives-")
+                        && n.toString().endsWith(".jar"))
                 .map(Path::toString).toList();
     }
 

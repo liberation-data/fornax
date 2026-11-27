@@ -4,6 +4,16 @@
 
 **Call open-weight models (language, vision, speech, images, songs, video) as plain Java methods, running on your GPU, inside your JVM.**
 
+Try it with one line, with nothing installed but [JBang](https://www.jbang.dev) (from Fornax 0.2.0; JBang fetches a Java
+22 or newer if you have none):
+
+```sh
+jbang fornax@fornax4j chat qwen3-4b "Write a haiku about a kiln"   # downloads the model on first use
+```
+
+`jbang image@fornax4j flux2-klein "a brick kiln at dusk"`, `song@`, `speak@`, `transcribe@`, `see@` and `server@` work the
+same way: they are the [`fornax` command](https://fornax4j.org/docs/guides/cli/), run from Maven Central.
+
 > Fornax was called **Kiln** until 0.1.0. Here's what changed:
 > - **Maven:** `org.kiln4j:kiln-*` is now `org.fornax4j:fornax-*`.
 > - **Packages:** `org.liberationdata.kiln` is now `org.liberationdata.fornax`.
