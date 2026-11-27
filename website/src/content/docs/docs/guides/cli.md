@@ -13,7 +13,7 @@ fornax image flux2-klein "a brick kiln at dusk"      # downloads the model first
 
 ## Installing it
 
-- **Nothing to install, with [JBang](https://www.jbang.dev)** (from Fornax 0.2.0). JBang runs the `fornax` command from
+- **Nothing to install, with [JBang](https://www.jbang.dev)** (from Fornax 0.3.0). JBang runs the `fornax` command from
   Maven Central, with the natives for your platform, on a Java 22 or newer that it fetches if you have none:
 
   ```sh
@@ -23,7 +23,7 @@ fornax image flux2-klein "a brick kiln at dusk"      # downloads the model first
 
   `jbang app install fornax@fornax4j` puts it on your `PATH` as `fornax`. The aliases are in
   [jbang-catalog.json](https://github.com/liberation-data/fornax/blob/main/jbang-catalog.json), and run
-  `org.fornax4j:fornax-cli`, which JBang can also run by those coordinates: `jbang org.fornax4j:fornax-cli:0.2.0 chat qwen3-4b`
+  `org.fornax4j:fornax-cli`, which JBang can also run by those coordinates: `jbang org.fornax4j:fornax-cli:0.3.0 chat qwen3-4b`
   (add `--java 22+ -R--enable-native-access=ALL-UNNAMED`, as the aliases do).
 - **With Fornax Studio** (coming in the next Fornax Studio release): choose **Install fornax command** from Studio's menu.
   Studio writes a `fornax` launcher into a folder on your `PATH` (`~/.local/bin` on Linux; `/usr/local/bin`, or

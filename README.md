@@ -4,7 +4,7 @@
 
 **Call open-weight models (language, vision, speech, images, songs, video) as plain Java methods, running on your GPU, inside your JVM.**
 
-Try it with one line, with nothing installed but [JBang](https://www.jbang.dev) (from Fornax 0.2.0; JBang fetches a Java
+Try it with one line, with nothing installed but [JBang](https://www.jbang.dev) (from Fornax 0.3.0; JBang fetches a Java
 22 or newer if you have none):
 
 ```sh
