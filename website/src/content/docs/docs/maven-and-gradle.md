@@ -10,8 +10,8 @@ needs no native build of its own.
 For a complete app to copy, see [`samples/hello-fornax`](https://github.com/liberation-data/fornax/tree/main/samples/hello-fornax):
 a standalone Gradle and Maven project that streams a chat reply from Qwen3 4B. Fetch the model, then run
 `./gradlew run` or `mvn -q compile exec:java`. To try it against a Fornax you built, `./gradlew publishToMavenLocal`
-in the Fornax repository and run the sample with `-PfornaxLocal=true -PfornaxVersion=0.2.0-SNAPSHOT` (Gradle) or
-`-Dfornax.version=0.2.0-SNAPSHOT` (Maven).
+in the Fornax repository and run the sample with `-PfornaxLocal=true -PfornaxVersion=0.3.0-SNAPSHOT` (Gradle) or
+`-Dfornax.version=0.3.0-SNAPSHOT` (Maven).
 
 ## The artifacts
 
@@ -26,7 +26,7 @@ The Java modules, each with sources and javadoc jars:
 | `fornax-yue2` | YuE2 songs (yue2.cpp) |
 | `fornax-whisper` | speech to text with word timings (whisper.cpp) |
 | `fornax-demucs` | stem separation: vocals and backing, drums, bass, ... (stems.cpp) |
-| `fornax-server` | an OpenAI-compatible HTTP server over the engines (JDK only) |
+| `fornax-server` | an OpenAI-compatible HTTP server over the engines (JDK only); from 0.3.0, not yet released |
 | `fornax-core` | what they share; each engine module brings it in |
 | `fornax-cli` | the [`fornax` command](/docs/guides/cli/), with `Main-Class` set, for `jbang org.fornax4j:fornax-cli:0.3.0`. Its POM takes the natives through `fornax-natives` (below), so Maven and JBang pick the host's jar; a Gradle build adds one itself |
 | `fornax-bom` | the versions of all of these and the natives below, to import once |

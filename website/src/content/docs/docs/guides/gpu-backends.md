@@ -32,7 +32,7 @@ add `-Pfornax.backend=hip` (or `cuda`, `metal`, `cpu`) to a Gradle command, or c
 | [Vulkan](#vulkan) | AMD, Intel, NVIDIA | the backend Fornax is developed and tested on |
 | [HIP (ROCm)](#hip-rocm) | AMD | builds; has run LTX video on the Radeon 8060S, faster than Vulkan |
 | [CUDA](#cuda) | NVIDIA | builds from the same script; not tested yet |
-| [Metal](#metal) | Macs | builds from the same script; not tested yet |
+| [Metal](#metal) | Macs | passes the test suite on an M2 Max; songs, video and Intel Macs not run yet |
 | [CPU](#cpu) | none | for checking a setup; slow |
 
 Start with Vulkan unless you have a reason not to. Reports and fixes for the untested backends are welcome.
@@ -109,6 +109,13 @@ native/build.sh metal
 ```
 
 The libraries are `.dylib`s, in `build/native/macos-arm64-metal/` on Apple silicon.
+
+Fornax's test suite passes on Metal on an Apple M2 Max with 32 GB (macOS 27.2), with every layer on the GPU: chat,
+vision, embeddings and reranking, speech, transcription, stem separation, FLUX.2 [klein] images and upscaling, isolated
+workers and Dispatch. A borderline reranker score differs from Vulkan's by about 0.05, as kernels do; the ranking is
+the same. Songs (ACE-Step, YuE2) and video haven't been run on a Mac yet, nor has
+an Intel Mac. To run the tests on a Mac from a Linux checkout, see `scripts/test-on-mac.sh` (or
+`./gradlew testOnMac -Pfornax.macHost=<host>`).
 
 ## CPU
 
