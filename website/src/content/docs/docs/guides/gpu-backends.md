@@ -30,7 +30,7 @@ add `-Pfornax.backend=hip` (or `cuda`, `metal`, `cpu`) to a Gradle command, or c
 | Backend | GPUs | State |
 |---|---|---|
 | [Vulkan](#vulkan) | AMD, Intel, NVIDIA | the backend Fornax is developed and tested on |
-| [HIP (ROCm)](#hip-rocm) | AMD | builds; has run LTX video on the Radeon 8060S, faster than Vulkan |
+| [HIP (ROCm)](#hip-rocm) | AMD | passes the test suite on the Radeon 8060S (one rerank score drifts: [#80](https://github.com/liberation-data/fornax/issues/80)); runs LTX video faster than Vulkan |
 | [CUDA](#cuda) | NVIDIA | builds from the same script; not tested yet |
 | [Metal](#metal) | Macs | passes the test suite on an M2 Max; songs, video and Intel Macs not run yet |
 | [CPU](#cpu) | none | for checking a setup; slow |
@@ -76,6 +76,11 @@ target (`gfx1151` is the Radeon 8060S in Strix Halo; `rocminfo` names yours):
 HIP_ARCH=gfx1100 native/build.sh hip
 ./gradlew video -Pfornax.backend=hip --args='clip.mp4 "a potter at a wheel"'
 ```
+
+The test suite passes on HIP on the 8060S (ROCm 7, `gfx1151`), with the models downloaded for embeddings,
+reranking and Demucs, except one reranking check: scoring documents one at a time drifts from scoring them together
+by 0.064 against a 0.05 tolerance, though the ranking holds
+([#80](https://github.com/liberation-data/fornax/issues/80)).
 
 What Fornax has learned on HIP so far, with LTX-2.5 video on the 8060S:
 
