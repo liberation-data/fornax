@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The released Fornax for the Metal smoke test (metal-smoke.yml): copies fornax-llama and the Apple-silicon natives,
+     with their dependencies, into target/dependency. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.fornax4j.ci</groupId>
+    <artifactId>metal-smoke</artifactId>
+    <version>1</version>
+    <properties>
+        <fornax.version>0.2.0</fornax.version>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.fornax4j</groupId>
+            <artifactId>fornax-llama</artifactId>
+            <version>${fornax.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.fornax4j</groupId>
+            <artifactId>fornax-natives-macos-aarch64-metal</artifactId>
+            <version>${fornax.version}</version>
+        </dependency>
+    </dependencies>
+</project>
