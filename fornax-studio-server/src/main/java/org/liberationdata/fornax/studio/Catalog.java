@@ -1,6 +1,7 @@
 package org.liberationdata.fornax.studio;
 
 import org.liberationdata.fornax.HfCache;
+import org.liberationdata.fornax.hub.GgufFiles;
 import org.liberationdata.fornax.llama.LlamaModel;
 
 import java.io.IOException;
@@ -145,6 +146,9 @@ final class Catalog {
                         }
                     }
                 }
+                // A speech model (text to speech, speech recognition, voice cloning) is a GGUF beside a projector that
+                // takes or makes audio; Chat can't talk to it, though its architecture may be a chat model's.
+                if (files.entrySet().stream().anyMatch(e -> GgufFiles.isAuxiliary(e.getKey()) && GgufHeader.speaksAudio(e.getValue()))) continue;
                 for (var e : files.entrySet()) {
                     String file = e.getKey();
                     String base = Path.of(file).getFileName().toString();
