@@ -8,11 +8,23 @@ description: Fetch models with fornax pull, see what is on disk, chat with a lan
 ```sh
 fornax pull qwen3-4b                                 # an alias from Fornax's catalogue: every file the model needs
 fornax chat qwen3-4b "Write a haiku about a fornax"
-fornax image flux2-klein "a brick kiln at dusk"      # downloads the model first if it isn't in the cache
+fornax image flux2-klein "a brick kiln at dusk"      # like chat, downloads the model first if it isn't in the cache
 ```
 
 ## Installing it
 
+- **Nothing to install, with [JBang](https://www.jbang.dev)** (from Fornax 0.3.0). JBang runs the `fornax` command from
+  Maven Central, with the natives for your platform, on a Java 22 or newer that it fetches if you have none:
+
+  ```sh
+  jbang fornax@fornax4j chat qwen3-4b "Write a haiku about a kiln"
+  jbang image@fornax4j flux2-klein "a brick kiln at dusk"      # also song@, speak@, transcribe@, see@ and server@
+  ```
+
+  `jbang app install fornax@fornax4j` puts it on your `PATH` as `fornax`. The aliases are in
+  [jbang-catalog.json](https://github.com/liberation-data/fornax/blob/main/jbang-catalog.json), and run
+  `org.fornax4j:fornax-cli`, which JBang can also run by those coordinates: `jbang org.fornax4j:fornax-cli:0.3.0 chat qwen3-4b`
+  (add `--java 22+ -R--enable-native-access=ALL-UNNAMED`, as the aliases do).
 - **With Fornax Studio** (coming in the next Fornax Studio release): choose **Install fornax command** from Studio's menu.
   Studio writes a `fornax` launcher into a folder on your `PATH` (`~/.local/bin` on Linux; `/usr/local/bin`, or
   `~/.local/bin`, on macOS). That `fornax` runs on Studio's own Java and engines, so it needs nothing else installed.
@@ -77,9 +89,9 @@ fornax test flux2-klein                   # one 256x256 image in 4 steps
 fornax test ace-step --seconds 5          # a short song
 ```
 
-`<model>` is an alias, `org/name:TAG`, `org/name:file.gguf`, `org/name` (when the cache has one GGUF model from it)
-or a path to a `.gguf` file. `chat` and `test` use what is already downloaded, and say what to `fornax pull` when it
-isn't.
+`<model>` is an alias, `org/name[@REV]:TAG`, `org/name:file.gguf`, `org/name` (when the repo has one GGUF model) or a
+path to a `.gguf` file. `chat` and `test` download a model that isn't in the cache yet before loading it, with the same
+progress line as `fornax pull`, and refuse one of another kind before downloading anything.
 
 A reasoning model, such as Qwen3, thinks aloud in `<think>…</think>` before it answers. `fornax chat` hides that, and
 shows only the answer; `--think` shows the reasoning too. Some models (Qwen3 Thinking, DeepSeek-R1 distills) are
@@ -111,7 +123,7 @@ fornax see qwen3-vl-4b receipt.jpg "What is the total?"
 ```
 
 Each is a thin wrapper over its engine (`DiffusionModel`, `AceStepModel` or `Yue2Model`, `TtsModel`,
-`WhisperModel` and a vision `LlamaModel`), and `--help` lists its options. Unlike `chat`, these download a model
+`WhisperModel` and a vision `LlamaModel`), and `--help` lists its options. Like `chat`, these download a model
 that isn't in the cache yet before loading it, with the same progress line as `fornax pull`. A model of the wrong
 kind is refused before anything is downloaded, with the ones that fit: `fornax image qwen3-4b` says qwen3-4b is a
 chat model and names the image models.

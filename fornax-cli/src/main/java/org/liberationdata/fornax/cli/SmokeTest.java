@@ -30,7 +30,8 @@ final class SmokeTest {
             Loads the model, generates a little and reports the load time and speed.
             Language models: a short greedy reply, with time to first token and tokens/s.
             Image aliases: one 256x256 image in 4 steps. Song aliases: a 10-second song (--seconds).
-            These load the whole model set onto the GPU (see fornax list for sizes).
+            These load the whole model set onto the GPU (see fornax list for sizes), downloading it first
+            if it isn't in the cache yet.
 
               --prompt TEXT        what to ask (or draw / sing about)
               --max-tokens N       language models: tokens to generate, reasoning included (default 512)
@@ -39,22 +40,26 @@ final class SmokeTest {
               --seconds N          songs: length in seconds (default 10)
               --out FILE           image/song output (default: fornax-test-<alias>.png/.wav in the temp folder)""";
 
-    static int run(Args a, FornaxHub hub, PrintStream out) throws IOException {
+    /** The kinds {@code fornax test} runs: a language model's reply, or a small image or song. */
+    static final java.util.Set<ModelSet.Kind> KINDS =
+            java.util.EnumSet.of(ModelSet.Kind.CHAT, ModelSet.Kind.VISION, ModelSet.Kind.IMAGE, ModelSet.Kind.SONG);
+
+    static int run(Args a, FornaxHub hub, PrintStream out, PrintStream err) throws IOException {
         String spec = a.positional(0);
         if (spec == null) throw new UsageException("which model? (see fornax list)");
         if (!a.rest(1).isEmpty()) throw new UsageException("unexpected " + a.rest(1) + " (use --prompt)");
-        return switch (Models.resolve(spec, hub)) {
-            case Models.Llm llm -> llm(llm, a, out);
-            case Models.Set set -> set(set.set(), set.files(), a, out);
-        };
+        // downloaded first when it isn't in the cache; a path or a reference is a GGUF language model
+        var m = Models.fetch(spec, KINDS, "test", true, hub, err, Main.terminal());
+        boolean llm = m.set() == null || m.set().kind() == ModelSet.Kind.CHAT || m.set().kind() == ModelSet.Kind.VISION;
+        return llm ? llm(m.file("gguf"), a, out) : set(m.set(), m.files(), a, out);
     }
 
-    private static int llm(Models.Llm llm, Args a, PrintStream out) {
+    private static int llm(Path gguf, Args a, PrintStream out) {
         String prompt = a.option("prompt", "List three colours of a kiln's fire, one per line.");
         Options o = new Options(a.intOption("max-tokens", 512), 0f, 1f, 0f, 1);
-        out.printf("Model     %s (%s)%n", llm.path(), Fmt.bytes(llm.path().toFile().length()));
+        out.printf("Model     %s (%s)%n", gguf, Fmt.bytes(gguf.toFile().length()));
         long t0 = System.nanoTime();
-        try (var model = new LlamaModel(llm.path().toString(), a.intOption("gpu-layers", -1), a.intOption("ctx", 4096))) {
+        try (var model = new LlamaModel(gguf.toString(), a.intOption("gpu-layers", -1), a.intOption("ctx", 4096))) {
             double load = secs(t0);
             out.printf("Load      %s%n", Fmt.seconds(load));
             long[] first = {0};
@@ -79,8 +84,6 @@ final class SmokeTest {
     }
 
     private static int set(ModelSet m, Map<String, Path> files, Args a, PrintStream out) throws IOException {
-        if (m.kind() != ModelSet.Kind.IMAGE && m.kind() != ModelSet.Kind.SONG)
-            throw new Main.Failure(m.id() + " is a " + m.kind().name().toLowerCase(Locale.ROOT) + " model; fornax test runs chat, image and song models");
         long total = files.values().stream().mapToLong(p -> p.toFile().length()).sum();
         out.printf("Model     %s: %s (%s of weights)%n", m.id(), m.title(), Fmt.bytes(total));
         String ext = m.kind() == ModelSet.Kind.IMAGE ? ".png" : ".wav";

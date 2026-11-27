@@ -1,0 +1,90 @@
+{
+  "catalogs": {},
+  "aliases": {
+    "fornax": {
+      "script-ref": "org.fornax4j:fornax-cli:0.3.0",
+      "description": "Fornax: open models in-process on your GPU, from Java. jbang fornax@fornax4j chat qwen3-4b; also image, song, speak, transcribe, see, pull, list, server",
+      "java": "22+",
+      "java-options": [
+        "--enable-native-access=ALL-UNNAMED"
+      ]
+    },
+    "chat": {
+      "script-ref": "org.fornax4j:fornax-cli:0.3.0",
+      "description": "Chat with a language model, downloaded on first use: jbang chat@fornax4j qwen3-4b [\"prompt\"]",
+      "arguments": [
+        "chat"
+      ],
+      "java": "22+",
+      "java-options": [
+        "--enable-native-access=ALL-UNNAMED"
+      ]
+    },
+    "image": {
+      "script-ref": "org.fornax4j:fornax-cli:0.3.0",
+      "description": "Draw an image: jbang image@fornax4j flux2-klein \"a red fox in the snow\"",
+      "arguments": [
+        "image"
+      ],
+      "java": "22+",
+      "java-options": [
+        "--enable-native-access=ALL-UNNAMED"
+      ]
+    },
+    "song": {
+      "script-ref": "org.fornax4j:fornax-cli:0.3.0",
+      "description": "Make a song: jbang song@fornax4j ace-step-turbo \"a folk song about rain\"",
+      "arguments": [
+        "song"
+      ],
+      "java": "22+",
+      "java-options": [
+        "--enable-native-access=ALL-UNNAMED"
+      ]
+    },
+    "speak": {
+      "script-ref": "org.fornax4j:fornax-cli:0.3.0",
+      "description": "Text to speech with Kokoro: jbang speak@fornax4j \"Hello from Fornax\"",
+      "arguments": [
+        "speak"
+      ],
+      "java": "22+",
+      "java-options": [
+        "--enable-native-access=ALL-UNNAMED"
+      ]
+    },
+    "transcribe": {
+      "script-ref": "org.fornax4j:fornax-cli:0.3.0",
+      "description": "Speech to text with Whisper: jbang transcribe@fornax4j talk.wav",
+      "arguments": [
+        "transcribe"
+      ],
+      "java": "22+",
+      "java-options": [
+        "--enable-native-access=ALL-UNNAMED"
+      ]
+    },
+    "see": {
+      "script-ref": "org.fornax4j:fornax-cli:0.3.0",
+      "description": "Ask a vision model about an image: jbang see@fornax4j qwen3-vl-4b photo.jpg",
+      "arguments": [
+        "see"
+      ],
+      "java": "22+",
+      "java-options": [
+        "--enable-native-access=ALL-UNNAMED"
+      ]
+    },
+    "server": {
+      "script-ref": "org.fornax4j:fornax-cli:0.3.0",
+      "description": "An OpenAI-compatible HTTP API over Fornax's models: jbang server@fornax4j",
+      "arguments": [
+        "server"
+      ],
+      "java": "22+",
+      "java-options": [
+        "--enable-native-access=ALL-UNNAMED"
+      ]
+    }
+  }
+}

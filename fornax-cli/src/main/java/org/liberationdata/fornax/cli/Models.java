@@ -1,8 +1,8 @@
 package org.liberationdata.fornax.cli;
 
-import org.liberationdata.fornax.hub.GgufFiles;
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.hub.FornaxHub;
+import org.liberationdata.fornax.hub.HubException;
 import org.liberationdata.fornax.hub.ModelCatalog;
 import org.liberationdata.fornax.hub.ModelRef;
 import org.liberationdata.fornax.hub.ModelSet;
@@ -14,61 +14,21 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Turns a {@code <model>} argument into something to load. Accepted, in this order:
- * <ul>
- *   <li>a path to a .gguf file</li>
- *   <li>an alias from {@link ModelCatalog} ({@code qwen3-4b}, {@code ace-step}, ...), found by {@link FornaxHub}</li>
- *   <li>{@code org/name:file.gguf} or {@code org/name:TAG} (a quant such as Q4_K_M) from the cache</li>
- *   <li>{@code org/name} when the cache holds exactly one GGUF model from it</li>
- * </ul>
- * {@link #fetch} is the other way in, for the commands that make things (image, song, speak, transcribe, see): one kind
- * of model, downloaded first when it isn't in the cache yet.
+ * Turns a {@code <model>} argument into the files to load, downloading them first when they aren't in the cache yet
+ * ({@link #fetch}): a catalogue alias ({@code qwen3-4b}, {@code flux2-klein}, ...) of a kind the command runs, or, for a
+ * command that loads one file (chat, see, speak, transcribe, test), also a path or an {@code org/name[@REV][:TAG]}
+ * reference.
  */
 final class Models {
     private Models() {}
 
-    sealed interface Target permits Llm, Set {}
-
-    /** A GGUF language model. {@code name} is what the user typed, for messages. */
-    record Llm(String name, Path path) implements Target {}
-
-    /** A catalogue set that isn't a chat model (image, song, ...), with its files by role. */
-    record Set(ModelSet set, Map<String, Path> files) implements Target {}
-
     /** The catalogue's ids, for messages. */
     static String aliases() { return ModelCatalog.all().stream().map(ModelSet::id).collect(Collectors.joining(", ")); }
-
-    static Target resolve(String spec, FornaxHub hub) {
-        Path p = Path.of(spec);
-        if (Files.isRegularFile(p)) return new Llm(spec, p);
-        var alias = ModelCatalog.byName(spec);
-        if (alias.isPresent()) {
-            ModelSet m = alias.get();
-            ModelStatus status = hub.status(m);
-            if (!status.available()) {
-                String missing = status.parts().stream().filter(s -> s.state() != ModelStatus.State.PRESENT)
-                        .map(s -> s.part().primary().fileName() + (s.state() == ModelStatus.State.PARTIAL ? " (partly downloaded)" : ""))
-                        .collect(Collectors.joining(", "));
-                throw new Main.Failure(m.id() + " isn't downloaded yet (" + m.title() + "; missing " + missing
-                        + "). Fetch it with: fornax pull " + m.id());
-            }
-            if (m.kind() == Kind.CHAT || m.kind() == Kind.VISION) return new Llm(spec, status.paths().get("gguf"));
-            return new Set(m, status.paths());
-        }
-        var ref = ModelRef.tryParse(spec);
-        if (ref.isPresent()) {
-            if (ref.get().revision() != null) throw new Main.Failure(spec + ": fornax chat uses the downloaded copy, whatever its "
-                    + "revision; drop @" + ref.get().revision() + " (fornax pull " + spec + " fetches that revision)");
-            return new Llm(spec, fromRepo(ref.get().repo(), ref.get().tag(), hub.cacheRoot()));
-        }
-        throw new Main.Failure("No such file, alias or repo: " + spec + "\n  aliases: " + aliases());
-    }
 
     /**
      * A model to load, by the files it needs.
@@ -87,31 +47,46 @@ final class Models {
 
     /**
      * The model {@code spec} names for {@code command}, which runs {@code kind} models: a catalogue alias of that kind,
-     * or, for a command that loads one file ({@code oneFile}: speech, transcription and vision), also a path to that file
+     * or, for a command that loads one file ({@code oneFile}: chat, speech, transcription, vision and test), also a path to that file
      * or an {@code org/name[@REV][:TAG]} reference. An alias or reference not yet in the cache is downloaded first,
      * with {@code fornax pull}'s progress line on {@code err}. An alias of another kind is refused before anything is
      * downloaded.
      */
     static Fetched fetch(String spec, Kind kind, String command, boolean oneFile, FornaxHub hub, PrintStream err,
                          boolean terminal) throws IOException {
-        String role = kind == Kind.TRANSCRIPTION ? "model" : "gguf";
+        return fetch(spec, java.util.EnumSet.of(kind), command, oneFile, hub, err, terminal);
+    }
+
+    /** {@link #fetch(String, Kind, String, boolean, FornaxHub, PrintStream, boolean)} for a command that runs several kinds. */
+    static Fetched fetch(String spec, java.util.Set<Kind> kinds, String command, boolean oneFile, FornaxHub hub, PrintStream err,
+                         boolean terminal) throws IOException {
+        String role = kinds.equals(java.util.EnumSet.of(Kind.TRANSCRIPTION)) ? "model" : "gguf";
         if (oneFile && isFile(spec)) return new Fetched(spec, null, Map.of(role, Path.of(spec)));
         var alias = ModelCatalog.byName(spec);
         if (alias.isPresent()) {
             ModelSet m = alias.get();
-            if (m.kind() != kind) throw new Main.Failure(m.id() + " is " + aKind(m.kind()) + "; " + command + " takes " + kinds(kind));
+            if (!kinds.contains(m.kind())) throw new Main.Failure(m.id() + " is " + aKind(m.kind()) + "; " + command + " takes " + kinds(kinds));
             return new Fetched(spec, m, pulled(m, m.id() + ": " + m.title() + " (" + m.engine() + ")", hub, err, terminal));
         }
         var ref = ModelRef.tryParse(spec);
         if (ref.isPresent() && oneFile) {
-            ModelSet m = hub.resolve(ref.get());   // from the cache when it's there, else the repo's file list
+            ModelSet m;
+            try {
+                m = hub.resolve(ref.get());   // from the cache when it's there, else the repo's file list
+            } catch (IOException noHub) {   // the Hub couldn't answer (offline, unreachable, refused): several models in the cache is the user's to settle
+                if (ref.get().revision() == null) {
+                    try { ref.get().pick(HfCache.files(hub.cacheRoot(), ref.get().repo()).keySet()); }   // throws "name one" for several
+                    catch (HubException noneCached) { /* nothing to name: the Hub was needed */ }
+                }
+                throw noHub;
+            }
             if (m.part(role).isEmpty()) throw new Main.Failure(spec + " names " + m.parts().get(0).primary().file() + ", not "
-                    + (kind == Kind.TRANSCRIPTION ? "a whisper.cpp model" : "a GGUF model"));   // checked before the download
+                    + (role.equals("model") ? "a whisper.cpp model" : "a GGUF model"));   // checked before the download
             return new Fetched(spec, null, pulled(m, spec, hub, err, terminal));
         }
         if (ref.isPresent()) throw new Main.Failure(spec + ": " + command + " loads a model set from the catalogue (its files "
-                + "come from several repos), not a reference; " + command + " takes " + kinds(kind));
-        throw new Main.Failure("No such " + (oneFile ? "file or " : "") + "model: " + spec + "\n  " + command + " takes " + kinds(kind)
+                + "come from several repos), not a reference; " + command + " takes " + kinds(kinds));
+        throw new Main.Failure("No such " + (oneFile ? "file or " : "") + "model: " + spec + "\n  " + command + " takes " + kinds(kinds)
                 + (oneFile ? ", org/name[:TAG] or a path" : ""));
     }
 
@@ -148,27 +123,12 @@ final class Models {
     /** "an image model: flux2-klein, qwen-image, qwen-image-edit". */
     static String kinds(Kind kind) { return aKind(kind) + ": " + ids(kind); }
 
+    /** "a chat model: qwen3-0.6b, qwen3-4b, or a vision model: qwen3-vl-4b, ...", for a command that runs several kinds. */
+    static String kinds(java.util.Set<Kind> kinds) {
+        return kinds.stream().sorted().map(Models::kinds).collect(Collectors.joining(", or "));
+    }
+
     /** The catalogue's ids of one kind: "flux2-klein, qwen-image, qwen-image-edit". */
     static String ids(Kind kind) { return ModelCatalog.of(kind).stream().map(ModelSet::id).collect(Collectors.joining(", ")); }
 
-    private static Path fromRepo(String repo, String tag, Path cacheRoot) {
-        Map<String, Path> byPath = HfCache.files(cacheRoot, repo);
-        Map<String, List<String>> models = GgufFiles.models(byPath.keySet());
-        List<String> hits = tag == null ? List.copyOf(models.keySet()) : GgufFiles.match(models, tag);
-        String want = repo + (tag == null ? "" : ":" + tag);
-        if (hits.size() == 1) {
-            List<String> parts = models.get(hits.get(0));
-            List<String> missing = GgufFiles.allParts(parts).stream().filter(x -> !byPath.containsKey(x)).toList();
-            if (!missing.isEmpty()) throw new Main.Failure(want + " is incomplete in the cache (missing " + missing
-                    + "). Fetch it with: fornax pull " + repo + ":" + hits.get(0));
-            return byPath.get(hits.get(0));
-        }
-        if (hits.isEmpty()) {
-            String have = models.isEmpty() ? "" : "\n  in the cache from " + repo + ": " + String.join(", ", models.keySet());
-            throw new Main.Failure("No GGUF model " + want + " in the cache (" + cacheRoot + ")." + have
-                    + "\n  fetch one with: fornax pull " + want);
-        }
-        throw new Main.Failure(want + " matches several models; name one:\n" + hits.stream()
-                .map(h -> "  " + repo + ":" + h).collect(Collectors.joining("\n")));
-    }
 }

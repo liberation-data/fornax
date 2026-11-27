@@ -96,6 +96,10 @@ class CommandsTest {
         ImageIO.write(new BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB), "png", png.toFile());
         assertEquals(1, run("see", "qwen3-4b", png.toString()));
         assertTrue(err.toString().contains("qwen3-4b is a chat model; see takes a vision model: qwen3-vl-4b"), err.toString());
+        assertEquals(1, run("chat", "flux2-klein", "hello"));
+        assertTrue(err.toString().contains("flux2-klein is an image model; chat takes a chat model"), err.toString());
+        assertEquals(1, run("test", "kokoro"));
+        assertTrue(err.toString().contains("kokoro is a speech model; test takes a chat model"), err.toString());
         assertEquals(1, run("image", "nope", "a fox", "--out", tmp.toString()));
         assertTrue(err.toString().contains("No such model: nope"), err.toString());
         assertEquals(1, run("song", "acme/Song-GGUF", "folk", "--out", tmp.toString()));

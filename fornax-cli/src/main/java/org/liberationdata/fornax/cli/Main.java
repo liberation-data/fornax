@@ -89,7 +89,7 @@ public final class Main {
                 case "transcribe" -> Transcribe.run(a, hub, out, err);
                 case "see" -> See.run(a, hub, out, err);
                 case "server" -> Server.run(a, hub, out, err);
-                case "test" -> SmokeTest.run(a, hub, out);
+                case "test" -> SmokeTest.run(a, hub, out, err);
                 case "info" -> { noArgs(a); yield Info.run(hub, out); }
                 default -> throw new IllegalStateException(cmd);
             };

@@ -40,36 +40,127 @@ class ModelsTest {
         Files.createSymbolicLink(snap, snap.getParent().relativize(blob));
     }
 
-    @Test
-    void resolvesPathsAliasesAndRepos() throws Exception {
-        var hub = hub();
-        Path file = Files.writeString(root.resolve("local.gguf"), "x");
-        assertEquals(file, ((Models.Llm) Models.resolve(file.toString(), hub)).path());
+    static final java.util.Set<Kind> CHAT = java.util.EnumSet.of(Kind.CHAT, Kind.VISION);
 
-        var alias = (Models.Llm) Models.resolve("qwen3-0.6b", hub);
-        assertEquals("Qwen3-0.6B-Q8_0.gguf", alias.path().getFileName().toString());
-        assertEquals(alias.path(), ((Models.Llm) Models.resolve("Qwen/Qwen3-0.6B-GGUF", hub)).path());   // one model in the repo
-        assertEquals("m-Q8_0.gguf", ((Models.Llm) Models.resolve("some/Multi-GGUF:q8_0", hub)).path().getFileName().toString());
-        assertEquals("m-Q4_K_M.gguf", ((Models.Llm) Models.resolve("some/Multi-GGUF:m-Q4_K_M.gguf", hub)).path().getFileName().toString());
+    @Test
+    void chatFindsPathsAliasesAndReposInTheCacheWithoutDownloading() throws Exception {
+        var hub = hub();
+        var err = new ByteArrayOutputStream();
+        var ps = new PrintStream(err, true, StandardCharsets.UTF_8);
+        Path file = Files.writeString(root.resolve("local.gguf"), "x");
+        assertEquals(file, Models.fetch(file.toString(), CHAT, "chat", true, hub, ps, false).file("gguf"));
+        Path alias = Models.fetch("qwen3-0.6b", CHAT, "chat", true, hub, ps, false).file("gguf");
+        assertEquals("Qwen3-0.6B-Q8_0.gguf", alias.getFileName().toString());
+        assertEquals(alias, Models.fetch("Qwen/Qwen3-0.6B-GGUF", CHAT, "chat", true, hub, ps, false).file("gguf"));   // one model in the repo
+        assertEquals("m-Q8_0.gguf", Models.fetch("some/Multi-GGUF:q8_0", CHAT, "chat", true, hub, ps, false).file("gguf").getFileName().toString());
+        assertEquals("m-Q4_K_M.gguf", Models.fetch("some/Multi-GGUF:m-Q4_K_M.gguf", CHAT, "chat", true, hub, ps, false).file("gguf").getFileName().toString());
+        assertEquals("", err.toString(StandardCharsets.UTF_8), "all in the cache: nothing said");
     }
 
     @Test
-    void explainsWhatIsMissing() throws Exception {
+    void chatDownloadsWhatIsMissingAndRefusesOtherKindsFirst() throws Exception {
         var hub = hub();
-        var notPulled = assertThrows(Main.Failure.class, () -> Models.resolve("qwen3-4b", hub));
-        assertTrue(notPulled.getMessage().contains("fornax pull qwen3-4b"), notPulled.getMessage());
-        var partOfASet = assertThrows(Main.Failure.class, () -> Models.resolve("ace-step", hub));
-        assertTrue(partOfASet.getMessage().contains("acestep-v15-turbo-Q8_0.gguf"), partOfASet.getMessage());
-        assertFalse(partOfASet.getMessage().contains("vae-BF16"), partOfASet.getMessage());
-        var several = assertThrows(Main.Failure.class, () -> Models.resolve("some/Multi-GGUF", hub));
-        assertTrue(several.getMessage().contains("some/Multi-GGUF:m-Q8_0.gguf"), several.getMessage());
+        var err = new ByteArrayOutputStream();
+        var ps = new PrintStream(err, true, StandardCharsets.UTF_8);
+        // missing: pulled (this hub is offline, so the pull stops at the first file, after saying what it fetches)
+        var offline = assertThrows(HubException.class, () -> Models.fetch("qwen3-4b", CHAT, "chat", true, hub, ps, false));
+        assertEquals(HubException.Reason.OFFLINE, offline.reason());
+        assertTrue(err.toString(StandardCharsets.UTF_8).contains("[fornax] downloading qwen3-4b"), err.toString());
+        // a split model missing a part is finished, not used (offline: the missing part stops it)
+        put(hub.cacheRoot(), "some/Split-GGUF", "s-Q4_K_M-00001-of-00002.gguf");
+        assertThrows(HubException.class, () -> Models.fetch("some/Split-GGUF:Q4_K_M", CHAT, "chat", true, hub, ps, false));
+        err.reset();
+        var image = assertThrows(Main.Failure.class, () -> Models.fetch("flux2-klein", CHAT, "chat", true, hub, ps, false));
+        assertTrue(image.getMessage().startsWith("flux2-klein is an image model; chat takes a chat model: qwen3-0.6b"), image.getMessage());
+        assertTrue(image.getMessage().contains(", or a vision model: qwen3-vl-4b"), image.getMessage());
+        assertEquals("", err.toString(StandardCharsets.UTF_8), "refused before any download");
+        var unknown = assertThrows(Main.Failure.class, () -> Models.fetch("what", CHAT, "chat", true, hub, ps, false));
+        assertTrue(unknown.getMessage().startsWith("No such file or model: what"), unknown.getMessage());
+    }
+
+    @Test
+    void offlineARepoWithSeveralModelsInTheCacheSaysToNameOne() throws Exception {
+        var hub = hub();
+        var ps = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+        // the cache alone can't pick one, and the Hub can't be asked: name one, rather than "needs the Hub"
+        var several = assertThrows(IllegalArgumentException.class, () -> Models.fetch("some/Multi-GGUF", CHAT, "chat", true, hub, ps, false));
+        assertTrue(several.getMessage().contains("name one") && several.getMessage().contains("some/Multi-GGUF:m-Q8_0.gguf"),
+                several.getMessage());
         assertFalse(several.getMessage().contains("mmproj"), several.getMessage());
-        var none = assertThrows(Main.Failure.class, () -> Models.resolve("some/Multi-GGUF:IQ2", hub));
-        assertTrue(none.getMessage().contains("fornax pull some/Multi-GGUF:IQ2"), none.getMessage());
-        var revision = assertThrows(Main.Failure.class, () -> Models.resolve("some/Multi-GGUF@dev:Q8_0", hub));
-        assertTrue(revision.getMessage().contains("drop @dev"), revision.getMessage());
-        var unknown = assertThrows(Main.Failure.class, () -> Models.resolve("what", hub));
-        assertTrue(unknown.getMessage().contains("qwen3-4b"), unknown.getMessage());
+        // nothing in the cache matches: the Hub would be asked, so offline says so
+        var none = assertThrows(HubException.class, () -> Models.fetch("some/Multi-GGUF:IQ2", CHAT, "chat", true, hub, ps, false));
+        assertEquals(HubException.Reason.OFFLINE, none.reason());
+        // a named revision is fetched as pull fetches it, not taken from main's copy in the cache
+        var revision = assertThrows(HubException.class, () -> Models.fetch("some/Multi-GGUF@dev:Q8_0", CHAT, "chat", true, hub, ps, false));
+        assertEquals(HubException.Reason.OFFLINE, revision.reason());
+    }
+
+    /** Not offline, but nothing answers at the Hub's address: the same as offline, by the cache. */
+    @Test
+    void anUnreachableHubWithSeveralModelsInTheCacheSaysToNameOne() throws Exception {
+        int port;
+        try (var s = new java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress())) { port = s.getLocalPort(); }   // closed: refused
+        Path cache = hub().cacheRoot();
+        var hub = FornaxHub.builder().cacheRoot(cache).modelFolders(ModelFolders.none()).token(null).offline(false)
+                .endpoint(java.net.URI.create("http://127.0.0.1:" + port)).reserveBytes(0).build();
+        var ps = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+        var several = assertThrows(IllegalArgumentException.class, () -> Models.fetch("some/Multi-GGUF", CHAT, "chat", true, hub, ps, false));
+        assertTrue(several.getMessage().contains("name one"), several.getMessage());
+        // nothing in the cache to name: the connection's own failure, not one made up for it
+        var none = assertThrows(java.io.IOException.class, () -> Models.fetch("some/Multi-GGUF:IQ2", CHAT, "chat", true, hub, ps, false));
+        assertFalse(none instanceof HubException, none.toString());
+    }
+
+    @Test
+    void testRunsChatImageAndSongModelsButNotOthers() throws Exception {
+        var hub = hub();
+        var ps = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+        assertEquals("Qwen3-0.6B-Q8_0.gguf", Models.fetch("qwen3-0.6b", SmokeTest.KINDS, "test", true, hub, ps, false).file("gguf").getFileName().toString());
+        var speech = assertThrows(Main.Failure.class, () -> Models.fetch("kokoro", SmokeTest.KINDS, "test", true, hub, ps, false));
+        assertTrue(speech.getMessage().startsWith("kokoro is a speech model; test takes a chat model"), speech.getMessage());
+        assertTrue(speech.getMessage().contains("an image model: flux2-klein") && speech.getMessage().contains("a song model: ace-step-turbo"),
+                speech.getMessage());
+    }
+
+    /** A real download for chat, from a Hub on localhost: the file lands in the cache and its path comes back. */
+    @Test
+    void chatDownloadsFromTheHub() throws Exception {
+        String commit = "0123456789abcdef0123456789abcdef01234567";
+        byte[] content = "not really a gguf".getBytes(StandardCharsets.UTF_8);
+        String etag = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(content));
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), 0), 0);
+        server.createContext("/", ex -> {
+            String path = ex.getRequestURI().getPath();
+            byte[] body = new byte[0];
+            int code = 404;
+            if (path.equals("/api/models/fresh/model-GGUF/revision/main")) {
+                code = 200;
+                body = ("{\"sha\": \"" + commit + "\", \"siblings\": [{\"rfilename\": \"model-Q8_0.gguf\", \"size\": " + content.length + "}]}")
+                        .getBytes(StandardCharsets.UTF_8);
+            } else if (path.matches("/fresh/model-GGUF/resolve/(main|" + commit + ")/model-Q8_0.gguf")) {
+                code = 200;
+                ex.getResponseHeaders().set("X-Repo-Commit", commit);
+                ex.getResponseHeaders().set("ETag", "\"" + etag + "\"");
+                if (ex.getRequestMethod().equals("HEAD")) ex.getResponseHeaders().set("Content-Length", String.valueOf(content.length));
+                else body = content;
+            }
+            boolean head = ex.getRequestMethod().equals("HEAD");
+            ex.sendResponseHeaders(code, head || body.length == 0 ? -1 : body.length);
+            if (!head) ex.getResponseBody().write(body);
+            ex.close();
+        });
+        server.start();
+        try {
+            var hub = FornaxHub.builder().cacheRoot(root.resolve("empty")).modelFolders(ModelFolders.none()).token(null).offline(false)
+                    .endpoint(java.net.URI.create("http://127.0.0.1:" + server.getAddress().getPort())).reserveBytes(0).build();
+            var err = new ByteArrayOutputStream();
+            Path gguf = Models.fetch("fresh/model-GGUF:Q8_0", CHAT, "chat", true, hub, new PrintStream(err, true, StandardCharsets.UTF_8), false)
+                    .file("gguf");
+            assertArrayEquals(content, Files.readAllBytes(gguf));
+            assertTrue(gguf.startsWith(root.resolve("empty")), gguf.toString());
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -124,11 +215,9 @@ class ModelsTest {
     }
 
     @Test
-    void aSplitModelMissingAPartIsIncomplete() throws Exception {
+    void aSplitModelMissingAPartIsntListedAsRunnable() throws Exception {
         var hub = hub();
         put(hub.cacheRoot(), "some/Split-GGUF", "s-Q4_K_M-00001-of-00002.gguf");   // part 2 never arrived
-        var e = assertThrows(Main.Failure.class, () -> Models.resolve("some/Split-GGUF:Q4_K_M", hub));
-        assertTrue(e.getMessage().contains("incomplete") && e.getMessage().contains("s-Q4_K_M-00002-of-00002.gguf"), e.getMessage());
         assertEquals(java.util.List.of(), Listing.otherLlms(hub.cacheRoot()).stream()
                 .filter(x -> x.repo().equals("some/Split-GGUF")).toList());
     }

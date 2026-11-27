@@ -4,6 +4,16 @@
 
 **Call open-weight models (language, vision, speech, images, songs, video) as plain Java methods, running on your GPU, inside your JVM.**
 
+Try it with one line, with nothing installed but [JBang](https://www.jbang.dev) (from Fornax 0.3.0; JBang fetches a Java
+22 or newer if you have none):
+
+```sh
+jbang fornax@fornax4j chat qwen3-4b "Write a haiku about a kiln"   # downloads the model on first use
+```
+
+`jbang image@fornax4j flux2-klein "a brick kiln at dusk"`, `song@`, `speak@`, `transcribe@`, `see@` and `server@` work the same
+way: they are the [`fornax` command](https://fornax4j.org/docs/guides/cli/), run from Maven Central.
+
 > Fornax was called **Kiln** until 0.1.0. Here's what changed:
 > - **Maven:** `org.kiln4j:kiln-*` is now `org.fornax4j:fornax-*`.
 > - **Packages:** `org.liberationdata.kiln` is now `org.liberationdata.fornax`.
@@ -351,8 +361,8 @@ fornax test flux2-klein                           # load, generate a little, rep
 fornax info                                       # Java, native libraries, cache, token
 ```
 
-`image`, `song`, `speak`, `transcribe` and `see` download a model that isn't in the cache yet, as `fornax pull` would,
-and write to `--out` (else `image.png`, `song.wav` or `speech.wav` here, numbered rather than overwrite one).
+Every command that runs a model downloads it first if it isn't in the cache yet, as `fornax pull` would. `image`, `song`
+and `speak` write to `--out` (else `image.png`, `song.wav` or `speech.wav` here, numbered rather than overwrite one).
 A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--think` shows them. A gated repo
 (LTX-2.5) needs its terms accepted on huggingface.co and `HF_TOKEN` (or `hf auth login`); the error says so.
 

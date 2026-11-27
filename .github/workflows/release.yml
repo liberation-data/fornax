@@ -1,5 +1,6 @@
 # Publishes Fornax to Maven Central as org.fornax4j:*: the Java modules (fornax-core, fornax-llama, fornax-tts, fornax-sd,
-# fornax-acestep, fornax-yue2, fornax-whisper, fornax-demucs, fornax-server) and one natives jar per platform and backend (fornax-natives-<os>-<arch>-<backend>).
+# fornax-acestep, fornax-yue2, fornax-whisper, fornax-demucs, fornax-server), the fornax command (fornax-cli, which JBang
+# runs) and one natives jar per platform and backend (fornax-natives-<os>-<arch>-<backend>).
 #
 # On a published GitHub Release tagged v<version> (v0.1.0 publishes 0.1.0). The upload waits for a maintainer to
 # approve it in the `release` environment. Run by hand for a dry run, which builds
@@ -221,7 +222,14 @@ jobs:
           set -euo pipefail
           ./gradlew --no-daemon publishToMavenLocal -Pversion="$VERSION" -Pfornax.natives.require=true -Dmaven.repo.local="$RUNNER_TEMP/m2"
           repo="$RUNNER_TEMP/m2/org/fornax4j"
-          for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs fornax-server \
+          # jbang-catalog.json (copied to the fornax4j/jbang-catalog repo after the release) runs this release's CLI.
+          # Every alias's script-ref, parsed (not grepped by line), so a missing file, alias or ref fails it too.
+          if [ "$DRY_RUN" != true ]; then
+            refs=$(jq -r '.aliases[]."script-ref"' jbang-catalog.json | sort -u)
+            [ "$refs" = "org.fornax4j:fornax-cli:$VERSION" ] \
+              || { echo "::error::jbang-catalog.json's aliases don't all run org.fornax4j:fornax-cli:$VERSION:" $refs; exit 1; }
+          fi
+          for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs fornax-server fornax-cli \
                    fornax-natives-linux-x86_64-vulkan fornax-natives-macos-aarch64-metal fornax-natives-macos-x86_64-metal; do
             for f in "$a-$VERSION.pom" "$a-$VERSION.jar" "$a-$VERSION-sources.jar" "$a-$VERSION-javadoc.jar"; do
               [ -f "$repo/$a/$VERSION/$f" ] || { echo "::error::$f was not built"; exit 1; }
@@ -299,7 +307,7 @@ jobs:
           set -euo pipefail
           base=https://repo1.maven.org/maven2/org/fornax4j
           files=()
-          for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs fornax-server \
+          for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs fornax-server fornax-cli \
                    fornax-natives-linux-x86_64-vulkan fornax-natives-macos-aarch64-metal fornax-natives-macos-x86_64-metal; do
             files+=("$base/$a/$VERSION/$a-$VERSION.pom" "$base/$a/$VERSION/$a-$VERSION.jar")
           done
