@@ -15,7 +15,7 @@ import java.util.Optional;
 /**
  * Finds and binds one of Fornax's native libraries.
  *
- * <p>Search order for {@code libNAME.so} (or {@code .dylib}):
+ * <p>Search order for {@code libNAME.so} ({@code libNAME.dylib} on macOS, {@code NAME.dll} on Windows):
  * <ol>
  *   <li>system property {@code fornax.NAME.lib}: an exact file path</li>
  *   <li>each directory in system property {@code fornax.library.path}</li>
@@ -23,7 +23,8 @@ import java.util.Optional;
  *   <li>a Fornax natives jar on the classpath ({@code org.fornax4j:fornax-natives-<os>-<arch>-<backend>}), extracted to
  *   a per-version cache directory; with several backends there, {@code -Dfornax.backend} or {@code FORNAX_BACKEND}
  *   picks one, else Metal, CUDA, HIP, Vulkan, CPU in that order. Set {@code -Dfornax.cache.dir} (or
- *   {@code FORNAX_CACHE_DIR}) to move the cache; by default it is {@code ~/.cache/fornax} or {@code ~/Library/Caches/fornax}</li>
+ *   {@code FORNAX_CACHE_DIR}) to move the cache; by default it is {@code ~/.cache/fornax}, {@code ~/Library/Caches/fornax} or
+ *   {@code %LOCALAPPDATA%\fornax\cache}</li>
  *   <li>the platform loader (LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, system dirs)</li>
  * </ol>
  *
@@ -103,24 +104,45 @@ public final class NativeLibrary {
             if (nodes != null) set.accept("GGML_VK_MAX_NODES_PER_SUBMIT", nodes);
         }
 
-        /** setenv(name, value, 0): the process environment native code sees, unless it is already set. */
+        /**
+         * setenv(name, value, 0): the process environment native code sees, unless it is already set. Windows' C
+         * runtime has no setenv: there it's _putenv_s in ucrtbase, the runtime the engines' DLLs share.
+         */
         static void setDefault(String name, String value) {
             if (System.getenv(name) != null) return;
             try (Arena arena = Arena.ofConfined()) {
-                MethodHandle setenv = LINKER.downcallHandle(LINKER.defaultLookup().find("setenv").orElseThrow(),
-                        FunctionDescriptor.of(java.lang.foreign.ValueLayout.JAVA_INT, java.lang.foreign.ValueLayout.ADDRESS,
-                                java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.JAVA_INT));
-                int rc = (int) setenv.invokeExact(arena.allocateFrom(name), arena.allocateFrom(value), 0);
-                if (rc != 0) throw new IllegalStateException("setenv " + name + " failed");
+                int rc;
+                if (WINDOWS) {
+                    // _putenv_s always overwrites (setenv's 0 doesn't), and System.getenv is the JVM's start-up copy:
+                    // ask the runtime itself whether a value is already there.
+                    if (nativeEnv(name) != null) return;
+                    MethodHandle putenv = LINKER.downcallHandle(crt().find("_putenv_s").orElseThrow(),
+                            FunctionDescriptor.of(java.lang.foreign.ValueLayout.JAVA_INT, java.lang.foreign.ValueLayout.ADDRESS,
+                                    java.lang.foreign.ValueLayout.ADDRESS));
+                    rc = (int) putenv.invokeExact(arena.allocateFrom(name), arena.allocateFrom(value));
+                } else {
+                    MethodHandle setenv = LINKER.downcallHandle(crt().find("setenv").orElseThrow(),
+                            FunctionDescriptor.of(java.lang.foreign.ValueLayout.JAVA_INT, java.lang.foreign.ValueLayout.ADDRESS,
+                                    java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.JAVA_INT));
+                    rc = (int) setenv.invokeExact(arena.allocateFrom(name), arena.allocateFrom(value), 0);
+                }
+                if (rc != 0) throw new IllegalStateException("setting " + name + " failed (" + rc + ")");
             } catch (Throwable t) {
                 throw new IllegalStateException("could not set " + name, t);
             }
         }
 
+        private static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).startsWith("windows");
+
+        /** The C runtime's functions: the platform's default lookup, or on Windows the UCRT the engines link. */
+        private static SymbolLookup crt() {
+            return WINDOWS ? SymbolLookup.libraryLookup("ucrtbase", Arena.global()) : LINKER.defaultLookup();
+        }
+
         /** getenv(name) as native code sees it (System.getenv is a snapshot taken at JVM start). */
         static String nativeEnv(String name) {
             try (Arena arena = Arena.ofConfined()) {
-                MethodHandle getenv = LINKER.downcallHandle(LINKER.defaultLookup().find("getenv").orElseThrow(),
+                MethodHandle getenv = LINKER.downcallHandle(crt().find("getenv").orElseThrow(),
                         FunctionDescriptor.of(java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.ADDRESS));
                 return string((MemorySegment) getenv.invokeExact(arena.allocateFrom(name)));
             } catch (Throwable t) {

@@ -10,7 +10,8 @@ plugins {
     id 'com.vanniktech.maven.publish' version '0.37.0' apply false
 }
 
-def os = System.getProperty('os.name').toLowerCase().contains('mac') ? 'macos' : 'linux'
+def osName = System.getProperty('os.name').toLowerCase()
+def os = osName.contains('mac') ? 'macos' : osName.contains('win') ? 'windows' : 'linux'  // as native/build.sh names it
 def arch = System.getProperty('os.arch').replace('amd64', 'x86_64').replace('aarch64', 'arm64')
 def nativeDir = file("build/native/${os}-${arch}-${findProperty('fornax.backend')}")
 
@@ -121,7 +122,7 @@ def engineLibraries = ['fornax_llama', 'fornax_tts', 'stable-diffusion', 'fornax
 configure(subprojects.findAll { it.name.startsWith('fornax-natives-') }) { p ->
     def platform = p.name - 'fornax-natives-'
     def libs = gradle.nativesDirs[platform]  // from settings.gradle, which maps macos-aarch64 to build.sh's arm64 dir
-    def ext = platform.startsWith('macos-') ? 'dylib' : 'so'
+    def ext = platform.startsWith('macos-') ? 'dylib' : platform.startsWith('windows-') ? 'dll' : 'so'
     tasks.named('jar', Jar) {
         from(libs) { include "*.$ext"; into "org/fornax4j/natives/$platform" }
         // The name the JDK would derive from the file name has a segment that starts with a digit ("64"), which the
@@ -130,7 +131,7 @@ configure(subprojects.findAll { it.name.startsWith('fornax-natives-') }) { p ->
         // A release ships every engine; a local build may have only some of them.
         def required = providers.gradleProperty('fornax.natives.require').map { it.toBoolean() }.getOrElse(false)
         if (required) doFirst {
-            def missing = engineLibraries.collect { "lib${it}.$ext" }.findAll { !new File(libs, it).isFile() }
+            def missing = engineLibraries.collect { (ext == 'dll' ? "${it}.$ext" : "lib${it}.$ext") }.findAll { !new File(libs, it).isFile() }
             if (missing) throw new GradleException("$platform natives are missing $missing in $libs")
         }
     }
