@@ -1,7 +1,17 @@
+<a href="https://fornax4j.org/"><img src="https://raw.githubusercontent.com/liberation-data/fornax/main/website/public/images/splash.jpg" alt="fornax4j: open generative models for the JVM"></a>
+
 # Fornax
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![GitHub stars](https://img.shields.io/github/stars/liberation-data/fornax?style=social)](https://github.com/liberation-data/fornax/stargazers)
+
+<p align="center">
+  <a href="https://fornax4j.org/#video" target="_blank">
+    <img src="https://raw.githubusercontent.com/liberation-data/fornax/main/website/public/video/explainer-poster.jpg" alt="Watch: Fornax in two minutes (2:31)" width="700">
+  </a>
+  <br>
+  <a href="https://fornax4j.org/#video" target="_blank">▶ Watch Fornax in two minutes</a> (2:31, with captions)
+</p>
 
 **Call open-weight models (language, vision, speech, images, songs, video) as plain Java methods, running on your GPU, inside your JVM.**
 
