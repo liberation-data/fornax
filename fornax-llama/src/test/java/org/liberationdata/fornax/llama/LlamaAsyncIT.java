@@ -246,6 +246,17 @@ class LlamaAsyncIT {
         assertEquals(Json.get(Json.parse(res), "message", "content"), p.text());
     }
 
+    /** 5000 optional properties overflowed the native schema converter's stack and crashed the JVM (#74). */
+    @Test
+    void aSchemaTooBigForTheGrammarIsRefusedBeforeTheEngine() {
+        var ask = List.of(Message.user("The invoice from Acme is for 42 dollars."));
+        long t0 = System.nanoTime();
+        var e = assertThrows(IllegalArgumentException.class, () -> model.extract(ask, SchemasTest.object(5000, 0), GREEDY));
+        assertTrue(e.getMessage().contains("5000 optional properties"), e.getMessage());
+        assertTrue(System.nanoTime() - t0 < 5_000_000_000L, "refused at once, not after the converter ran");
+        assertTrue(model.chat(ask, GREEDY.withMaxTokens(5)).generatedTokens() > 0, "the model goes on");
+    }
+
     @Test
     void extractAsyncFollowsTheSchema() throws Exception {
         String json = model.extractAsync(List.of(Message.user("The invoice from Acme is for 42 dollars.")),
