@@ -130,7 +130,7 @@ or a path to a GGUF, downloaded the first time it's asked for.
 An alias in any case (`QWEN3-4B`) is the same model as its catalogue id (`qwen3-4b`), loaded once; an
 `org/name:TAG` reference or a path is taken as given, as the Hub and the filesystem may care about its case.
 
-A model is loaded on first use and kept loaded in a [`ModelPool`](/docs/guides/model-pool/): within `--budget-gb` (models' file sizes), the least recently used are
+A model is loaded on first use and kept loaded in a [`ModelPool`](/docs/guides/model-pool/): within `--budget-gb` (models' file sizes, plus the KV cache of a model with slots), the least recently used are
 unloaded to make room, and a model unused for `--idle-minutes` is unloaded. A model answers one request at a time;
 others wait for it, unless it has slots (below).
 

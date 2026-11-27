@@ -15,6 +15,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 /**
@@ -58,8 +59,12 @@ public final class ModelPool implements AutoCloseable {
         final int concurrency;
         // Not a ReentrantLock: a thread holding this model must not be able to "re-lock" it from makeRoom and evict it.
         final Semaphore use;
-        /** Held while the model loads, so of several leases taken at once, only the first loads it. */
-        final Object loading = new Object();
+        /**
+         * Held while the model loads, so of several leases taken at once, only the first loads it. A lock, not a
+         * monitor: the others wait on it for the whole load, and on JDK 22 and 23 a virtual thread waiting for a
+         * monitor pins its carrier.
+         */
+        final ReentrantLock loading = new ReentrantLock();
         volatile AutoCloseable model;
         volatile long size;
         /** The size of the model while its loader runs, held against the budget so a concurrent load counts it. */
@@ -125,7 +130,8 @@ public final class ModelPool implements AutoCloseable {
             throw new IllegalArgumentException(key + " was pooled with concurrency " + slot.concurrency + ", not " + concurrency);
         slot.use.acquireUninterruptibly();
         try {
-            synchronized (slot.loading) {
+            slot.loading.lock();
+            try {
                 if (slot.model == null) {
                     synchronized (budgetLock) {
                         makeRoom(sizeBytes, slot);
@@ -143,7 +149,7 @@ public final class ModelPool implements AutoCloseable {
                         }
                     }
                 }
-            }
+            } finally { slot.loading.unlock(); }
             slot.lastUsed = Instant.now();
         } catch (RuntimeException | Error e) {
             slot.use.release();

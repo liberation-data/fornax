@@ -219,6 +219,20 @@ class ModelPoolTest {
     }
 
     @Test @org.junit.jupiter.api.Timeout(20)
+    void theIdleReaperLeavesAModelWithAUserLeftAndUnloadsItOnceAllAreDone() throws Exception {
+        List<String> log = java.util.Collections.synchronizedList(new ArrayList<>());
+        try (var pool = new ModelPool(100, Duration.ofSeconds(1))) {
+            var one = pool.acquire("a", 10, 2, () -> new Fake("a", log));
+            Thread.sleep(2500);   // past the timeout, with the reaper running every second
+            assertFalse(one.model().closed, "one of its two users still holds it");
+            one.close();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (pool.loadedBytes() > 0 && System.nanoTime() < deadline) Thread.sleep(50);
+            assertEquals(List.of("load a", "close a"), log);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Timeout(20)
     void aKeyKeepsItsConcurrency() {
         try (var pool = new ModelPool(100, null)) {
             pool.acquire("a", 10, 2, () -> new Fake("a", new ArrayList<>())).close();
