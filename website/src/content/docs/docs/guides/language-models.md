@@ -39,7 +39,8 @@ use instead. To download ahead of time, run `fornax pull unsloth/Qwen3-4B-Instru
 The constructor loads the weights onto the GPU, and they stay there until `close()`. Load once and reuse the model
 for many calls; [ModelPool](/docs/guides/model-pool/) helps when an app has several models to juggle.
 
-A `LlamaModel` can be called from any thread; its calls run one at a time, in arrival order. From virtual threads,
+A `LlamaModel` can be called from any thread; its calls run one at a time, in arrival order (or several at once, with
+[slots](#many-requests-at-once-slots)). From virtual threads,
 use `chatAsync`, `chatJsonAsync` and `extractAsync`, which return a `CompletableFuture` and stream to a
 `Flow.Subscriber`: see [Threading](/docs/guides/threading/).
 

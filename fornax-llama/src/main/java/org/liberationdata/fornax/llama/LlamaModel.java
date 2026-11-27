@@ -60,7 +60,8 @@ import static java.lang.foreign.ValueLayout.JAVA_INT;
  * reranker ({@link #rerank}), through llama.cpp's pooled embeddings output, as llama-embedding and llama-server run
  * them; {@link Vectors} searches the embeddings.
  *
- * <p>Threads: calls run one at a time, in arrival order, from any thread. The blocking methods ({@link #chat} and the
+ * <p>Threads: calls run one at a time, in arrival order, from any thread (a model loaded with slots runs that many
+ * at once, and runs callbacks on its batch thread). The blocking methods ({@link #chat} and the
  * rest) run on the calling thread, callback included. The {@code ...Async} methods run on this model's own platform
  * thread and return a {@link CompletableFuture}, so a virtual thread awaiting one doesn't pin its carrier; streaming
  * goes to a {@link Flow.Subscriber}. {@link #cancel()} and {@link #close()} are safe from any thread.
@@ -110,7 +111,6 @@ public final class LlamaModel implements AutoCloseable {
                 ADDRESS, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         static final MethodHandle CREATE_BATCHED = LIB.function("fornax_llama_create_batched",
                 FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_INT));
-        static final MethodHandle N_CTX_SLOT = LIB.function("fornax_llama_n_ctx_slot", FunctionDescriptor.of(JAVA_INT, ADDRESS));
         static final MethodHandle BATCH_ADD_JSON = LIB.function("fornax_llama_batch_add_json",
                 FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         static final MethodHandle BATCH_ADD_RAW = LIB.function("fornax_llama_batch_add_raw", FunctionDescriptor.of(JAVA_INT,
@@ -381,8 +381,9 @@ public final class LlamaModel implements AutoCloseable {
      * memory, and a request that fills its slot ends with "length" whatever the others do. A consumer of pieces runs
      * on the model's batch thread, so one that blocks holds up every slot; the async and streaming methods hand
      * pieces to a buffer instead. Not yet: images (a vision alias loads without its mmproj), and isolated models.
-     * @param gpuLayers -1 offloads every layer. @param contextSize each slot's context, in tokens (more than 0)
-     * @param slots 1 to 64 (llama.cpp's limit)
+     * @param gpuLayers -1 offloads every layer. @param contextSize each slot's context, in tokens (more than 0; llama.cpp
+     * rounds it up to a multiple of 256)
+     * @param slots 1 to 256 (llama.cpp's limit)
      */
     public LlamaModel(String ggufPath, int gpuLayers, int contextSize, int slots) {
         this(ggufPath, null, Mode.CHAT, gpuLayers, contextSize, slots > 1 ? null : defaultWorker(ggufPath), true, slots);

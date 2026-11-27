@@ -64,6 +64,7 @@ final class Batcher implements AutoCloseable {
     private final ArrayDeque<Request> pending = new ArrayDeque<>();  // guarded by lock
     private final Map<Integer, Request> running = new HashMap<>();   // the loop's own
     private boolean closed;                                          // guarded by lock
+    private Throwable failed;                                        // guarded by lock: why the loop died, if it did
     private Thread thread;                                           // guarded by lock
 
     /** @param onThread runs first on the loop's thread (to mark it as the one that runs callbacks) */
@@ -82,6 +83,7 @@ final class Batcher implements AutoCloseable {
     String run(Call call, IntSupplier add, Consumer<String> onPiece) {
         Request r = new Request(call, add, onPiece);
         synchronized (lock) {
+            if (failed != null) throw new IllegalStateException(name + "'s batch loop failed", failed);
             if (closed) throw new CancellationException(name + " was closed");
             pending.add(r);
             if (thread == null) {
@@ -167,6 +169,7 @@ final class Batcher implements AutoCloseable {
             List<Request> left;
             synchronized (lock) {
                 closed = true;
+                failed = t;
                 left = new ArrayList<>(pending);
                 pending.clear();
             }

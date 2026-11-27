@@ -9,7 +9,8 @@ model while one is running.
 
 ## The short version
 
-- **Every model can be called from any thread.** Calls to one model run one at a time, in the order they arrive.
+- **Every model can be called from any thread.** Calls to one model run one at a time, in the order they arrive
+  (a language model with [slots](/docs/guides/language-models/#many-requests-at-once-slots) runs that many at once).
   Different models run in parallel.
 - **The blocking methods** (`chat`, `chatJson`, `extract`, `speak`, `generate`, ...) run on the calling thread, and so
   do their callbacks. They behave as they always have.
@@ -161,7 +162,8 @@ hand the exception to, so Fornax prints it to standard error.
 
 ## Cancel
 
-`cancel()` stops the call that is running on that model, from any thread. Cancelling a future, or its `orTimeout`
+`cancel()` stops the call that is running on that model (every one, for a language model with slots), from any
+thread. Cancelling a future, or its `orTimeout`
 firing, stops that call only: if it is still queued, it never starts. Cancelling a subscription stops its call too.
 
 | Engine | Stops | What the call returns |

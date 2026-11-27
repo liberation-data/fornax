@@ -45,11 +45,11 @@ Package `org.liberationdata.fornax.llama`. See [Language models](/docs/guides/la
 
 | Type | |
 |---|---|
-| `LlamaModel` | a GGUF language model: `new LlamaModel(gguf)` or `(gguf, gpuLayers, contextSize)` |
+| `LlamaModel` | a GGUF language model: `new LlamaModel(gguf)` or `(gguf, gpuLayers, contextSize)`; `(gguf, gpuLayers, contextSize, slots)` runs that many requests at once (see [slots](/docs/guides/language-models/#many-requests-at-once-slots)) |
 | `chat(messages, options[, onPiece])` | a chat reply, optionally streamed; returns a `Result` |
 | `chatJson(requestJson, onContent)` | an OpenAI-format request and reply, with tool calls and `json_schema` |
 | `complete(prompt, options, onPiece)` | raw completion of a prompt you've formatted |
-| `cancel()` | stops the call in progress, from any thread |
+| `cancel()` | stops the call in progress (every one, with slots), from any thread |
 | `chatAsync(messages, options[, subscriber])`, `chatStream(messages, options)` | `chat` on the model's own thread: a `CompletableFuture<Result>`, optionally streaming to a `Flow.Subscriber`; or a cold `Flow.Publisher<String>` |
 | `chatJsonAsync(requestJson[, images[, subscriber]])`, `extractAsync(...)`, `completeAsync(prompt, images, options)` | the same for `chatJson`, `extract` and `complete` |
 | `streamOn(executor, bufferSize)` | where streamed pieces are delivered and how far a subscriber may fall behind (default: virtual threads, 1024) |

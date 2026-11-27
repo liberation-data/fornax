@@ -243,7 +243,19 @@ int eval_chunks(fornax_llama * h, const mtmd_input_chunks * chunks, int * out_po
     return 0;
 }
 
-// fornax_llama_chat_json, with the images that {"type": "image", "index": i} parts refer to.
+// Messages formatted with the model's built-in chat template (fornax_llama_chat's), ending with the assistant's turn.
+int template_prompt(fornax_llama * h, const char ** roles, const char ** contents, int n_messages, std::string & out) {
+    std::vector<llama_chat_message> msgs(n_messages);
+    for (int i = 0; i < n_messages; i++) msgs[i] = {roles[i], contents[i]};
+    const char * tmpl = llama_model_chat_template(h->model, nullptr);
+    int need = llama_chat_apply_template(tmpl, msgs.data(), n_messages, true, nullptr, 0);
+    if (need < 0) return fail("failed to apply the chat template", 5);
+    std::vector<char> buf(need + 1);
+    llama_chat_apply_template(tmpl, msgs.data(), n_messages, true, buf.data(), (int) buf.size());
+    out.assign(buf.data(), need);
+    return 0;
+}
+
 // The template inputs of an OpenAI-style chat request: messages, tools, tool choice, thinking, a JSON schema.
 common_chat_templates_inputs chat_inputs(const common_json & req) {
     common_chat_templates_inputs in;
@@ -323,6 +335,7 @@ std::string chat_response(common_chat_session & session, std::string finish, int
     return res.dump();
 }
 
+// fornax_llama_chat_json, with the images that {"type": "image", "index": i} parts refer to.
 int chat_json_impl(fornax_llama * h, const char * request_json, const std::vector<mtmd_bitmap *> & given,
                    fornax_llama_token_cb cb, void * user, char ** out_response_json) {
     *out_response_json = nullptr;
@@ -602,14 +615,8 @@ int fornax_llama_complete(fornax_llama * h, const char * prompt, int max_tokens,
 int fornax_llama_chat(fornax_llama * h, const char ** roles, const char ** contents, int n_messages,
                     int max_tokens, float temperature, float top_p, float min_p, uint32_t seed,
                     fornax_llama_token_cb cb, void * user, char ** out_text, int * out_n_prompt, int * out_n_generated) {
-    std::vector<llama_chat_message> msgs(n_messages);
-    for (int i = 0; i < n_messages; i++) msgs[i] = {roles[i], contents[i]};
-    const char * tmpl = llama_model_chat_template(h->model, nullptr);
-    int need = llama_chat_apply_template(tmpl, msgs.data(), n_messages, true, nullptr, 0);
-    if (need < 0) return fail("failed to apply the chat template", 5);
-    std::vector<char> buf(need + 1);
-    llama_chat_apply_template(tmpl, msgs.data(), n_messages, true, buf.data(), (int) buf.size());
-    std::string prompt(buf.data(), need);
+    std::string prompt;
+    if (int rc = template_prompt(h, roles, contents, n_messages, prompt); rc != 0) return rc;
     return fornax_llama_complete(h, prompt.c_str(), max_tokens, temperature, top_p, min_p, seed, cb, user, out_text,
                                out_n_prompt, out_n_generated);
 }
@@ -869,10 +876,10 @@ int fornax_llama_batch_add_json(fornax_llama * h, const char * request_json, int
         common_json req = common_json::parse(request_json);
         s.session = std::make_unique<common_chat_session>(h->tmpls.get(), h->vocab, chat_inputs(req));
         s.prompt = chat_tokens(h->vocab, *s.session);
+        s.max_tokens = req.value("max_tokens", -1);  // before the sampler, which nothing frees if this throws
         common_params_sampling sp = chat_sampling(req, *s.session);
         s.chat_smpl = common_sampler_init(h->model, sp);
         if (!s.chat_smpl) return fail("failed to initialise the sampler (bad grammar?)", 6);
-        s.max_tokens = req.value("max_tokens", -1);
     } catch (const std::exception & e) {
         return fail(std::string("chat: ") + e.what(), 7);
     }
@@ -901,14 +908,8 @@ int fornax_llama_batch_add_raw(fornax_llama * h, const char * prompt, int max_to
 int fornax_llama_batch_add_chat(fornax_llama * h, const char ** roles, const char ** contents, int n_messages,
                                 int max_tokens, float temperature, float top_p, float min_p, uint32_t seed, int * out_seq) {
     *out_seq = -1;
-    std::vector<llama_chat_message> msgs(n_messages);
-    for (int i = 0; i < n_messages; i++) msgs[i] = {roles[i], contents[i]};
-    const char * tmpl = llama_model_chat_template(h->model, nullptr);
-    int need = llama_chat_apply_template(tmpl, msgs.data(), n_messages, true, nullptr, 0);
-    if (need < 0) return fail("failed to apply the chat template", 5);
-    std::vector<char> buf(need + 1);
-    llama_chat_apply_template(tmpl, msgs.data(), n_messages, true, buf.data(), (int) buf.size());
-    std::string prompt(buf.data(), need);
+    std::string prompt;
+    if (int rc = template_prompt(h, roles, contents, n_messages, prompt); rc != 0) return rc;
     return fornax_llama_batch_add_raw(h, prompt.c_str(), max_tokens, temperature, top_p, min_p, seed, out_seq);
 }
 

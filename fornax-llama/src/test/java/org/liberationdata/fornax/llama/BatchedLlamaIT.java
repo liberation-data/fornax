@@ -103,12 +103,28 @@ class BatchedLlamaIT {
                 ask("Count from 1 to 300, one number per line, nothing else. /no_think"), GREEDY.withMaxTokens(400),
                 p -> { pieces.incrementAndGet(); streaming.countDown(); }));
         assertTrue(streaming.await(60, TimeUnit.SECONDS));
-        String filler = "The quick brown fox jumps over the lazy dog. ".repeat(150);   // ~1500 tokens: several batches
+        String filler = "The quick brown fox jumps over the lazy dog. ".repeat(150);   // ~1500 tokens: one chunk, several ubatches
         Result longOne = batched.chat(ask(filler + "\nHow many times did the fox jump? /no_think"), GREEDY);
         int during = pieces.get();
         assertTrue(longOne.promptTokens() > 1200, "prompt " + longOne.promptTokens());
         assertTrue(during > 3, "the stream went on while the long prompt went in");
         assertEquals(400, stream.join().generatedTokens());
+    }
+
+    /**
+     * A prompt longer than the batch (2048 tokens) goes in over several steps, alongside another request: its later
+     * chunks must carry on at the right positions, or it can't recall what the first chunk said.
+     */
+    @Test void aPromptLongerThanTheBatchStillSeesItsFirstChunk() {
+        try (LlamaModel wide = new LlamaModel(path, -1, 4096, 2)) {
+            String filler = "The quick brown fox jumps over the lazy dog. ".repeat(300);   // ~3000 tokens
+            CompletableFuture<Result> other = wide.chatAsync(ask(QUESTIONS.get(1)), GREEDY);
+            Result r = wide.chat(ask("The secret word is apricot.\n" + filler
+                    + "\nWhat is the secret word? Answer with the word only. /no_think"), GREEDY.withMaxTokens(16));
+            assertTrue(r.promptTokens() > 2048, "prompt " + r.promptTokens());
+            assertTrue(r.text().toLowerCase().contains("apricot"), r.text());
+            assertFalse(other.join().text().isBlank());
+        }
     }
 
     @Test void aSlotThatFillsItsContextEndsWithLengthWhileAnotherFinishes() throws Exception {

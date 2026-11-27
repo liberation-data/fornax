@@ -137,6 +137,10 @@ class BatcherTest {
             var e = assertThrows(CompletionException.class, f::join);
             assertTrue(e.getCause().getMessage().contains("batch loop failed"), e.getCause().getMessage());
         }
+        // the model isn't closed, so later calls say what happened rather than that it was
+        var later = assertThrows(ExecutionException.class, () -> submit(5, null).get(10, TimeUnit.SECONDS));
+        assertInstanceOf(IllegalStateException.class, later.getCause());
+        assertTrue(later.getCause().getMessage().contains("batch loop failed"), later.getCause().getMessage());
     }
 
     @Test void aBlockingCallFromAPieceConsumerIsRefusedNotDeadlocked() throws Exception {
