@@ -21,6 +21,7 @@ import java.util.concurrent.CancellationException;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
@@ -169,6 +170,29 @@ class EmbeddingsIT {
                 double cos = Vectors.cosine(v[i], model.embed(texts.get(i)));
                 assertTrue(cos > 0.999, "text " + i + ": cosine " + cos);
             }
+        }
+    }
+
+    /** The context starts small and grows to fit, up to the contextSize, and the results don't depend on its size (#109). */
+    @Test
+    void theContextStartsSmallAndGrowsToFit() {
+        assumeFalse(model.isIsolated(), "contextNow is in process only");
+        try (var m = new LlamaModel(W, Mode.EMBED)) {
+            assertEquals(512, m.contextNow(), "a short call reserves a small context");
+            float[] before = m.embed("a celadon glaze");
+            assertEquals(512, m.contextNow());
+
+            String longText = "The kiln fires stoneware to cone 10 over a long, slow climb. ".repeat(70);   // ~1330 tokens
+            assertEquals(1024, m.embed(longText).length);
+            assertEquals(2048, m.contextNow(), "grown to the next size that fits");
+            assertTrue(Vectors.cosine(before, m.embed("a celadon glaze")) > 0.999, "the same embedding at either size");
+            assertEquals(2048, m.contextNow(), "and it never shrinks");
+            assertThrows(IllegalStateException.class, () -> m.embed(longText.repeat(2)), "past contextSize still fails");
+        }
+        try (var m = new LlamaModel(W, Mode.EMBED)) {
+            List<String> many = IntStream.range(0, 300).mapToObj(i -> "glaze number " + i).toList();   // ~1500 tokens in all
+            assertEquals(300, m.embed(many).length);
+            assertEquals(2048, m.contextNow(), "many short texts grow it too, so they go through in few batches");
         }
     }
 
