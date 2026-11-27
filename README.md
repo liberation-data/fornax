@@ -324,10 +324,17 @@ fornax list                                       # the catalogue, what is downl
 fornax rm flux2-klein                             # delete a model's files from the cache
 fornax chat qwen3-4b "Write a haiku about a fornax"
 fornax chat qwen3-4b                              # interactive; /reset, /exit
+fornax image flux2-klein "a brick kiln at dusk"   # -> image.png; --width --height --steps --cfg --seed --out
+fornax song ace-step-turbo "acoustic folk, warm vocal" --lyrics words.txt --seconds 60   # -> song.wav
+fornax speak "Hello from Fornax"                  # kokoro -> speech.wav; --voice, --list-voices
+fornax transcribe speech.wav                      # whisper-base.en; --words for each word's times
+fornax see qwen3-vl-4b image.png "What is by the door?"
 fornax test flux2-klein                           # load, generate a little, report speed
 fornax info                                       # Java, native libraries, cache, token
 ```
 
+`image`, `song`, `speak`, `transcribe` and `see` download a model that isn't in the cache yet, as `fornax pull` would,
+and write to `--out` (else `image.png`, `song.wav` or `speech.wav` here, numbered rather than overwrite one).
 A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--think` shows them. A gated repo
 (LTX-2.5) needs its terms accepted on huggingface.co and `HF_TOKEN` (or `hf auth login`); the error says so.
 

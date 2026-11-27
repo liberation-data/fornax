@@ -70,9 +70,7 @@ final class Pull {
             if (a.options().containsKey("revision")) throw new UsageException(target + " is an alias; it pins its own revisions");
             ModelSet m = alias.get();
             out.println(m.id() + ": " + m.title() + " (" + m.engine() + ")");
-            if (m.license() != null) out.println("  License: " + m.license());
-            if (m.gated()) out.println("  Gated: accept the terms on huggingface.co/" + m.parts().get(0).primary().repo()
-                    + " and set HF_TOKEN (or run `hf auth login`) first.");
+            notes(m, out);
             pull(m);
             out.println(tryIt(m));
             return 0;
@@ -109,15 +107,22 @@ final class Pull {
         hub.pull(set, new PullLine(err, interactive));
     }
 
+    /** What to know before pulling a set: its license, where it limits use, and whether its repo is gated. */
+    static void notes(ModelSet m, PrintStream out) {
+        if (m.license() != null) out.println("  License: " + m.license());
+        if (m.gated()) out.println("  Gated: accept the terms on huggingface.co/" + m.parts().get(0).primary().repo()
+                + " and set HF_TOKEN (or run `hf auth login`) first.");
+    }
+
     static String tryIt(ModelSet m) {
         return switch (m.kind()) {
-            case CHAT, VISION -> "Try it: fornax chat " + m.id();
-            case IMAGE, SONG -> "Try it: fornax test " + m.id();
-            default -> "Load it from Java with fornax-" + switch (m.kind()) {
-                case SPEECH -> "tts";
-                case TRANSCRIPTION -> "whisper";
-                default -> "sd";
-            } + " (" + m.engine() + "); the fornax command doesn't run " + m.kind().name().toLowerCase(java.util.Locale.ROOT) + " models yet.";
+            case CHAT -> "Try it: fornax chat " + m.id();
+            case VISION -> "Try it: fornax see " + m.id() + " picture.png";
+            case SPEECH -> "Try it: fornax speak --model " + m.id() + " \"Hello from Fornax\"";
+            case TRANSCRIPTION -> "Try it: fornax transcribe --model " + m.id() + " speech.wav";
+            case IMAGE -> "Try it: fornax image " + m.id() + (Image.needsRef(m) ? " --ref picture.png \"make it night\"" : " \"a brick kiln at dusk\"");
+            case SONG -> "Try it: fornax song " + m.id() + " \"acoustic folk, warm male vocal\"";
+            case VIDEO -> "Load it from Java with fornax-sd (" + m.engine() + "); the fornax command doesn't make video yet.";
         };
     }
 
