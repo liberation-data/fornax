@@ -110,10 +110,36 @@ public final class Schemas {
     }
 
     /**
+     * How deep a request's JSON can nest. llama.cpp refuses a schema nested more than 128 levels itself, and cleanly;
+     * this is well above that, so it refuses no schema llama.cpp would take, and low enough that parsing the request,
+     * here or in the engine, can't overflow a stack.
+     */
+    public static final int MAX_DEPTH = 256;
+
+    /**
      * requireBuildable on a request's JSON text, parsing it only if it could hold an object schema: if it names
-     * "properties", or escapes a character, as {@code "propert\\u0069es"} could.
+     * "properties", or escapes a character, as {@code "propert\\u0069es"} could. First, without parsing, it refuses
+     * JSON nested more than {@link #MAX_DEPTH} levels.
      */
     static void requireBuildableJson(String json, String what) {
+        if (depth(json) > MAX_DEPTH)
+            throw new IllegalArgumentException(what + " is nested more than " + MAX_DEPTH + " levels deep");
         if (json.contains("\"properties\"") || json.contains("\\u")) requireBuildable(Json.parse(json), what);
+    }
+
+    /** How deep json's arrays and objects nest, brackets in strings aside. */
+    static int depth(String json) {
+        int depth = 0, most = 0;
+        boolean inString = false;
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (inString) {
+                if (c == '\\') i++;
+                else if (c == '"') inString = false;
+            } else if (c == '"') inString = true;
+            else if (c == '[' || c == '{') most = Math.max(most, ++depth);
+            else if (c == ']' || c == '}') depth--;
+        }
+        return most;
     }
 }

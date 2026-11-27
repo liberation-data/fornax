@@ -73,4 +73,24 @@ class SchemasTest {
         for (int i = 0; i < 100_000; i++) deep = java.util.Map.of("items", deep);
         assertEquals(3, Schemas.mostOptionalProperties(deep));
     }
+
+    /** A schema whose object properties nest levels deep: {"type": "object", "properties": {"a": {...}}}. */
+    static String nested(int levels) {
+        String s = "{\"type\": \"string\"}";
+        for (int i = 0; i < levels; i++) s = "{\"type\": \"object\", \"properties\": {\"a\": " + s + "}}";
+        return s;
+    }
+
+    @Test void depthCountsBracketsButNotThoseInStrings() {
+        assertEquals(0, Schemas.depth("\"x\""));
+        assertEquals(2, Schemas.depth("{\"a\": [1, 2]}"));
+        assertEquals(1, Schemas.depth("{\"a\": \"[[{{\\\"]]\"}"));   // brackets, and an escaped quote, in a string
+    }
+
+    @Test void aRequestNestedTooDeeplyIsRefusedWithoutParsingIt() {
+        Schemas.requireBuildableJson("{\"json_schema\": " + nested(100) + "}", "x");   // 201 levels: llama.cpp's to judge
+        String deep = "[".repeat(100_000) + "]".repeat(100_000);   // would overflow a recursive parser
+        var e = assertThrows(IllegalArgumentException.class, () -> Schemas.requireBuildableJson(deep, "the request"));
+        assertEquals("the request is nested more than " + Schemas.MAX_DEPTH + " levels deep", e.getMessage());
+    }
 }

@@ -257,6 +257,27 @@ class LlamaAsyncIT {
         assertTrue(model.chat(ask, GREEDY.withMaxTokens(5)).generatedTokens() > 0, "the model goes on");
     }
 
+    /**
+     * Just past and at the limits: 257 optional properties is refused before the engine; a schema nested as deep as
+     * Schemas.MAX_DEPTH lets through (125 objects: 255 JSON levels in a tool) reaches it, which copes: it takes it as
+     * a json_schema, and refuses it as a tool's parameters, past its own 128 levels of JSON, with an error.
+     */
+    @Test
+    void justPastTheLimitsIsRefusedAndAtThemTheEngineCopes() throws Exception {
+        var ask = List.of(Message.user("The invoice from Acme is for 42 dollars."));
+        assertThrows(IllegalArgumentException.class, () -> model.extract(ask, SchemasTest.object(257, 0), GREEDY));
+        String msg = "\"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}], \"max_tokens\": 4";
+        String deepest = SchemasTest.nested(125);
+        for (String request : List.of("{" + msg + ", \"json_schema\": " + deepest + "}",
+                "{" + msg + ", \"tools\": [{\"type\": \"function\", \"function\": {\"name\": \"f\", \"parameters\": " + deepest + "}}]}")) {
+            assertTrue(Schemas.depth(request) <= Schemas.MAX_DEPTH, "within the limit: " + Schemas.depth(request));
+            try { assertNotNull(Json.get(Json.parse(model.chatJson(request, null)), "finish_reason")); }
+            catch (IllegalStateException refused) { assertTrue(refused.getMessage().contains("nested more than 128"), refused.getMessage()); }
+        }
+        assertThrows(IllegalArgumentException.class, () -> model.chatJson("{" + msg + ", \"json_schema\": " + SchemasTest.nested(128) + "}", null));
+        assertTrue(model.chat(ask, GREEDY.withMaxTokens(5)).generatedTokens() > 0, "the model goes on");
+    }
+
     @Test
     void extractAsyncFollowsTheSchema() throws Exception {
         String json = model.extractAsync(List.of(Message.user("The invoice from Acme is for 42 dollars.")),

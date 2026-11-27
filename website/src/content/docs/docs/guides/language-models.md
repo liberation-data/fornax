@@ -197,7 +197,8 @@ Check `finish_reason`: with `length`, the model ran out of tokens and the JSON i
 An object in the schema (or in a tool's parameters) can have at most 256 optional properties, the ones not in its
 `required` (an `allOf` is one object, of its parts' properties): llama.cpp's grammar chains a rule for each, and
 takes no more. A request with more fails at once with an `IllegalArgumentException`, before the engine, where
-thousands of them would take minutes or crash it.
+thousands of them would take minutes or crash it. So does a request nested more than 256 levels deep; llama.cpp
+itself refuses a schema nested more than 128.
 
 ### Tool calls
 
