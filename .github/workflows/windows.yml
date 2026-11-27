@@ -36,6 +36,12 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
+      # Git for Windows turns LF into CRLF on checkout, and Fornax's patches to the engines (native/patches/) then
+      # don't apply: keep every file as committed, here and in the engines native/build.sh clones.
+      - name: Keep line endings as committed
+        shell: pwsh
+        run: git config --global core.autocrlf false
+
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -54,7 +60,9 @@ jobs:
             mingw-w64-ucrt-x86_64-spirv-headers
 
       - name: Build the engines
-        run: native/build.sh ${{ matrix.backend }}
+        run: |
+          git config --global core.autocrlf false   # MSYS2's git, which clones the engines, has its own config
+          native/build.sh ${{ matrix.backend }}
 
       # When a build fails: the static libraries each engine's CMake build made, and its logs, to see what the link lacked.
       - name: What the engines built
