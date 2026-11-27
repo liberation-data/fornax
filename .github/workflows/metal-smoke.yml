@@ -1,0 +1,72 @@
+# Can GitHub's free Apple-silicon runners run Fornax on Metal (#26)? Chats a few tokens from Qwen3 0.6B with the
+# released macOS natives and checks that llama.cpp offloaded the model's layers to Metal. By hand, and on a PR that
+# changes this check.
+name: Metal smoke test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/metal-smoke.yml'
+      - '.github/metal-smoke/**'
+
+permissions:
+  contents: read
+
+# macOS minutes cost the most: a newer run on the same PR replaces an older one.
+concurrency:
+  group: metal-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  metal:
+    name: Metal on macos-latest
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: maven
+          cache-dependency-path: .github/metal-smoke/pom.xml
+
+      - name: The machine
+        run: |
+          sw_vers; sysctl -n machdep.cpu.brand_string; echo "$(( $(sysctl -n hw.memsize) / 1073741824 )) GB"
+          system_profiler SPDisplaysDataType | sed -n '1,25p' || true
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B-GGUF
+          key: hf-qwen3-0.6b-q8
+
+      - name: Fetch Qwen3 0.6B
+        run: |
+          python3 -m pip install -q --user --break-system-packages 'huggingface_hub[cli]' 2>/dev/null || python3 -m pip install -q --user 'huggingface_hub[cli]'
+          export PATH="$(python3 -m site --user-base)/bin:$PATH"
+          hf download Qwen/Qwen3-0.6B-GGUF Qwen3-0.6B-Q8_0.gguf
+
+      - name: The released Fornax and its Metal natives
+        run: mvn -B -q -f .github/metal-smoke/pom.xml dependency:copy-dependencies
+
+      - name: Chat on Metal
+        run: |
+          set -o pipefail
+          model=$(ls ~/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B-GGUF/snapshots/*/Qwen3-0.6B-Q8_0.gguf | head -1)
+          cp=$(ls .github/metal-smoke/target/dependency/*.jar | tr '\n' ':')
+          # FORNAX_VERBOSE: llama.cpp's full log, which says where the layers went (Fornax shows only errors otherwise)
+          FORNAX_VERBOSE=1 java --enable-native-access=ALL-UNNAMED -cp "$cp" .github/metal-smoke/MetalSmoke.java "$model" 2> llama.log | tee reply.txt \
+            || { echo "::error::MetalSmoke failed"; tail -60 llama.log; exit 1; }
+          echo "--- llama.cpp:"; grep -E 'using device|GPU name|has unified memory|recommendedMaxWorkingSetSize|offloaded' llama.log | head -12 || true
+          offloaded=$(sed -n 's/.*offloaded \([0-9]*\)\/\([0-9]*\) layers to GPU.*/\1 \2/p' llama.log | head -1)
+          [ -n "$offloaded" ] || { echo "::error::llama.cpp reported no layers offloaded"; tail -40 llama.log; exit 1; }
+          set -- $offloaded
+          [ "$1" = "$2" ] && [ "$1" -gt 0 ] || { echo "::error::only $1 of $2 layers on the GPU"; exit 1; }
+          # The offload count is arithmetic once any GPU backend is there; this line says the model's device is Metal.
+          grep -qE 'using device MTL[0-9]' llama.log || { echo "::error::llama.cpp didn't put the model on a Metal device"; exit 1; }
+          echo "Metal: $1/$2 layers offloaded"
