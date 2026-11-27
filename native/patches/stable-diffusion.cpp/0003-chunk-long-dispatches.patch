@@ -1,5 +1,5 @@
 diff --git a/src/core/ggml_extend.cpp b/src/core/ggml_extend.cpp
-index 52d9cfc..e30c0ad 100644
+index 52d9cfc..c6031fd 100644
 --- a/src/core/ggml_extend.cpp
 +++ b/src/core/ggml_extend.cpp
 @@ -1,6 +1,8 @@
@@ -11,25 +11,37 @@ index 52d9cfc..e30c0ad 100644
  #include <stdexcept>
  #include <utility>
  #include <vector>
-@@ -593,6 +595,17 @@ ggml_tensor* ggml_ext_cast_f32(GGMLRunnerContext* runner_ctx, ggml_tensor* a) {
+@@ -593,6 +595,29 @@ ggml_tensor* ggml_ext_cast_f32(GGMLRunnerContext* runner_ctx, ggml_tensor* a) {
      }
  }
  
++// A split budget in FLOPs, 0 for no split. Set, the variable wins on any backend; 0, a negative or an unparsable value
++// disables the split. Unset, the split is on only over Vulkan: it is there for amdgpu's 2 s job timeout, and elsewhere
++// it would only change kernel choices and cost peak memory.
++static double sd_chunk_budget(const char* var, double vulkan_default, ggml_backend_t backend) {
++    const char* env = std::getenv(var);
++    if (env == nullptr) {
++        return sd_backend_is(backend, "Vulkan") ? vulkan_default : 0;
++    }
++    char* end      = nullptr;
++    const double v = std::strtod(env, &end);
++    return end != env && *end == '\0' && v > 0 ? v : 0;
++}
++
++// Chunks under this many rows are merged into the one before, so no chunk is small enough to take another kernel
++// variant (split_k, mul_mat_vec, scalar paths) than its neighbours.
++static constexpr int64_t SD_MIN_CHUNK_ROWS = 64;
++
 +// FLOP budget for one flash-attention node; longer attentions are split by query rows. 1e12 is about 0.2 s on a
-+// Radeon 8060S over Vulkan (~5 TFLOPS), well inside amdgpu's 2 s job timeout. SD_FA_CHUNK_FLOPS overrides it (0 disables
-+// the split).
-+static double sd_fa_chunk_flops() {
-+    static const double budget = [] {
-+        const char* env = std::getenv("SD_FA_CHUNK_FLOPS");
-+        return env != nullptr ? std::strtod(env, nullptr) : 1e12;
-+    }();
-+    return budget;
++// Radeon 8060S over Vulkan (~5 TFLOPS), well inside amdgpu's 2 s job timeout. SD_FA_CHUNK_FLOPS overrides it.
++static double sd_fa_chunk_flops(ggml_backend_t backend) {
++    return sd_chunk_budget("SD_FA_CHUNK_FLOPS", 1e12, backend);
 +}
 +
  ggml_tensor* ggml_ext_attention_ext(GGMLRunnerContext* runner_ctx,
                                      ggml_tensor* q,
                                      ggml_tensor* k,
-@@ -690,11 +703,37 @@ ggml_tensor* ggml_ext_attention_ext(GGMLRunnerContext* runner_ctx,
+@@ -690,11 +715,37 @@ ggml_tensor* ggml_ext_attention_ext(GGMLRunnerContext* runner_ctx,
              mask_in = ggml_cast(ctx, mask_in, GGML_TYPE_F16);
          }
  
@@ -43,16 +55,17 @@ index 52d9cfc..e30c0ad 100644
 +        // keeps the single node. No expand_graph per chunk: the outputs live until the concat anyway, and the
 +        // reordering cost LTX ~5% per step on Vulkan.
 +        const double fa_flops = 2.0 * q_in->ne[1] * q_in->ne[2] * q_in->ne[3] * (k_in->ne[0] + v_in->ne[0]) * k_in->ne[1];
-+        const double budget   = sd_fa_chunk_flops();
++        const double budget   = sd_fa_chunk_flops(backend);
 +        const bool sliceable  = mask_in == nullptr || (mask_in->ne[2] == 1 && mask_in->ne[3] == 1);
 +        int64_t rows          = q_in->ne[1];
 +        if (sliceable && budget > 0 && fa_flops > budget) {
-+            const int64_t n_chunks = static_cast<int64_t>(std::ceil(fa_flops / budget));
++            const int64_t n_chunks = static_cast<int64_t>(std::min<double>(std::ceil(fa_flops / budget), q_in->ne[1]));
 +            rows                   = GGML_PAD((q_in->ne[1] + n_chunks - 1) / n_chunks, 64);
-+        }
+         }
+-        ggml_prec_set_acc(out, GGML_PREC_F32);
 +        std::vector<ggml_tensor*> outs;
-+        for (int64_t start = 0; start < q_in->ne[1]; start += rows) {
-+            const int64_t n = std::min(rows, q_in->ne[1] - start);
++        for (int64_t start = 0, n = 0; start < q_in->ne[1]; start += n) {
++            n               = q_in->ne[1] - start - rows < SD_MIN_CHUNK_ROWS ? q_in->ne[1] - start : rows;
 +            auto q_rows     = n == q_in->ne[1] ? q_in
 +                                               : ggml_view_4d(ctx, q_in, q_in->ne[0], n, q_in->ne[2], q_in->ne[3], q_in->nb[1],
 +                                                              q_in->nb[2], q_in->nb[3], start * q_in->nb[1]);
@@ -65,32 +78,27 @@ index 52d9cfc..e30c0ad 100644
 +            }
 +            ggml_prec_set_acc(part, GGML_PREC_F32);
 +            outs.push_back(part);
-         }
--        ggml_prec_set_acc(out, GGML_PREC_F32);
++        }
 +        auto out = ggml_ext_vec_concat(runner_ctx, outs, 2);
          if (kv_scale != 1.0f) {
              out = ggml_ext_scale(runner_ctx, out, 1.0f / kv_scale);
          }
-@@ -835,6 +874,48 @@ ggml_tensor* ggml_ext_timestep_embedding(GGMLRunnerContext* runner_ctx,
+@@ -835,6 +886,45 @@ ggml_tensor* ggml_ext_timestep_embedding(GGMLRunnerContext* runner_ctx,
      return ggml_timestep_embedding(ctx, timesteps, dim, max_period);
  }
  
 +// FLOP budget for one matmul of a linear layer; longer inputs are split by rows. 4e11 is about 0.2 s (0.27 s at worst)
 +// for an LTX feed-forward int8 matmul on a Radeon 8060S over Vulkan, inside amdgpu's 2 s job timeout.
-+// SD_FF_CHUNK_FLOPS overrides it (0 disables the split).
-+static double sd_ff_chunk_flops() {
-+    static const double budget = [] {
-+        const char* env = std::getenv("SD_FF_CHUNK_FLOPS");
-+        return env != nullptr ? std::strtod(env, nullptr) : 4e11;
-+    }();
-+    return budget;
++// SD_FF_CHUNK_FLOPS overrides it.
++static double sd_ff_chunk_flops(ggml_backend_t backend) {
++    return sd_chunk_budget("SD_FF_CHUNK_FLOPS", 4e11, backend);
 +}
 +
 +ggml_tensor* ggml_ext_split_rows(GGMLRunnerContext* runner_ctx,
 +                                 ggml_tensor* x,
 +                                 double flops_per_row,
 +                                 const std::function<ggml_tensor*(ggml_tensor*)>& fn) {
-+    const double budget  = sd_ff_chunk_flops();
++    const double budget  = sd_ff_chunk_flops(runner_ctx->backend);
 +    const int64_t n_rows = ggml_nrows(x);
 +    if (budget <= 0 || x->type != GGML_TYPE_F32 || n_rows * flops_per_row <= budget) {
 +        return nullptr;
@@ -98,14 +106,15 @@ index 52d9cfc..e30c0ad 100644
 +    auto ctx = runner_ctx->ggml_ctx;
 +    // Whole 128-row tiles, so the int8 matmuls don't add a tail dispatch per chunk.
 +    const int64_t rows = std::max<int64_t>(128, static_cast<int64_t>(budget / flops_per_row) / 128 * 128);
-+    if (rows >= n_rows) {
++    if (n_rows - rows < SD_MIN_CHUNK_ROWS) {
 +        return nullptr;
 +    }
 +    auto& views = runner_ctx->row_chunk_cache[{x, rows}];
 +    if (views.empty()) {
 +        auto flat = ggml_reshape_2d(ctx, ggml_ext_cont(runner_ctx, x), x->ne[0], n_rows);
-+        for (int64_t start = 0; start < n_rows; start += rows) {
-+            views.push_back(ggml_view_2d(ctx, flat, flat->ne[0], std::min(rows, n_rows - start), flat->nb[1], start * flat->nb[1]));
++        for (int64_t start = 0, n = 0; start < n_rows; start += n) {
++            n = n_rows - start - rows < SD_MIN_CHUNK_ROWS ? n_rows - start : rows;
++            views.push_back(ggml_view_2d(ctx, flat, flat->ne[0], n, flat->nb[1], start * flat->nb[1]));
 +        }
 +    }
 +    std::vector<ggml_tensor*> outs;
@@ -121,7 +130,7 @@ index 52d9cfc..e30c0ad 100644
      auto ctx = runner_ctx->ggml_ctx;
      while (tensors.size() > 1) {
 diff --git a/src/core/ggml_extend.h b/src/core/ggml_extend.h
-index 1f0a42c..b2bafe3 100644
+index 1f0a42c..57a162e 100644
 --- a/src/core/ggml_extend.h
 +++ b/src/core/ggml_extend.h
 @@ -2,6 +2,7 @@
@@ -136,8 +145,8 @@ index 1f0a42c..b2bafe3 100644
  
  ggml_tensor* ggml_ext_vec_concat(GGMLRunnerContext* runner_ctx, std::vector<ggml_tensor*>& tensors, int dim);
  
-+// Runs fn over row chunks of x (its rows being ne1 * ne2 * ne3) when rows * flops_per_row exceeds SD_FF_CHUNK_FLOPS, and
-+// concatenates the results; nullptr when x fits in one piece. fn must treat rows independently.
++// Runs fn over row chunks of x (its rows being ne1 * ne2 * ne3) when rows * flops_per_row exceeds SD_FF_CHUNK_FLOPS (by
++// default only on Vulkan), and concatenates the results; nullptr when x fits in one piece. fn must treat rows independently.
 +ggml_tensor* ggml_ext_split_rows(GGMLRunnerContext* runner_ctx,
 +                                 ggml_tensor* x,
 +                                 double flops_per_row,

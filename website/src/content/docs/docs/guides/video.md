@@ -169,7 +169,7 @@ example).
 On Vulkan, a long clip can lose the GPU. A 13 s LTX clip (313 frames) refined at 1344×896 lost the device on its first
 refine step: its attention and feed-forward layers over 47,040 tokens each ran as one GPU dispatch, longer than the
 amdgpu driver's 2 s compute timeout. Fornax's stable-diffusion.cpp now splits that work into short chunks with the
-same output (`SD_FA_CHUNK_FLOPS`, `SD_FF_CHUNK_FLOPS`); for a long clip on Vulkan also pass
+same output, by default only on Vulkan (`SD_FA_CHUNK_FLOPS`, `SD_FF_CHUNK_FLOPS`); for a long clip on Vulkan also pass
 `-Dfornax.vulkan.maxNodesPerSubmit=1`. See [Troubleshooting](/docs/troubleshooting/#device-lost-or-ring-timeout-on-long-video).
 
 HIP (ROCm) is still the better backend for long clips. It doesn't have that timeout: its work goes through user

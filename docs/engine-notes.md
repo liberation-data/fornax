@@ -48,6 +48,12 @@ surprises you.
     At 47,040 tokens that is 16 feed-forward chunks of 2,944 rows, measured at that shape at 188 ms up (271 ms at
     worst) and 117 ms down, and 4 chunks for each attention projection (~65 ms). Layers reading one input (q, k, v)
     share its row views, so its int8 quantization still runs once per chunk.
+  A final chunk under 64 rows is merged into the one before, so no chunk is small enough to take another kernel
+  variant (split_k, mul_mat_vec, scalar paths). Both budgets are on by default only when the runner's backend is
+  Vulkan (`sd_backend_is(backend, "Vulkan")`): HIP, CUDA and Metal have no 2 s job limit, and there the split would
+  only change kernel choices (not bit-identical), add up to ~1.5 GB of peak memory on big layers and break Vulkan's
+  int8 fusions for nothing. Setting either variable to a positive value turns that split on for any backend; `0`, a
+  negative or an unparsable value turns it off everywhere. The chunk count is capped at the row count.
   Rows are independent (the int8 activations are quantized per row), so the output is the same: 512×320×49 and
   1024×640×49 clips came out bit-identical, frames and audio, with every split forced small (down to 128-row
   feed-forward chunks) and with the defaults. At 1024×640×49 the defaults (two feed-forward chunks) left steps at

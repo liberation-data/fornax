@@ -187,8 +187,8 @@ used end to end.
 | `-Dfornax.vulkan.maxNodesPerSubmit` | graph nodes per Vulkan submission |
 | `FORNAX_VERBOSE` | the engines' own logs; `debug` for everything from stable-diffusion.cpp |
 | `FORNAX_ACESTEP_VAE_CHUNK` | ACE-Step's VAE decode tile, in frames (512) |
-| `SD_FA_CHUNK_FLOPS` | stable-diffusion.cpp's largest flash-attention node, in FLOPs, before it splits by query rows (1e12; `0` never splits) |
-| `SD_FF_CHUNK_FLOPS` | stable-diffusion.cpp's largest linear-layer matmul, in FLOPs, before it splits by token rows (4e11; `0` never splits) |
+| `SD_FA_CHUNK_FLOPS` | stable-diffusion.cpp's largest flash-attention node, in FLOPs, before it splits by query rows (1e12 on Vulkan, off elsewhere unless set; `0`, negative or unparsable never splits) |
+| `SD_FF_CHUNK_FLOPS` | stable-diffusion.cpp's largest linear-layer matmul, in FLOPs, before it splits by token rows (4e11 on Vulkan, off elsewhere unless set; `0`, negative or unparsable never splits) |
 | `HF_HUB_CACHE`, `HF_HOME` | where `HfCache` and `FornaxHub` look |
 | `-Dfornax.modelDirs`, `FORNAX_MODEL_DIRS` | model folders `FornaxHub` searches after the cache |
 | `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`), `HF_TOKEN_PATH`, `HF_ENDPOINT`, `HF_HUB_OFFLINE` | `FornaxHub`'s token for gated repos, the Hub to download from, and no network |

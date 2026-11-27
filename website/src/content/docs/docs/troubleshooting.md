@@ -72,8 +72,10 @@ compute on this kernel). Fewer nodes per submission can't help: one node is alre
 
 **The fix:** Fornax's stable-diffusion.cpp carries a patch (`native/patches/stable-diffusion.cpp/0003`) that splits
 long work into chunks of rows, each its own node: attention by query rows, linear layers and feed-forwards by token
-rows. Rows are independent, so the output is the same (test clips came out bit-identical with and without it). Two
-environment variables set the size of one chunk in FLOPs, and `0` turns that split off:
+rows. Rows are independent, so the output is the same (test clips came out bit-identical with and without it). A
+last chunk under 64 rows is merged into the one before. The split is on by default only on Vulkan, the backend with
+the timeout. Two environment variables set the size of one chunk in FLOPs; a positive value also turns the split on
+for other backends, and `0` (or a negative or unparsable value) turns it off:
 
 - `SD_FA_CHUNK_FLOPS` for attention: the default, 1e12, is 0.12 to 0.21 s on the 8060S.
 - `SD_FF_CHUNK_FLOPS` for each matmul of a linear layer: the default, 4e11, is about 0.2 s for LTX's int8
