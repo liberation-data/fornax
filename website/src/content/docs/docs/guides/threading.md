@@ -52,7 +52,8 @@ try (var llm = new LlamaModel(gguf);
 ```
 
 The calls still run one at a time on the model's thread, in submission order: one model generates one reply at a time.
-What changes is that the waiting threads cost nothing.
+What changes is that the waiting threads cost nothing. (A language model loaded with
+[slots](/docs/guides/language-models/#many-requests-at-once-slots) generates several replies at once.)
 
 Fornax's tests show the difference with the virtual-thread scheduler cut to one carrier
 (`-Djdk.virtualThreadScheduler.parallelism=1`) and a heartbeat virtual thread that wakes every 5 ms. With Qwen3 4B,

@@ -536,4 +536,68 @@ class ModelThreadTest {
             assertInstanceOf(IllegalStateException.class, e.getCause());
         }
     }
+
+    // ---- lanes: an engine that runs several calls at once ----
+
+    @Test void lanesRunThatManyCallsAtOnceAndQueueTheRestInOrder() throws Exception {
+        ModelThread t = new ModelThread("lanes", 2, () -> {});
+        AtomicInteger running = new AtomicInteger(), most = new AtomicInteger();
+        List<Integer> started = Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch release = new CountDownLatch(1);
+        List<CompletableFuture<Integer>> fs = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            int n = i;
+            fs.add(t.submit(c -> {
+                started.add(n);
+                most.accumulateAndGet(running.incrementAndGet(), Math::max);
+                try { release.await(); } catch (InterruptedException e) { throw new RuntimeException(e); }
+                running.decrementAndGet();
+                return n;
+            }));
+        }
+        while (started.size() < 2) sleep(1);
+        sleep(50);
+        assertEquals(List.of(0, 1), started.stream().sorted().toList(), "two lanes: two calls running, three queued");
+        release.countDown();
+        for (int i = 0; i < 5; i++) assertEquals(i, fs.get(i).get(5, TimeUnit.SECONDS));
+        assertEquals(2, most.get());
+        assertEquals(List.of(2, 3, 4), started.subList(2, 5).stream().sorted().toList());
+        t.close();
+    }
+
+    @Test void cancelStopsEveryRunningCallAndCloseWaitsForThemAll() throws Exception {
+        AtomicInteger destroyed = new AtomicInteger();
+        ModelThread t = new ModelThread("lanes", 3, destroyed::incrementAndGet);
+        CountDownLatch going = new CountDownLatch(3);
+        List<CompletableFuture<Integer>> fs = new ArrayList<>();
+        for (int i = 0; i < 3; i++) fs.add(t.submit(c -> generate(c, 100_000, x -> going.countDown())));
+        assertTrue(going.await(5, TimeUnit.SECONDS));
+        t.cancel();
+        for (var f : fs) assertTrue(f.get(5, TimeUnit.SECONDS) < 100_000, "each running call stopped");
+        CountDownLatch again = new CountDownLatch(2);
+        AtomicInteger returned = new AtomicInteger();
+        for (int i = 0; i < 2; i++)
+            t.submit(c -> { generate(c, 100_000, x -> again.countDown()); return returned.incrementAndGet(); });
+        assertTrue(again.await(5, TimeUnit.SECONDS));
+        t.close();
+        assertEquals(2, returned.get(), "close returned after both calls had");
+        assertEquals(1, destroyed.get());
+        assertEquals(3, t.lanes());
+    }
+
+    @Test void aCallbackThreadCantMakeABlockingCallOrClose() throws Exception {
+        ModelThread t = new ModelThread("lanes", 2, () -> {});
+        CompletableFuture<Throwable> seen = new CompletableFuture<>();
+        Thread loop = Thread.ofPlatform().start(() -> {
+            t.markCallbackThread();
+            try { t.run(c -> 1); seen.complete(null); } catch (Throwable e) { seen.complete(e); }
+            try { t.close(); } catch (IllegalStateException e) { return; }
+            seen.obtrudeValue(new AssertionError("close from the callback thread returned"));
+        });
+        loop.join(5000);
+        assertInstanceOf(IllegalStateException.class, seen.get(5, TimeUnit.SECONDS));
+        assertEquals(Integer.valueOf(1), t.<Integer>run(c -> 1), "other threads still can");
+        t.close();
+        assertThrows(IllegalArgumentException.class, () -> new ModelThread("none", 0, () -> {}));
+    }
 }

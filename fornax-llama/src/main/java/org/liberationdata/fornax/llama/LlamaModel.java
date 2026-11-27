@@ -108,6 +108,18 @@ public final class LlamaModel implements AutoCloseable {
                 ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         static final MethodHandle RERANK = LIB.function("fornax_llama_rerank", FunctionDescriptor.of(JAVA_INT,
                 ADDRESS, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+        static final MethodHandle CREATE_BATCHED = LIB.function("fornax_llama_create_batched",
+                FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_INT));
+        static final MethodHandle N_CTX_SLOT = LIB.function("fornax_llama_n_ctx_slot", FunctionDescriptor.of(JAVA_INT, ADDRESS));
+        static final MethodHandle BATCH_ADD_JSON = LIB.function("fornax_llama_batch_add_json",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+        static final MethodHandle BATCH_ADD_RAW = LIB.function("fornax_llama_batch_add_raw", FunctionDescriptor.of(JAVA_INT,
+                ADDRESS, ADDRESS, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT, ADDRESS));
+        static final MethodHandle BATCH_ADD_CHAT = LIB.function("fornax_llama_batch_add_chat", FunctionDescriptor.of(JAVA_INT,
+                ADDRESS, ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT, ADDRESS));
+        static final MethodHandle BATCH_CANCEL = LIB.function("fornax_llama_batch_cancel", FunctionDescriptor.ofVoid(ADDRESS, JAVA_INT));
+        static final MethodHandle BATCH_STEP = LIB.function("fornax_llama_batch_step", FunctionDescriptor.of(JAVA_INT,
+                ADDRESS, ADDRESS, ADDRESS, ADDRESS));
         static final MethodHandle FREE = LIB.function("fornax_llama_free", FunctionDescriptor.ofVoid(ADDRESS));
         static final MethodHandle DESTROY = LIB.function("fornax_llama_destroy", FunctionDescriptor.ofVoid(ADDRESS));
     }
@@ -147,7 +159,8 @@ public final class LlamaModel implements AutoCloseable {
     }
 
     /**
-     * Stops the generation in progress (from any thread, including its own callback) after the current token; the
+     * Stops the generation in progress (every one, for a model with slots: to stop one, cancel its future) (from any
+     * thread, including its own callback) after the current token; the
      * call returns what was generated so far ({@link #extract} throws a {@link CancellationException} instead, and so
      * do {@link #embed} and {@link #rerank}, which stop between batches). Works
      * for every call, streaming or not, blocking or async. A call that hasn't started yet
@@ -327,6 +340,8 @@ public final class LlamaModel implements AutoCloseable {
     private final boolean vision;
     private final Mode mode;
     private final int embeddingSize;  // 0 unless EMBED
+    private final int slots;          // requests at once: more than 1 only for a model loaded with slots
+    private final Batcher batcher;    // null unless slots > 1
     private final ModelThread thread;
 
     /** @param gpuLayers -1 offloads every layer. @param contextSize 0 uses the model's trained context. */
@@ -356,6 +371,23 @@ public final class LlamaModel implements AutoCloseable {
     /** A model loaded for chat, embeddings or reranking, with 8192 tokens of context. */
     public LlamaModel(String ggufPath, Mode mode) { this(ggufPath, -1, 8192, mode); }
 
+    /**
+     * A chat model that runs up to {@code slots} requests at once, decoding them together (continuous batching, as
+     * llama-server's parallel slots do), so concurrent callers share the GPU instead of queueing for it. Each request
+     * keeps its own options, grammar ({@code json_schema}, tools), streaming and cancel; more than {@code slots} at
+     * once queue in arrival order. One slot is the ordinary model.
+     *
+     * <p>Every slot has {@code contextSize} tokens of context of its own, so the context takes {@code slots} times the
+     * memory, and a request that fills its slot ends with "length" whatever the others do. A consumer of pieces runs
+     * on the model's batch thread, so one that blocks holds up every slot; the async and streaming methods hand
+     * pieces to a buffer instead. Not yet: images (a vision alias loads without its mmproj), and isolated models.
+     * @param gpuLayers -1 offloads every layer. @param contextSize each slot's context, in tokens (more than 0)
+     * @param slots 1 to 64 (llama.cpp's limit)
+     */
+    public LlamaModel(String ggufPath, int gpuLayers, int contextSize, int slots) {
+        this(ggufPath, null, Mode.CHAT, gpuLayers, contextSize, slots > 1 ? null : defaultWorker(ggufPath), true, slots);
+    }
+
     /** The worker fornax.isolation asks for, or null for in-process. */
     private static Worker defaultWorker(String ggufPath) {
         return Isolation.configured() == Isolation.PROCESS ? workerFor(ggufPath) : null;
@@ -363,11 +395,26 @@ public final class LlamaModel implements AutoCloseable {
 
     /** @param worker where to load it, or null for in-process. @param ownsWorker close the worker with the model */
     private LlamaModel(String ggufPath, String mmprojPath, Mode mode, int gpuLayers, int contextSize, Worker worker, boolean ownsWorker) {
+        this(ggufPath, mmprojPath, mode, gpuLayers, contextSize, worker, ownsWorker, 1);
+    }
+
+    private LlamaModel(String ggufPath, String mmprojPath, Mode mode, int gpuLayers, int contextSize, Worker worker,
+                       boolean ownsWorker, int slots) {
         this.mode = Objects.requireNonNull(mode, "mode");
         try {
+            if (slots < 1) throw new IllegalArgumentException("slots must be at least 1");
+            if (slots > 1 && Isolation.configured() == Isolation.PROCESS)
+                throw new IllegalArgumentException("a model with slots runs in-process; fornax.isolation=process doesn't batch yet");
+            if (slots > 1 && contextSize <= 0)
+                throw new IllegalArgumentException("a model with slots needs each slot's context size");
+            boolean askedForMmproj = mmprojPath != null;
             String[] located = locate(ggufPath, mmprojPath, mode);
             ggufPath = located[0];
             mmprojPath = located[1];
+            if (slots > 1) {
+                if (askedForMmproj) throw new IllegalArgumentException("images aren't batched yet: load a model with slots without its mmproj");
+                mmprojPath = null;   // a vision alias's mmproj: a model with slots is text only
+            }
         } catch (RuntimeException | Error e) {
             if (worker != null && ownsWorker) worker.close();
             throw e;
@@ -392,12 +439,34 @@ public final class LlamaModel implements AutoCloseable {
             Worker.Instance instance = r;
             remote = instance;
             handle = null;
+            this.slots = 1;
+            batcher = null;
             thread = new ModelThread(name, () -> {
                 try { instance.close(); } finally { if (ownsWorker) worker.close(); }
             }, instance::cancel, null);
             return;
         }
         remote = null;
+        if (slots > 1) {
+            try (Arena a = Arena.ofConfined()) {
+                handle = (MemorySegment) N.CREATE_BATCHED.invokeExact(a.allocateFrom(ggufPath), gpuLayers, contextSize, slots);
+                if (handle.equals(MemorySegment.NULL)) throw new IllegalStateException("fornax_llama_create_batched: " + error());
+            } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+            vision = false;
+            embeddingSize = 0;
+            this.slots = slots;
+            MemorySegment h = handle;
+            NativeSlots engine = new NativeSlots(h);
+            ModelThread[] owner = new ModelThread[1];   // the loop starts on the first request, after it's set
+            Batcher b = new Batcher(name, engine, () -> owner[0].markCallbackThread());
+            batcher = b;
+            thread = owner[0] = new ModelThread(name, slots, () -> {
+                try { b.close(); engine.close(); N.DESTROY.invokeExact(h); } catch (Throwable t) { throw new RuntimeException(t); }
+            });
+            return;
+        }
+        this.slots = 1;
+        batcher = null;
         try (Arena a = Arena.ofConfined()) {
             if (mode != Mode.CHAT) {
                 handle = (MemorySegment) N.CREATE_POOLED.invokeExact(a.allocateFrom(ggufPath), gpuLayers, contextSize,
@@ -542,6 +611,9 @@ public final class LlamaModel implements AutoCloseable {
     /** What this model was loaded for. */
     public Mode mode() { return mode; }
 
+    /** How many requests run at once: more than 1 for a model loaded with slots, which batches them. */
+    public int slots() { return slots; }
+
     /** The length of one embedding (1024 for Qwen3-Embedding 0.6B). Only for a model loaded in {@link Mode#EMBED}. */
     public int embeddingSize() {
         requireMode(Mode.EMBED, "embed");
@@ -636,6 +708,10 @@ public final class LlamaModel implements AutoCloseable {
         requireMode(Mode.CHAT, "chat");
         if (remote != null)
             return LlamaService.decodeResult(remote(call, "chat", LlamaService.chatArgs(messages, o, onPiece != null), onPiece));
+        if (batcher != null) {
+            if (messages.stream().anyMatch(m -> !m.images().isEmpty())) throw noBatchedImages();
+            return rawResult(batcher.run(call, () -> addChat(messages, o), onPiece));
+        }
         if (messages.stream().anyMatch(m -> !m.images().isEmpty())) return chatImages(call, messages, o, onPiece);
         try (Arena a = Arena.ofConfined()) {
             int n = messages.size();
@@ -671,6 +747,10 @@ public final class LlamaModel implements AutoCloseable {
         requireMode(Mode.CHAT, "chat");
         if (remote != null)
             return LlamaService.decodeString(remote(call, "chatJson", LlamaService.chatJsonArgs(requestJson, images, onContent != null), onContent));
+        if (batcher != null) {
+            if (!images.isEmpty()) throw noBatchedImages();
+            return batcher.run(call, () -> addJson(requestJson), onContent);
+        }
         if (!images.isEmpty()) return chatJsonImages(call, requestJson, images, onContent);
         try (Arena a = Arena.ofConfined()) {
             MemorySegment out = a.allocate(ADDRESS);
@@ -766,6 +846,7 @@ public final class LlamaModel implements AutoCloseable {
     Result completeImages(Call call, String prompt, List<Image> images, Options o, Consumer<String> onPiece) {
         requireMode(Mode.CHAT, "complete");
         if (remote != null) return completeRemote(call, prompt, images, o, onPiece);
+        if (batcher != null) throw noBatchedImages();
         requireVision();
         try (Arena a = Arena.ofConfined()) {
             NativeImages img = new NativeImages(a, images);
@@ -810,6 +891,7 @@ public final class LlamaModel implements AutoCloseable {
     Result completeOn(Call call, String prompt, Options o, Consumer<String> onPiece) {
         requireMode(Mode.CHAT, "complete");
         if (remote != null) return completeRemote(call, prompt, List.of(), o, onPiece);
+        if (batcher != null) return rawResult(batcher.run(call, () -> addRaw(prompt, o), onPiece));
         try (Arena a = Arena.ofConfined()) {
             Out out = new Out(a);
             MemorySegment cb = callback(a, call, onPiece);
@@ -936,6 +1018,117 @@ public final class LlamaModel implements AutoCloseable {
             if (rc != 0) throw new IllegalStateException("llama generation failed (rc=" + rc + "): " + error());
             return new Result(s, nPrompt.get(JAVA_INT, 0), nGen.get(JAVA_INT, 0));
         }
+    }
+
+    // ---- a model with slots: requests go to the batch loop (Batcher), which adds them on its own thread ----
+
+    private static IllegalStateException noBatchedImages() {
+        return new IllegalStateException("images aren't batched yet: load a model without slots for images");
+    }
+
+    private int addJson(String requestJson) {
+        try (Arena a = Arena.ofConfined()) {
+            MemorySegment seq = a.allocate(JAVA_INT);
+            return added((int) N.BATCH_ADD_JSON.invokeExact(handle, a.allocateFrom(requestJson), seq), seq);
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    private int addRaw(String prompt, Options o) {
+        try (Arena a = Arena.ofConfined()) {
+            MemorySegment seq = a.allocate(JAVA_INT);
+            return added((int) N.BATCH_ADD_RAW.invokeExact(handle, a.allocateFrom(prompt), o.maxTokens(), o.temperature(),
+                    o.topP(), o.minP(), o.seed(), seq), seq);
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    private int addChat(List<Message> messages, Options o) {
+        try (Arena a = Arena.ofConfined()) {
+            int n = messages.size();
+            MemorySegment roles = a.allocate(ADDRESS, Math.max(1, n)), contents = a.allocate(ADDRESS, Math.max(1, n));
+            for (int i = 0; i < n; i++) {
+                roles.setAtIndex(ADDRESS, i, a.allocateFrom(messages.get(i).role()));
+                contents.setAtIndex(ADDRESS, i, a.allocateFrom(messages.get(i).content()));
+            }
+            MemorySegment seq = a.allocate(JAVA_INT);
+            return added((int) N.BATCH_ADD_CHAT.invokeExact(handle, roles, contents, n, o.maxTokens(), o.temperature(),
+                    o.topP(), o.minP(), o.seed(), seq), seq);
+        } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    private static int added(int rc, MemorySegment seq) {
+        if (rc != 0) throw new IllegalStateException("llama chat failed (rc=" + rc + "): " + error());
+        return seq.get(JAVA_INT, 0);
+    }
+
+    /** A raw prompt's response ({"text", "usage"}) as a Result. */
+    private static Result rawResult(String json) {
+        Object r = Json.parse(json);
+        return new Result(Json.get(r, "text") instanceof String t ? t : "",
+                ((Number) Json.get(r, "usage", "prompt_tokens")).intValue(),
+                ((Number) Json.get(r, "usage", "completion_tokens")).intValue());
+    }
+
+    /** A batched handle's slots, as the {@link Batcher} drives them. Used only from the batch loop's thread. */
+    private static final class NativeSlots implements Batcher.Engine, AutoCloseable {
+        private static final FunctionDescriptor PIECE_CB = FunctionDescriptor.of(JAVA_INT, JAVA_INT, ADDRESS, ADDRESS);
+        private static final FunctionDescriptor DONE_CB = FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, ADDRESS, ADDRESS);
+        private static final MethodHandle ON_PIECE, ON_DONE;
+        static {
+            try {
+                var l = MethodHandles.lookup();
+                ON_PIECE = l.findStatic(NativeSlots.class, "onPiece",
+                        MethodType.methodType(int.class, int.class, MemorySegment.class, MemorySegment.class));
+                ON_DONE = l.findStatic(NativeSlots.class, "onDone",
+                        MethodType.methodType(void.class, int.class, int.class, MemorySegment.class, MemorySegment.class));
+            } catch (ReflectiveOperationException e) { throw new ExceptionInInitializerError(e); }
+        }
+        /** The step in progress's events: the upcalls run on the loop's thread, inside its step. */
+        private static final ThreadLocal<Batcher.Events> EVENTS = new ThreadLocal<>();
+
+        private final MemorySegment handle;
+        private final Arena arena = Arena.ofShared();
+        private final MemorySegment piece, done;
+
+        NativeSlots(MemorySegment handle) {
+            this.handle = handle;
+            piece = NativeLibrary.linker().upcallStub(ON_PIECE, PIECE_CB, arena);
+            done = NativeLibrary.linker().upcallStub(ON_DONE, DONE_CB, arena);
+        }
+
+        @Override public void cancel(int seq) {
+            try { N.BATCH_CANCEL.invokeExact(handle, seq); } catch (Throwable t) { throw new RuntimeException(t); }
+        }
+
+        /** A decode that fails has already failed its requests through done; the loop carries on with the rest. */
+        @Override public void step(Batcher.Events events) {
+            EVENTS.set(events);
+            try {
+                int busy = (int) N.BATCH_STEP.invokeExact(handle, piece, done, MemorySegment.NULL);
+                if (busy < 0) return;   // the decode failed: its requests have had done with the error
+            } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
+            finally { EVENTS.remove(); }
+        }
+
+        /** Nothing may escape an upcall (see onToken). */
+        private static int onPiece(int seq, MemorySegment text, MemorySegment user) {
+            try {
+                Batcher.Events e = EVENTS.get();
+                return e == null || e.piece(seq, NativeLibrary.string(text)) ? 1 : 0;
+            } catch (Throwable t) {
+                return 1;
+            }
+        }
+
+        private static void onDone(int seq, int rc, MemorySegment response, MemorySegment user) {
+            try {
+                Batcher.Events e = EVENTS.get();
+                if (e != null) e.done(seq, rc, NativeLibrary.string(response));
+            } catch (Throwable ignored) {
+                // the request's future is completed by done; nothing else can be done here
+            }
+        }
+
+        @Override public void close() { arena.close(); }
     }
 
     private static String error() {
