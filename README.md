@@ -1,6 +1,7 @@
 # Fornax
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![GitHub stars](https://img.shields.io/github/stars/liberation-data/fornax?style=social)](https://github.com/liberation-data/fornax/stargazers)
 
 **Call open-weight models (language, vision, speech, images, songs, video) as plain Java methods, running on your GPU, inside your JVM.**
 
