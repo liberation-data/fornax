@@ -69,10 +69,11 @@ import java.util.function.Consumer;
  * timeout).
  *
  * <p>Who may call it: it listens on 127.0.0.1 unless told otherwise; on loopback, it refuses a request whose
- * {@code Host} isn't its own address (DNS rebinding); it refuses a request from a web page (an {@code Origin}) unless
- * that origin is allowed with {@link Builder#corsOrigin}; and with an {@link Builder#apiKey}, it refuses a request
- * without {@code Authorization: Bearer <key>}. Errors are OpenAI's: {@code {"error": {"message", "type", "param",
- * "code"}}} with the HTTP status. A refused request's body is read first, up to 64 KB more of it, so that its client
+ * {@code Host} isn't a loopback name or address with its port (DNS rebinding); it refuses a request from a web page
+ * (an {@code Origin}) unless that origin is allowed with {@link Builder#corsOrigin}; and with an {@link Builder#apiKey},
+ * it refuses a request without {@code Authorization: Bearer <key>}. Errors are OpenAI's: {@code {"error": {"message",
+ * "type", "param", "code"}}} with the HTTP status; a 500's message has each local path cut to its file name (the
+ * {@link Builder#log} keeps it). A refused request's body is read first, up to 64 KB more of it, so that its client
  * gets the error rather than a reset; past that, the error says {@code Connection: close}.
  *
  * <p>Slow clients: the JDK HTTP server never times out a client that sends its request a byte at a time. Its limits

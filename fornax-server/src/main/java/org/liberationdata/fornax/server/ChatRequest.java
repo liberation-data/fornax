@@ -117,7 +117,10 @@ record ChatRequest(String model, String engineJson, boolean stream, boolean incl
         }
     }
 
-    /** An image_url's width times height, read from its header (it isn't decoded here); a 400 for one that isn't an image. */
+    /**
+     * An image_url's width times height, read from its header (it isn't decoded here); a 400 for one that isn't a PNG,
+     * JPEG, GIF or BMP.
+     */
     static long pixels(String base64) {
         byte[] bytes;
         try { bytes = Base64.getDecoder().decode(base64.replaceAll("\\s", "").replace('-', '+').replace('_', '/')); }
