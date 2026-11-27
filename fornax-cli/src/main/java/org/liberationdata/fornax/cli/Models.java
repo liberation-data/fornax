@@ -73,7 +73,7 @@ final class Models {
             ModelSet m;
             try {
                 m = hub.resolve(ref.get());   // from the cache when it's there, else the repo's file list
-            } catch (IOException noHub) {   // offline or unreachable: several models in the cache is the user's to settle
+            } catch (IOException noHub) {   // the Hub couldn't answer (offline, unreachable, refused): several models in the cache is the user's to settle
                 if (ref.get().revision() == null) {
                     try { ref.get().pick(HfCache.files(hub.cacheRoot(), ref.get().repo()).keySet()); }   // throws "name one" for several
                     catch (HubException noneCached) { /* nothing to name: the Hub was needed */ }

@@ -95,6 +95,22 @@ class ModelsTest {
         assertEquals(HubException.Reason.OFFLINE, revision.reason());
     }
 
+    /** Not offline, but nothing answers at the Hub's address: the same as offline, by the cache. */
+    @Test
+    void anUnreachableHubWithSeveralModelsInTheCacheSaysToNameOne() throws Exception {
+        int port;
+        try (var s = new java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress())) { port = s.getLocalPort(); }   // closed: refused
+        Path cache = hub().cacheRoot();
+        var hub = FornaxHub.builder().cacheRoot(cache).modelFolders(ModelFolders.none()).token(null).offline(false)
+                .endpoint(java.net.URI.create("http://127.0.0.1:" + port)).reserveBytes(0).build();
+        var ps = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+        var several = assertThrows(IllegalArgumentException.class, () -> Models.fetch("some/Multi-GGUF", CHAT, "chat", true, hub, ps, false));
+        assertTrue(several.getMessage().contains("name one"), several.getMessage());
+        // nothing in the cache to name: the connection's own failure, not one made up for it
+        var none = assertThrows(java.io.IOException.class, () -> Models.fetch("some/Multi-GGUF:IQ2", CHAT, "chat", true, hub, ps, false));
+        assertFalse(none instanceof HubException, none.toString());
+    }
+
     @Test
     void testRunsChatImageAndSongModelsButNotOthers() throws Exception {
         var hub = hub();
