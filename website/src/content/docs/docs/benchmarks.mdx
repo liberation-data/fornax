@@ -38,7 +38,7 @@ turns), four clients get 2.8 times the tokens a second between them, and wait at
 left it and the wait grows. The three extra slots cost about 0.9 GB here: their KV cache, 3 × 2048 tokens.
 
 [Isolated](/docs/guides/isolation/) (`FORNAX_ISOLATION=process`), the model and its slots run in a worker process, and
-the batching works there as it does in-process: the same throughput and the same 95th-percentile wait at every load.
+the batching works there as it does in-process: the same throughput and 95th-percentile wait, to within 1%, at every load.
 At 4 clients the median wait for the first token was 0.66 s, against 0.35 s in-process and 0.68 s for llama-server.
 
 ## Images
