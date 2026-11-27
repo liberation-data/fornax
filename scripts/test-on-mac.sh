@@ -10,7 +10,8 @@
 # ~/.local/bin. The integration tests skip any model that isn't in its Hugging Face cache; scripts/test-models.sh, run
 # on the Mac, fetches the ones they use, all small enough for a 32 GB Mac.
 #
-# Env: FORNAX_MAC_LOCK_WAIT, how long to wait for the Mac's heavy-lock (seconds; default forever).
+# Env: FORNAX_MAC_LOCK_WAIT, how long to wait for the Mac's ~/.local/bin/heavy-lock, where installed (seconds; empty:
+# forever). The copy below happens before the lock is taken, so two runs at once need different FORNAX_MAC_DIRs.
 # Env: FORNAX_MAC_DIR, the checkout's folder on the Mac (default ~/fornax-test/src). The engine sources and the native build
 # stay there between runs, so only the first run builds everything.
 set -euo pipefail
@@ -56,6 +57,7 @@ native/build.sh metal > build-native.log 2>&1 || { tail -40 build-native.log; ec
 echo "==> ./gradlew test -Pfornax.backend=metal $*"
 ./gradlew --no-daemon test -Pfornax.backend=metal --continue "$@"
 REMOTE
+[ "$status" -ne 125 ] || { echo "==> gave up waiting for $HOST's heavy-lock; nothing ran" >&2; exit 125; }
 
 echo "==> test reports to $REPORTS"
 rm -rf "$REPORTS" && mkdir -p "$REPORTS"
