@@ -281,7 +281,8 @@ try (var llm = new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M", -1, 
   streaming methods hand pieces to a buffer instead.
 - [Isolated](/docs/guides/isolation/), the worker process batches: `LlamaModel.isolated(gguf, -1, 4096, 4)`, or
   the slots constructor under `-Dfornax.isolation=process`. Its requests reach the worker together, and each still
-  stops on its own. A crash fails every request in flight.
+  stops on its own. A callback runs on the calling thread there, as for a model without slots, so one that blocks
+  holds up only its own request's pieces. A crash fails every request in flight.
 - Not yet: images (a vision model loads without its mmproj).
 
 ## Try it

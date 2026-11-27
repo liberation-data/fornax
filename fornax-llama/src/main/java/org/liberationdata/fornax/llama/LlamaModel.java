@@ -383,7 +383,8 @@ public final class LlamaModel implements AutoCloseable {
      * memory, and a request that fills its slot ends with "length" whatever the others do. A consumer of pieces runs
      * on the model's batch thread, so one that blocks holds up every slot; the async and streaming methods hand
      * pieces to a buffer instead. Not yet: images (a vision alias loads without its mmproj). With
-     * {@code -Dfornax.isolation=process} it loads in a worker process, as {@link #isolated(String, int, int, int)} does.
+     * {@code -Dfornax.isolation=process} it loads in a worker process, as {@link #isolated(String, int, int, int)} does,
+     * and a consumer of pieces runs on the calling thread instead.
      * @param gpuLayers -1 offloads every layer. @param contextSize each slot's context, in tokens (more than 0; llama.cpp
      * rounds it up to a multiple of 256)
      * @param slots 1 to 256 (llama.cpp's limit)
