@@ -517,6 +517,25 @@ class DispatchTest {
         assertEquals(List.of("b", "a"), order);
     }
 
+    /** The same for a request ranked above them for another model loaded in that worker, which waits for it. */
+    @Test
+    void aRequestWaitingForTheSameWorkerStopsMoreJoiningAModelWithAConcurrency() throws Exception {
+        var d = dispatch(1, 10);
+        var b = model(d, "b");
+        pid(b);                                   // b is loaded in the only worker, and idle
+        var a = slotted(d, "a", 3);
+        var gate = hold(a);                       // a loads beside it
+        List<String> order = Collections.synchronizedList(new ArrayList<>());
+        var fb = record(b, QoS.INTERACTIVE, "b", order);
+        awaitQueued(d, 1, 0);
+        var fa = record(a, QoS.INTERACTIVE, "a", order);
+        awaitQueued(d, 2, 0);                     // a has free slots, but b came first and waits for this worker
+        gate.complete(null);
+        fb.get(30, TimeUnit.SECONDS);
+        fa.get(30, TimeUnit.SECONDS);
+        assertEquals(List.of("b", "a"), order);
+    }
+
     @Test
     void aLowerRankedRequestForAnotherModelDoesntStopJoining() throws Exception {
         var d = dispatch(1, 10);

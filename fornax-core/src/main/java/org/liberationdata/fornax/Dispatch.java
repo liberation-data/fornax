@@ -306,7 +306,8 @@ public final class Dispatch implements AutoCloseable {
 
         /**
          * Queues a request for the model, completing with a lease on it when granted (the model is loaded by then).
-         * Close the lease to give it back; until you do, nothing else runs on its worker. Cancelling the future while
+         * Close the lease to give it back; until you do, nothing else runs on its worker (but other requests for a model
+         * with a {@linkplain #concurrency() concurrency}). Cancelling the future while
          * the request is queued takes it out of the queue. If the worker isn't running when the lease closes (it died
          * while the lease was held), its models are dropped, as for {@link #submit}.
          */
