@@ -1,0 +1,97 @@
+package org.liberationdata.fornax.cli;
+
+import org.liberationdata.fornax.cli.Args.UsageException;
+import org.liberationdata.fornax.hub.FornaxHub;
+import org.liberationdata.fornax.hub.ModelCatalog;
+import org.liberationdata.fornax.hub.ModelSet.Kind;
+import org.liberationdata.fornax.server.FornaxServer;
+
+import java.io.IOException;
+import java.io.PrintStream;
+import java.net.BindException;
+import java.net.InetAddress;
+import java.time.Duration;
+import java.util.Map;
+import java.util.Set;
+
+/** {@code fornax server}: Fornax's engines behind an OpenAI-compatible HTTP API ({@link FornaxServer}). */
+final class Server {
+    static final Set<String> OPTIONS = Set.of("model", "port", "host", "api-key", "cors", "budget-gb", "ctx", "idle-minutes");
+    static final Map<String, String> SHORT = Map.of("m", "model");
+
+    static final String USAGE = """
+            usage: fornax server [-m MODEL]... [options]
+
+            Serves models over an OpenAI-compatible HTTP API, for any OpenAI client, agent framework or tool:
+              POST /v1/chat/completions (streaming, tools, JSON schemas, images for a vision model)
+              GET  /v1/models
+              POST /v1/embeddings          (%s, or an embedding GGUF)
+              POST /v1/images/generations  (b64_json PNGs)
+              POST /v1/audio/speech        (WAV)
+              POST /v1/audio/transcriptions (a WAV file)
+
+            The -m models are downloaded if need be, and loaded, before it starts; the first chat one answers
+            requests that name no model. A request may name any other model (an alias, org/name:TAG or a path),
+            which is downloaded and loaded on first use, and kept loaded within --budget-gb.
+
+              -m, --model M        a model to load at start (repeat for more): an alias, org/name:TAG or a path
+              --port N             default %d
+              --host ADDR          default 127.0.0.1 (this machine only); 0.0.0.0 for every interface, with an API key
+              --api-key K          require Authorization: Bearer K (default FORNAX_API_KEY, if set)
+              --cors ORIGIN        let web pages from ORIGIN call it (repeat for more; * for any)
+              --budget-gb N        memory for loaded models, by their files' size (default 24)
+              --idle-minutes N     unload a model unused this long (default 15; 0 = never)
+              --ctx N              context size for language and embedding models (default 8192; 0 = the model's own)
+
+            curl -s localhost:%d/v1/chat/completions -d '{"messages":[{"role":"user","content":"Hi"}]}'"""
+            .formatted(FornaxServer.EMBEDDING_MODEL, FornaxServer.DEFAULT_PORT, FornaxServer.DEFAULT_PORT);
+
+    static int run(Args a, FornaxHub hub, PrintStream out, PrintStream err) throws IOException {
+        if (!a.positional().isEmpty()) throw new UsageException("give models with -m (fornax server -m qwen3-4b), not " + a.positional());
+        int port = a.intOption("port", FornaxServer.DEFAULT_PORT);
+        if (port < 0 || port > 65535) throw new UsageException("--port must be from 0 to 65535");
+        String host = a.option("host", "127.0.0.1");
+        String key = a.option("api-key", System.getenv("FORNAX_API_KEY"));
+        float budget = a.floatOption("budget-gb", 24);
+        if (!(budget > 0)) throw new UsageException("--budget-gb must be more than 0");
+        int idle = a.intOption("idle-minutes", 15);
+        if (idle < 0) throw new UsageException("--idle-minutes must be 0 or more");
+        int ctx = a.intOption("ctx", 8192);
+        if (ctx < 0) throw new UsageException("--ctx must be 0 or more");
+        boolean terminal = Main.terminal();
+
+        var b = FornaxServer.builder().host(host).port(port).apiKey(key).hub(hub).budgetBytes((long) (budget * (1L << 30)))
+                .idleTimeout(idle == 0 ? null : Duration.ofMinutes(idle)).contextSize(ctx)
+                .pullListener(new PullLine(err, terminal)).log(s -> err.println("[fornax] " + s));
+        for (String origin : a.all("cors")) b.corsOrigin(origin);
+        for (String spec : a.all("model")) {
+            var set = ModelCatalog.byName(spec);
+            if (set.isPresent()) {
+                Kind kind = set.get().kind();
+                if (kind == Kind.SONG || kind == Kind.VIDEO)
+                    throw new Main.Failure(set.get().id() + " is " + Models.aKind(kind) + "; fornax server serves chat, vision, "
+                            + "embedding, image, speech and speech-to-text models");
+                Models.fetch(spec, kind, "server", kind != Kind.IMAGE, hub, err, terminal);   // downloaded first, with its notes
+            }
+            b.model(spec);   // anything else is fetched as the server loads it
+        }
+        boolean loopback;
+        try { loopback = InetAddress.getByName(host).isLoopbackAddress(); }
+        catch (java.net.UnknownHostException e) { throw new Main.Failure("--host " + host + ": no such address"); }
+        if (!loopback && (key == null || key.isBlank()))
+            err.println("[fornax] warning: listening on " + host + " without an API key: anyone who can reach it can use it (--api-key)");
+
+        FornaxServer server;
+        try { server = b.build(); }
+        catch (BindException e) { throw new Main.Failure("can't listen on " + host + ":" + port + " (" + e.getMessage() + "); try another --port"); }
+        server.start();
+        Runtime.getRuntime().addShutdownHook(new Thread(server::close, "fornax-server-shutdown"));
+        err.println("[fornax] serving an OpenAI-compatible API at " + server.url() + (key != null && !key.isBlank() ? " (API key required)" : "")
+                + "; Ctrl-C stops");
+        out.println(server.url());
+        out.flush();
+        try { server.await(); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        return 0;
+    }
+}

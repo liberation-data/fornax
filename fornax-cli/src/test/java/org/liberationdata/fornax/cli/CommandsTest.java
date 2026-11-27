@@ -34,7 +34,7 @@ class CommandsTest {
     @Test
     void eachCommandHasHelp() {
         for (var c : List.of(List.of("image", "--width"), List.of("song", "--lyrics"), List.of("speak", "--list-voices"),
-                List.of("transcribe", "--words"), List.of("see", "--mmproj"))) {
+                List.of("transcribe", "--words"), List.of("see", "--mmproj"), List.of("server", "--api-key"))) {
             assertEquals(0, run(c.get(0), "--help"), c.get(0));
             assertTrue(out.toString().startsWith("usage: fornax " + c.get(0)), out.toString());
             assertTrue(out.toString().contains(c.get(1)), out.toString());
@@ -42,7 +42,7 @@ class CommandsTest {
             assertTrue(out.toString().startsWith("usage: fornax " + c.get(0)), out.toString());
         }
         assertEquals(0, run("--help"));
-        for (String c : List.of("image <model>", "song <model>", "speak", "transcribe <audio.wav>", "see <model> <image>"))
+        for (String c : List.of("image <model>", "song <model>", "speak", "transcribe <audio.wav>", "see <model> <image>", "server [-m model]..."))
             assertTrue(out.toString().contains("  " + c), out.toString());
         assertEquals(0, run("image", "--help"));
         assertTrue(out.toString().contains("flux2-klein, qwen-image, qwen-image-edit"), out.toString());
@@ -187,5 +187,20 @@ class CommandsTest {
         assertTrue(Files.isDirectory(tmp.resolve("new")));
         var e = assertThrows(Args.UsageException.class, () -> OutFile.choose("speech.mp3", tmp, "speech.wav", ".wav"));
         assertEquals("--out speech.mp3: this writes a .wav file", e.getMessage());
+    }
+
+    @Test
+    void serverMistakes() {
+        assertEquals(2, run("server", "qwen3-4b"));
+        assertTrue(err.toString().contains("give models with -m"), err.toString());
+        assertEquals(2, run("server", "--port", "70000"));
+        assertTrue(err.toString().contains("--port must be from 0 to 65535"), err.toString());
+        assertEquals(2, run("server", "--budget-gb", "0"));
+        assertEquals(2, run("server", "-m"));
+        assertTrue(err.toString().contains("--model needs a value"), err.toString());
+        assertEquals(1, run("server", "-m", "ace-step-turbo", "--port", "0"));   // refused before anything is downloaded
+        assertTrue(err.toString().contains("ace-step-turbo is a song model; fornax server serves"), err.toString());
+        assertEquals(1, run("server", "--host", "no-such-host.invalid", "--port", "0"));
+        assertTrue(err.toString().contains("no such address"), err.toString());
     }
 }
