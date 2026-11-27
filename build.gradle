@@ -305,7 +305,23 @@ project(':fornax-bench') {
         implementation project(':fornax-acestep')
         implementation project(':fornax-sd')
         implementation project(':fornax-yue2')
+        implementation project(':fornax-llama')
         implementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0'
+    }
+    // ./gradlew :fornax-bench:benchmarks --args='out/benchmarks chat image' -Pllama.bench=... -Psd.cli=...
+    // Fornax against llama.cpp's llama-bench and stable-diffusion.cpp's sd-cli, built from the pins in native/engines.properties.
+    tasks.register('benchmarks', JavaExec) {
+        group = 'fornax examples'
+        description = "Fornax against each engine's own command-line tool, on the same model files and settings"
+        classpath = sourceSets.main.runtimeClasspath
+        mainClass = 'org.liberationdata.fornax.bench.Benchmarks'
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+        systemProperty 'fornax.library.path', nativeDir.absolutePath
+        systemProperty 'fornax.backend', findProperty('fornax.backend')  // so results.json names the natives it ran
+        workingDir = rootProject.projectDir
+        def cli = gradle.startParameter.projectProperties
+        ['llama.bench', 'sd.cli'].each { p -> if (cli.containsKey(p)) systemProperty p, cli[p] }
     }
     // ./gradlew bench --args='out/bench acestep yue2 qwen-image'
     tasks.register('bench', JavaExec) {

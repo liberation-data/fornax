@@ -80,7 +80,7 @@ Fornax is early. Everything below runs from Java on Linux with an AMD Radeon 806
 
 | Model | Result |
 |---|---|
-| Qwen3 4B Instruct (Q4_K_M) | ~60 tokens/s, streamed through a Java callback |
+| Qwen3 4B Instruct (Q4_K_M) | ~75 tokens/s, streamed through a Java callback: as fast as llama.cpp's own `llama-bench` |
 | Qwen3-Embedding 0.6B (Q8_0) | ~420 embeddings/s (20-token passages, 256 to a batch), matching `llama-embedding`'s vectors (cosine 1.000000) |
 | ACE-Step 1.5 XL turbo | a 3 min 20 s song in 57 s |
 | ACE-Step 1.5 turbo | a 60 s song in ~15 s |
@@ -89,6 +89,9 @@ Fornax is early. Everything below runs from Java on Linux with an AMD Radeon 806
 | Qwen-Image 2512 (fp8) | 1024×1024, 20 steps in ~13 min |
 | Whisper large-v3-turbo (q5_0) | 55 s of speech in 1.8 s (31× real time), with DTW word timings |
 | HTDemucs v4 (F32) | a 3 min 9 s song split into four stems in 26 s (7.3 s of audio per second) |
+
+[Benchmarks](/docs/benchmarks/) sets these against each engine's own tool and against ComfyUI, with the command behind
+every figure.
 
 ## Supported backends
 

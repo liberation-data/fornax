@@ -78,6 +78,7 @@ export default defineConfig({
                         { slug: 'docs/guides/gpu-backends' }
                     ]
                 },
+                { label: 'Benchmarks', items: [{ slug: 'docs/benchmarks' }] },
                 { label: 'Troubleshooting', items: [{ slug: 'docs/troubleshooting' }] },
                 { label: 'Reference', items: [{ slug: 'docs/reference' }] }
             ]
