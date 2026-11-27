@@ -6,13 +6,8 @@ this folder out of the repository and build it anywhere.
 
 ## Prerequisites
 
-- JDK 25 for Kiln 0.1.0; later releases run on Java 22 or newer.
+- Java 22 or newer.
 - A GPU driver: Vulkan on Linux x86-64 (glibc 2.39 or newer), or macOS 13.3 or newer (Metal).
-- The model, fetched with the [Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/guides/cli):
-
-  ```sh
-  hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
-  ```
 
 ## Run
 
@@ -21,7 +16,10 @@ this folder out of the repository and build it anywhere.
 mvn -q compile exec:java                       # or: mvn -q compile exec:java -Dexec.args='"Name a country song about a robot"'
 ```
 
-The first run downloads the natives jar (about 130 MB on Linux) and extracts the engine to Fornax's cache.
+The first run downloads the model (Qwen3 4B, 2.5 GB) into the Hugging Face cache, shared with `hf`, Fornax Studio and
+the `fornax` command, and the natives jar (about 130 MB on Linux), whose engine Fornax extracts to its cache. To
+fetch the model ahead of time: `fornax pull qwen3-4b`, or `hf download unsloth/Qwen3-4B-Instruct-2507-GGUF
+Qwen3-4B-Instruct-2507-Q4_K_M.gguf`.
 
 ## Building against another Fornax
 
@@ -29,6 +27,6 @@ The version is `fornaxVersion` in `gradle.properties` and `fornax.version` in `p
 yourself, run `./gradlew publishToMavenLocal` in the Fornax repository, then:
 
 ```sh
-./gradlew run -PfornaxLocal=true -PfornaxVersion=0.2.0-SNAPSHOT  # -PfornaxLocal adds ~/.m2 to the repositories
-mvn -q compile exec:java -Dfornax.version=0.2.0-SNAPSHOT       # Maven always looks in ~/.m2 first
+./gradlew run -PfornaxLocal=true -PfornaxVersion=0.3.0-SNAPSHOT  # -PfornaxLocal adds ~/.m2 to the repositories
+mvn -q compile exec:java -Dfornax.version=0.3.0-SNAPSHOT       # Maven always looks in ~/.m2 first
 ```

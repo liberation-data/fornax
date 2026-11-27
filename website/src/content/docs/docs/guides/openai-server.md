@@ -3,6 +3,12 @@ title: OpenAI-compatible server
 description: Serve Fornax's models over an OpenAI-compatible HTTP API with fornax server or FornaxServer, so any OpenAI client, agent framework or tool can use them with no Java code.
 ---
 
+:::note[Coming in 0.3.0]
+`fornax server` and the `fornax-server` module are on `main` and ship in the next release, 0.3.0. They aren't in
+0.2.0 on Maven Central. Until then, build Fornax from source (`./gradlew :fornax-cli:installDist` for the command,
+`./gradlew publishToMavenLocal` for the module).
+:::
+
 `fornax server` puts Fornax's engines behind an HTTP API in OpenAI's shape. Anything that talks to OpenAI (the
 official Python and JavaScript clients, LangChain, an agent framework, a chat UI, `curl`) can then use local models
 by pointing its base URL at the server:

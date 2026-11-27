@@ -376,6 +376,8 @@ CC BY-NC 4.0, for example.
 
 ## The OpenAI-compatible server
 
+*On `main`, shipping in 0.3.0; not in 0.2.0.*
+
 `fornax server` (or `FornaxServer`, in the `fornax-server` module, JDK only) serves Fornax's models over an
 OpenAI-compatible HTTP API, so any OpenAI client, agent framework or tool can use them with no Java code:
 

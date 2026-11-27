@@ -91,6 +91,10 @@ interactive chat takes the model's later replies as starting inside too, until `
 
 ## Making things
 
+:::note[Coming in 0.3.0]
+These commands are on `main` and ship with the next release, 0.3.0. A `fornax` built from source has them now.
+:::
+
 ```sh
 fornax image flux2-klein "a brick kiln at dusk, a fox by the door"
 fornax image flux2-klein "a fox" --width 768 --height 512 --steps 12 --seed 42 --out fox.png
@@ -142,6 +146,10 @@ transcript or the answer, for scripts.
 Set `FORNAX_VERBOSE=1` to see the engines' own logs.
 
 ## Serving models
+
+:::note[Coming in 0.3.0]
+These commands are on `main` and ship with the next release, 0.3.0. A `fornax` built from source has them now.
+:::
 
 ```sh
 fornax server -m qwen3-4b                                 # http://127.0.0.1:54154/v1
