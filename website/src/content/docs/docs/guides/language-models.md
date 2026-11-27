@@ -195,8 +195,9 @@ Check `finish_reason`: with `length`, the model ran out of tokens and the JSON i
 `json_schema` is a top-level key, as in llama-server. OpenAI's `response_format` isn't read.
 
 An object in the schema (or in a tool's parameters) can have at most 256 optional properties, the ones not in its
-`required`: llama.cpp's grammar chains a rule for each, and takes no more. A request with more fails at once with an
-`IllegalArgumentException`, before the engine, where thousands of them would take minutes or crash it.
+`required` (an `allOf` is one object, of its parts' properties): llama.cpp's grammar chains a rule for each, and
+takes no more. A request with more fails at once with an `IllegalArgumentException`, before the engine, where
+thousands of them would take minutes or crash it.
 
 ### Tool calls
 

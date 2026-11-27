@@ -47,6 +47,27 @@ class SchemasTest {
         assertTrue(e.getMessage().contains("\"required\""), e.getMessage());
     }
 
+    /** llama.cpp merges an allOf into one object: its anyOf alternatives' properties optional, its parts' required. */
+    @Test void anAllOfIsOneObjectOfItsPartsProperties() {
+        String two = "{\"allOf\": [{\"anyOf\": [" + object(200, 0) + ", " + object(200, 0) + "]}]}";
+        assertEquals(400, Schemas.mostOptionalProperties(Json.parse(two)));
+        // through a $ref, against the schema that holds it, though the request around it doesn't have the path
+        String refs = "{\"messages\": [], \"json_schema\": {\"$defs\": {\"big\": " + object(200, 0) + "}, \"allOf\": [{\"anyOf\": "
+                + "[{\"$ref\": \"#/$defs/big\"}, {\"$ref\": \"#/$defs/big\"}, {\"$ref\": \"#/$defs/big\"}]}]}}";
+        assertEquals(600, Schemas.mostOptionalProperties(Json.parse(refs)));
+        // a part's own properties are required, so they don't chain, and make an alternative's of that name required
+        String part = "{\"allOf\": [" + object(200, 0) + ", {\"anyOf\": [" + object(200, 0) + ", " + object(200, 0) + "]}]}";
+        assertEquals(200, Schemas.mostOptionalProperties(Json.parse(part)));   // each object on its own still counts
+    }
+
+    /** The text check skips parsing a request with no schema, but a key can be written with an escape. */
+    @Test void anEscapedPropertiesKeyIsStillChecked() {
+        String escaped = object(300, 0).replace("\"properties\"", "\"propert\\u0069es\"");
+        assertEquals("properties", ((java.util.Map<?, ?>) Json.parse(escaped)).keySet().toArray()[1]);
+        assertThrows(IllegalArgumentException.class, () -> Schemas.requireBuildableJson(escaped, "x"));
+        Schemas.requireBuildableJson("{\"messages\": [{\"role\": \"user\", \"content\": \"hi\"}]}", "x");
+    }
+
     @Test void aDeeplyNestedDocumentDoesntOverflowTheWalk() {
         Object deep = Json.parse(object(3, 0));
         for (int i = 0; i < 100_000; i++) deep = java.util.Map.of("items", deep);

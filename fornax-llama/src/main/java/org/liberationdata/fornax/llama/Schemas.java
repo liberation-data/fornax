@@ -1,10 +1,13 @@
 package org.liberationdata.fornax.llama;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * What a JSON schema costs as a grammar. llama.cpp turns a schema (a {@code json_schema}, a tool's parameters) into a
@@ -22,15 +25,17 @@ public final class Schemas {
     /**
      * The most optional properties of any object schema in doc (a schema, or a request that holds schemas), as
      * llama.cpp counts them: the properties not in its {@code required}, and one more for {@code additionalProperties}
-     * that isn't false. 0 when there are none. Walks doc without recursion, so a deeply nested one can't overflow.
+     * that isn't false. An {@code allOf} is one object too: llama.cpp merges its parts' properties, the ones of its
+     * {@code anyOf} alternatives optional, the rest required. 0 when there are none. Walks doc without recursion, so a
+     * deeply nested one can't overflow.
      */
     public static int mostOptionalProperties(Object doc) {
         int most = 0;
-        Deque<Object> todo = new ArrayDeque<>();
-        todo.push(doc);
+        Deque<Node> todo = new ArrayDeque<>();
+        todo.push(new Node(doc, null));
         while (!todo.isEmpty()) {
-            Object o = todo.pop();
-            if (o instanceof Map<?, ?> m) {
+            Node n = todo.pop();
+            if (n.value instanceof Map<?, ?> m) {
                 if (m.get("properties") instanceof Map<?, ?> props) {
                     int optional = props.size();
                     if (m.get("required") instanceof List<?> required)
@@ -39,12 +44,58 @@ public final class Schemas {
                     if (extra != null && !Boolean.FALSE.equals(extra)) optional++;
                     most = Math.max(most, optional);
                 }
-                m.values().forEach(todo::push);
-            } else if (o instanceof Collection<?> c) {
-                c.forEach(todo::push);
+                if (m.get("allOf") instanceof List<?> parts) most = Math.max(most, mergedOptional(parts, n));
+                m.values().forEach(v -> todo.push(new Node(v, n)));
+            } else if (n.value instanceof Collection<?> c) {
+                c.forEach(v -> todo.push(new Node(v, n)));
             }
         }
         return most;
+    }
+
+    /** A value in the walk, and the one that holds it: a $ref resolves against the nearest that has its path. */
+    private record Node(Object value, Node parent) {}
+
+    /**
+     * The optional properties of the object llama.cpp merges an allOf into: each property of an alternative of a part's
+     * anyOf (or oneOf), duplicates and all, unless a part's own properties name it, which are required.
+     */
+    private static int mergedOptional(List<?> parts, Node at) {
+        Set<Object> required = new HashSet<>();
+        List<Object> optional = new ArrayList<>();
+        for (Object part : parts) {
+            Object alts = part instanceof Map<?, ?> m ? (m.containsKey("anyOf") ? m.get("anyOf") : m.get("oneOf")) : null;
+            if (alts instanceof List<?> l) {
+                for (Object alt : l) optional.addAll(propertyNames(alt, at));
+            } else {
+                required.addAll(propertyNames(part, at));
+            }
+        }
+        return (int) optional.stream().filter(name -> !required.contains(name)).count();
+    }
+
+    /** The property names of schema, following its $refs (as far as llama.cpp's 128). */
+    private static Collection<?> propertyNames(Object schema, Node at) {
+        for (int hops = 0; hops < 128 && schema instanceof Map<?, ?> m && m.get("$ref") instanceof String ref; hops++)
+            schema = resolve(ref, at);
+        return schema instanceof Map<?, ?> m && m.get("properties") instanceof Map<?, ?> props ? props.keySet() : List.of();
+    }
+
+    /** A "#/a/b" $ref's target in the nearest value around at that has that path, or null. */
+    private static Object resolve(String ref, Node at) {
+        if (!ref.startsWith("#/")) return null;
+        String[] path = ref.substring(2).split("/", -1);
+        for (Node n = at; n != null; n = n.parent) {
+            Object v = n.value;
+            for (String step : path) {
+                if (v instanceof Map<?, ?> m) v = m.get(step);
+                else if (v instanceof List<?> l && step.matches("\\d{1,9}") && Integer.parseInt(step) < l.size()) v = l.get(Integer.parseInt(step));
+                else v = null;
+                if (v == null) break;
+            }
+            if (v != null) return v;
+        }
+        return null;
     }
 
     /**
@@ -56,5 +107,13 @@ public final class Schemas {
         if (n > MAX_OPTIONAL_PROPERTIES)
             throw new IllegalArgumentException(what + " has an object with " + n + " optional properties; a grammar takes at most "
                     + MAX_OPTIONAL_PROPERTIES + " (llama.cpp chains a rule for each): list more of them in \"required\", or split the object");
+    }
+
+    /**
+     * requireBuildable on a request's JSON text, parsing it only if it could hold an object schema: if it names
+     * "properties", or escapes a character, as {@code "propert\\u0069es"} could.
+     */
+    static void requireBuildableJson(String json, String what) {
+        if (json.contains("\"properties\"") || json.contains("\\u")) requireBuildable(Json.parse(json), what);
     }
 }

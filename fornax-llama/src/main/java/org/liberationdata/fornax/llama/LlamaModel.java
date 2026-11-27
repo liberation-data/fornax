@@ -799,7 +799,7 @@ public final class LlamaModel implements AutoCloseable {
     String chatJsonOn(Call call, String requestJson, List<Image> images, Consumer<String> onContent) {
         requireMode(Mode.CHAT, "chat");
         // before the engine: a schema past what its grammar takes would cost minutes there, or crash it (Schemas)
-        if (requestJson.contains("\"properties\"")) Schemas.requireBuildable(Json.parse(requestJson), "the request");
+        Schemas.requireBuildableJson(requestJson, "the request");
         if (remote != null)
             return LlamaService.decodeString(remote(call, "chatJson", LlamaService.chatJsonArgs(requestJson, images, onContent != null), onContent));
         if (batcher != null) {
