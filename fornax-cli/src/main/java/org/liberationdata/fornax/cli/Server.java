@@ -81,6 +81,8 @@ final class Server {
         int parallel = a.intOption("parallel", 1);
         if (parallel < 1 || parallel > 256) throw new UsageException("--parallel must be from 1 to 256");
         if (parallel > 1 && ctx == 0) throw new UsageException("--parallel needs a context size for each request: --ctx N, not 0");
+        if (parallel > 1 && org.liberationdata.fornax.Isolation.configured() == org.liberationdata.fornax.Isolation.PROCESS)
+            throw new UsageException("--parallel runs models in-process; FORNAX_ISOLATION=process doesn't batch yet");
         boolean terminal = Main.terminal();
 
         var b = FornaxServer.builder().host(host).port(port).apiKey(key).hub(hub).budgetBytes((long) (budget * (1L << 30)))

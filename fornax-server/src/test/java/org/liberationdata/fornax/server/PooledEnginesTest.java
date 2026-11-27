@@ -147,5 +147,12 @@ class PooledEnginesTest {
                 .parallel(4).contextSize(0).build());
         assertTrue(e.getMessage().contains("contextSize"), e.getMessage());
         assertEquals(before, reapers.getAsLong(), "no model pool left behind");
+        System.setProperty("fornax.isolation", "process");   // a model with slots can't load isolated yet
+        try {
+            var iso = assertThrows(IllegalArgumentException.class, () -> FornaxServer.builder().port(0).hub(hub()).log(s -> {})
+                    .parallel(4).build());
+            assertTrue(iso.getMessage().contains("fornax.isolation=process"), iso.getMessage());
+            assertEquals(before, reapers.getAsLong(), "no model pool left behind");
+        } finally { System.clearProperty("fornax.isolation"); }
     }
 }
