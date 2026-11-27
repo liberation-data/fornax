@@ -7,7 +7,7 @@ this folder out of the repository and build it anywhere.
 ## Prerequisites
 
 - Java 22 or newer.
-- A GPU driver: Vulkan on Linux x86-64 (glibc 2.39 or newer), or macOS 13.3 or newer (Metal).
+- A GPU driver: Vulkan on Linux x86-64 (glibc 2.39 or newer), or macOS 13.3 or newer on Apple silicon (Metal).
 
 ## Run
 

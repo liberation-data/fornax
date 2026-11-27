@@ -13,7 +13,6 @@ def activations = [
     'linux-x86_64' : [name: 'Linux', arch: 'amd64'],
     'linux-aarch64': [name: 'Linux', arch: 'aarch64'],
     'macos-aarch64': [family: 'mac', arch: 'aarch64'],
-    'macos-x86_64' : [family: 'mac', arch: 'x86_64'],
 ]
 def activation = { String platform -> activations[platform.split('-').take(2).join('-')] }
 def platforms = gradle.nativePlatforms

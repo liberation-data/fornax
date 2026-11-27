@@ -133,11 +133,8 @@ String res = llm.chatJson("""
 const qsGradle = `// build.gradle.kts
 plugins { application }
 repositories { mavenCentral() }
-val natives = when {   // the natives jar for the OS and arch building it
-    !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
-    System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
-    else -> "macos-x86_64-metal"
-}
+val natives =   // the natives jar for the OS and arch building it
+    if (System.getProperty("os.name").startsWith("Mac")) "macos-aarch64-metal" else "linux-x86_64-vulkan"
 dependencies {
     implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
     implementation("org.fornax4j:fornax-llama")
@@ -904,18 +901,13 @@ const theme = 'vitesse-dark';
                                 <span class="get-studio-sub">Alpha {studio.version}. Models are not included: fetch them with <code>fornax pull</code> or the Hugging Face CLI, as in Getting started.</span>
                             </p>
                             <div class="downloads">
-                                {(studio.mac.appleSilicon || studio.mac.intel) && (
+                                {studio.mac.appleSilicon && (
                                     <div class="platform">
                                         <h3>macOS <span class="arch">(Metal)</span></h3>
                                         <div class="dl-buttons">
                                             {studio.mac.appleSilicon && (
                                                 <a class="dl-button primary" href={studio.mac.appleSilicon.url} data-thanks>
                                                     Apple&nbsp;Silicon <span class="dl-meta">.dmg · {studio.mac.appleSilicon.size}</span>
-                                                </a>
-                                            )}
-                                            {studio.mac.intel && (
-                                                <a class="dl-button" href={studio.mac.intel.url} data-thanks>
-                                                    Intel <span class="dl-meta">.dmg · {studio.mac.intel.size}</span>
                                                 </a>
                                             )}
                                         </div>
@@ -955,7 +947,7 @@ const theme = 'vitesse-dark';
                         </div>
                     ) : (
                         <p class="note">
-                            Builds for macOS (Apple silicon and Intel) and Linux are on their way with the first release.
+                            Builds for macOS (Apple silicon) and Linux are on their way with the first release.
                             {studioPublic && <Fragment> Until then, <a href={`${studioUrl}#running-it`}>build it from source</a>.</Fragment>}
                         </p>
                     )}
