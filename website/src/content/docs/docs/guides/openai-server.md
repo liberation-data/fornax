@@ -217,11 +217,14 @@ off a long stream, or a request waiting for a model to load.
 The server listens on 127.0.0.1 unless `--host` says otherwise, so only programs on the same machine can reach it.
 That alone doesn't keep out the web pages open in your browser, which can send requests to 127.0.0.1 too. So:
 
-- **On loopback, the `Host` must be the server's own** (`127.0.0.1:54154`, `localhost:54154` or `[::1]:54154`). A
+- **On loopback, the `Host` must be the server's own** (`127.0.0.1:54154`, any other `127.x.y.z:54154`,
+  `localhost:54154` or `[::1]:54154`). A
   page that rebinds its own domain name to 127.0.0.1 sends its own name, and is refused (403).
 - **A request from a web page is refused** (403): browsers send an `Origin` with every cross-origin request.
   `--cors https://app.example` allows that origin, which then gets CORS headers, its preflight answered and the
-  response readable. `--cors '*'` allows any origin.
+  response readable (a refusal too, so a page can tell a missing API key). `--cors '*'` allows any origin.
 - **`--api-key`** (or `FORNAX_API_KEY`) makes every request need `Authorization: Bearer <key>` (401 otherwise), which
   is what the OpenAI clients send as their `api_key`. Set one before listening on another address: the `Host` check
   is off then, as other machines reach it by other names.
+- **A server error (500) names the file that failed, not its directory**, so a caller doesn't learn the machine's
+  paths.

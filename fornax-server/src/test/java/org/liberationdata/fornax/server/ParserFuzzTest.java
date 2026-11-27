@@ -301,8 +301,10 @@ class ParserFuzzTest {
 
     @Test void imageUris() throws IOException {
         Random r = new Random(4);
-        List<byte[]> images = List.of(image("png"), image("jpeg"), image("gif"), image("bmp"), image("tiff"));
-        for (byte[] img : images) assertEquals(15, ChatRequest.pixels(Base64.getEncoder().encodeToString(img)));
+        List<byte[]> decoded = List.of(image("png"), image("jpeg"), image("gif"), image("bmp"));
+        for (byte[] img : decoded) assertEquals(15, ChatRequest.pixels(Base64.getEncoder().encodeToString(img)));
+        List<byte[]> images = new java.util.ArrayList<>(decoded);
+        images.add(image("tiff"));   // refused (the engine can't decode it), but its mutations are fuzzed too
         assertTimeoutPreemptively(Duration.ofSeconds(8), () -> {
             for (int i = 0; i < ROUNDS; i++) {
                 byte[] img = mutate(r, images.get(r.nextInt(images.size())));

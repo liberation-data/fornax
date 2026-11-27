@@ -14,12 +14,13 @@ import java.util.regex.Pattern;
  * page can send a "simple" POST to 127.0.0.1 with no CORS preflight, and DNS rebinding gets round the same-origin
  * check. So, as Fornax Studio's server does:
  * <ul>
- *   <li>on a loopback address, a request whose {@code Host} isn't this server's own loopback address and port is
+ *   <li>on a loopback address, a request whose {@code Host} isn't a loopback name or address (localhost, [::1],
+ *       127.x.y.z) and this server's port is
  *       refused (a rebound name); bound to another address, the server is meant to be reached by other names, and
  *       the API key is what keeps callers out</li>
  *   <li>a request with an {@code Origin} (a browser sends one with every cross-origin request, and with every POST) is
- *       refused unless the origin is one allowed with {@code --cors}; an allowed one gets CORS headers, and its
- *       preflight an answer</li>
+ *       refused unless the origin is one allowed with {@code --cors}; an allowed one gets CORS headers (on a refusal too,
+ *       so its page can read why), and its preflight an answer</li>
  *   <li>with an API key, a request without {@code Authorization: Bearer <key>} is refused (compared in constant
  *       time); a preflight carries no credentials, so it needs none</li>
  * </ul>
@@ -27,6 +28,8 @@ import java.util.regex.Pattern;
  */
 final class Guard {
     private static final Pattern HEADER_LIST = Pattern.compile("[A-Za-z0-9-]+(\\s*,\\s*[A-Za-z0-9-]+)*");
+    /** Any address in 127.0.0.0/8, all of it loopback (a name can't be rebound to a literal address). */
+    private static final Pattern LOOPBACK_V4 = Pattern.compile("127(\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}");
 
     private final boolean checkHost;
     private final Set<String> origins;   // "*" allows any
@@ -48,7 +51,7 @@ final class Guard {
         if (checkHost) {
             List<String> hosts = h.get("Host");
             String host = hosts == null || hosts.size() != 1 ? null : hosts.get(0).toLowerCase(Locale.ROOT);
-            if (host == null || !Set.of("127.0.0.1:" + port, "localhost:" + port, "[::1]:" + port).contains(host))
+            if (host == null || !loopbackHost(host, port))
                 return forbidden("this server only answers requests to its own loopback address (wrong Host)");
         }
         if (h.containsKey("Origin") && allowedOrigin(h) == null)
@@ -62,6 +65,14 @@ final class Guard {
                         null, "invalid_api_key");
         }
         return null;
+    }
+
+    /** localhost, [::1] or a 127.x.y.z address, with this server's port. */
+    static boolean loopbackHost(String host, int port) {
+        String suffix = ":" + port;
+        if (!host.endsWith(suffix)) return false;
+        String name = host.substring(0, host.length() - suffix.length());
+        return name.equals("localhost") || name.equals("[::1]") || LOOPBACK_V4.matcher(name).matches();
     }
 
     /** The request's Origin when it may call (one Origin, allowed), else null. */

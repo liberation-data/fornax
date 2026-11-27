@@ -191,7 +191,7 @@ class FornaxServerTest {
 
     /** A failure once the stream has started can't be a status: it is OpenAI's error event, with no [DONE] after it. */
     @Test void aFailureMidStreamIsAnErrorEvent() throws Exception {
-        engines.failure = new IllegalStateException("llama chat failed (rc=1): the GPU fell over");
+        engines.failure = new IllegalStateException("llama chat failed (rc=1) on /home/someone/models/m.gguf: the GPU fell over");
         engines.failAfter = 2;
         var r = post("/v1/chat/completions", "{\"stream\": true, \"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}");
         assertEquals(200, r.statusCode());
@@ -201,7 +201,66 @@ class FornaxServerTest {
         assertEquals("Hel", get(data.get(1), "choices", 0, "delta", "content"));
         Object last = data.getLast();
         assertEquals("server_error", get(last, "error", "type"));
-        assertTrue(((String) get(last, "error", "message")).contains("the GPU fell over"), r.body());
+        assertEquals("llama chat failed (rc=1) on m.gguf: the GPU fell over", get(last, "error", "message"), "its path cut too");
+    }
+
+    /** A 500 names the file that failed but not where it is: the caller doesn't learn the machine's directories. */
+    @Test void aServerErrorCutsLocalPathsToTheirFileNames() throws Exception {
+        engines.failure = new IllegalStateException("failed to load /home/someone/.cache/huggingface/hub/models--x/blobs/model.gguf: bad magic");
+        engines.failAfter = 0;
+        var r = post("/v1/chat/completions", "{\"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}");
+        assertEquals(500, r.statusCode());
+        assertEquals("failed to load model.gguf: bad magic", get(json(r), "error", "message"), r.body());
+    }
+
+    /** Only the caller's body is cut: whoever runs the server (start's failure, a model that won't load) sees the path. */
+    @Test void aServerErrorKeepsItsPathsForTheOperator() {
+        ApiError e = ApiError.server("qwen3-4b: /home/someone/.cache/m.gguf: permission denied");
+        assertEquals("qwen3-4b: /home/someone/.cache/m.gguf: permission denied", e.getMessage());
+        assertEquals("qwen3-4b: m.gguf: permission denied", get(e.body(), "error", "message"));
+        assertEquals("no /a/b here", get(ApiError.badRequest("no /a/b here", null).body(), "error", "message"), "only a 500");
+    }
+
+    /** A model that won't load on a request: the caller gets the file name, the server's log the whole path. */
+    @Test void aServerErrorOnARequestIsLoggedWithItsPath() throws Exception {
+        var logged = new java.util.concurrent.ConcurrentLinkedQueue<String>();
+        engines.failure = ApiError.server("qwen3-4b: /home/someone/.cache/m.gguf: permission denied");
+        engines.failAfter = 0;
+        try (var logging = FornaxServer.builder().port(0).engines(engines).log(logged::add).build().start()) {
+            var r = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + logging.port() + "/v1/chat/completions"))
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}")).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(500, r.statusCode());
+            assertEquals("qwen3-4b: m.gguf: permission denied", get(json(r), "error", "message"));
+        }
+        assertTrue(logged.stream().anyMatch(s -> s.contains("/home/someone/.cache/m.gguf")), logged.toString());
+    }
+
+    /** A directory with a space in it (a Windows user name, macOS's Application Support) is a directory all the same. */
+    @Test void withoutPathsCutsDirectoriesWithSpacesAndDriveLetterSlashes() {
+        assertEquals("open model.gguf failed", ApiError.withoutPaths("open C:\\Users\\John Smith\\.cache\\model.gguf failed"));
+        assertEquals("model.gguf: bad magic", ApiError.withoutPaths("/Users/jb/Library/Application Support/fornax/model.gguf: bad magic"));
+        assertEquals("open model.gguf failed", ApiError.withoutPaths("open C:/Users/x/model.gguf failed"));
+        // a space-separated word isn't swallowed into a directory across a colon or comma
+        assertEquals("model.gguf: bad tensor a/b", ApiError.withoutPaths("/a/model.gguf: bad tensor a/b"));
+        assertEquals("m.gguf in 3 layers, 1/2 done", ApiError.withoutPaths("/a/m.gguf in 3 layers, 1/2 done"));
+    }
+
+    /** A long message (an engine echoing a prompt) is cut in one pass, not one stack frame per word or directory. */
+    @Test void withoutPathsTakesALongMessage() {
+        String words = "/a" + " b".repeat(50_000), dirs = "/a/" + "b/".repeat(50_000) + "m.gguf";
+        assertEquals(words, ApiError.withoutPaths(words));
+        assertEquals("m.gguf", ApiError.withoutPaths(dirs));
+        assertEquals("m.gguf" + " b".repeat(50_000), ApiError.withoutPaths("/x/y z/m.gguf" + " b".repeat(50_000)));
+    }
+
+    @Test void withoutPathsKeepsWhatIsntALocalPath() {
+        assertEquals("model.gguf", ApiError.withoutPaths("/a/b/model.gguf"));
+        assertEquals("open model.gguf failed", ApiError.withoutPaths("open C:\\Users\\x\\model.gguf failed"));
+        assertEquals("'mmproj.gguf' (No such file)", ApiError.withoutPaths("'/tmp/m/mmproj.gguf' (No such file)"));
+        for (String keep : List.of("see https://fornax4j.org/docs/guides/x", "models/not-there.gguf", "a / b", "rc=1: n/a",
+                "unsloth/Qwen3-4B-GGUF:Q4_K_M", "no such model qwen3-4b"))
+            assertEquals(keep, ApiError.withoutPaths(keep));
     }
 
     /** A request that fails before anything is streamed, but after a keep-alive has sent the status, still says why. */
@@ -329,6 +388,9 @@ class FornaxServerTest {
         assertEquals(400, post("/v1/images/generations", "{\"prompt\": \"a kiln\"}").statusCode(), "no default image model");
         for (String bad : List.of("{\"model\": \"m\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"500x500\"}",
                 "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"big\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"n\": 9}",
+                "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"1024x1024x\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"+1024x1024\"}",
+                "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"1024x+1024\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \" 1024x1024\"}",
+                "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"\u0661\u0660\u0662\u0664x1024\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"size\": 1024}",
                 "{\"model\": \"m\", \"prompt\": \"p\", \"response_format\": \"url\"}",
                 "{\"model\": \"m\", \"prompt\": \"p\", \"n\": 4294967297}", "{\"model\": \"m\", \"prompt\": \"p\", \"n\": -1}"))
             assertEquals(400, post("/v1/images/generations", bad).statusCode(), bad);

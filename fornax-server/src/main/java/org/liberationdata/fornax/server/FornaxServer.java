@@ -70,10 +70,11 @@ import java.util.function.Consumer;
  * timeout).
  *
  * <p>Who may call it: it listens on 127.0.0.1 unless told otherwise; on loopback, it refuses a request whose
- * {@code Host} isn't its own address (DNS rebinding); it refuses a request from a web page (an {@code Origin}) unless
- * that origin is allowed with {@link Builder#corsOrigin}; and with an {@link Builder#apiKey}, it refuses a request
- * without {@code Authorization: Bearer <key>}. Errors are OpenAI's: {@code {"error": {"message", "type", "param",
- * "code"}}} with the HTTP status. A refused request's body is read first, up to 64 KB more of it, so that its client
+ * {@code Host} isn't a loopback name or address with its port (DNS rebinding); it refuses a request from a web page
+ * (an {@code Origin}) unless that origin is allowed with {@link Builder#corsOrigin}; and with an {@link Builder#apiKey},
+ * it refuses a request without {@code Authorization: Bearer <key>}. Errors are OpenAI's: {@code {"error": {"message",
+ * "type", "param", "code"}}} with the HTTP status; a 500's message has each local path cut to its file name (the
+ * {@link Builder#log} keeps it). A refused request's body is read first, up to 64 KB more of it, so that its client
  * gets the error rather than a reset; past that, the error says {@code Connection: close}.
  *
  * <p>Slow clients: the JDK HTTP server never times out a client that sends its request a byte at a time. Its limits
@@ -227,12 +228,13 @@ public final class FornaxServer implements AutoCloseable {
         try {
             var h = ex.getRequestHeaders();
             boolean preflight = method.equals("OPTIONS") && h.containsKey("Origin") && h.containsKey("Access-Control-Request-Method");
+            // CORS headers first, so a page from an allowed origin can read why it was refused (a missing API key)
+            guard.cors(h, ex.getResponseHeaders(), preflight);
             ApiError refused = guard.refusal(h, port(), preflight);
             if (refused != null) {
                 status[0] = error(ex, refused);
                 return;
             }
-            guard.cors(h, ex.getResponseHeaders(), preflight);
             if (preflight) {
                 ex.sendResponseHeaders(status[0] = 204, -1);
                 return;
@@ -247,10 +249,12 @@ public final class FornaxServer implements AutoCloseable {
             status[0] = ex.getResponseCode();
         } catch (ApiError e) {
             status[0] = error(ex, e);
+            // a 500's body has its paths cut (ApiError.body): the log keeps them for whoever runs the server
+            if (e.status == 500) log.accept("error in " + method + " " + path + ": " + e.getMessage());
         } catch (CancellationException e) {
             status[0] = 499;   // the client went away mid-stream: there is no one to tell
         } catch (RuntimeException | IOException | Error e) {
-            status[0] = error(ex, ApiError.server(e.getMessage() != null ? e.getMessage() : e.toString()));
+            status[0] = error(ex, ApiError.server(e));
             if (!(e instanceof IOException)) log.accept("error in " + method + " " + path + ": " + e);
         } finally {
             release(ex);
@@ -345,7 +349,7 @@ public final class FornaxServer implements AutoCloseable {
     /** A failure after the stream has started: an error event (if the client is still there), as OpenAI sends one. */
     private void streamError(Sse sse, RuntimeException e) {
         if (e instanceof CancellationException) throw e;
-        ApiError a = e instanceof ApiError x ? x : ApiError.server(e.getMessage() != null ? e.getMessage() : e.toString());
+        ApiError a = e instanceof ApiError x ? x : ApiError.server(e);
         try { sse.data(a.body()); } catch (CancellationException gone) { /* nobody to tell */ }
         log.accept("error mid-stream: " + e);
     }
@@ -464,6 +468,8 @@ public final class FornaxServer implements AutoCloseable {
     static final int MAX_STEPS = 100;
     /** The most pixels an image may have (4 megapixels: 2048 x 2048, or 4096 x 1024), the most the image models make well. */
     static final int MAX_IMAGE_PIXELS = 2048 * 2048;
+    /** An image size: digits only (no sign, no trailing x), at most 5 a side so it parses as an int. */
+    private static final java.util.regex.Pattern SIZE = java.util.regex.Pattern.compile("([0-9]{1,5})x([0-9]{1,5})");
 
     /**
      * The image request, checked: a prompt, n from 1 to 8, a size in multiples of 16 of at most {@link #MAX_IMAGE_PIXELS},
@@ -481,12 +487,10 @@ public final class FornaxServer implements AutoCloseable {
         Object size = body.get("size");
         int w = 1024, h = 1024;
         if (size != null && !"auto".equals(size)) {
-            String[] wh = size instanceof String s ? s.split("x") : new String[0];
-            try {
-                if (wh.length != 2) throw new NumberFormatException();
-                w = Integer.parseInt(wh[0]);
-                h = Integer.parseInt(wh[1]);
-            } catch (NumberFormatException e) { throw ApiError.badRequest("size must be WIDTHxHEIGHT, such as 1024x1024", "size"); }
+            var wh = size instanceof String s ? SIZE.matcher(s) : null;
+            if (wh == null || !wh.matches()) throw ApiError.badRequest("size must be WIDTHxHEIGHT, such as 1024x1024", "size");
+            w = Integer.parseInt(wh.group(1));
+            h = Integer.parseInt(wh.group(2));
             if (w < 64 || h < 64 || w > 4096 || h > 4096 || w % 16 != 0 || h % 16 != 0)
                 throw ApiError.badRequest("size must be from 64 to 4096 a side, in multiples of 16", "size");
             if ((long) w * h > MAX_IMAGE_PIXELS)

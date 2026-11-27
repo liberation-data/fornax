@@ -117,7 +117,10 @@ record ChatRequest(String model, String engineJson, boolean stream, boolean incl
         }
     }
 
-    /** An image_url's width times height, read from its header (it isn't decoded here); a 400 for one that isn't an image. */
+    /**
+     * An image_url's width times height, read from its header (it isn't decoded here); a 400 for one that isn't a PNG,
+     * JPEG, GIF or BMP.
+     */
     static long pixels(String base64) {
         byte[] bytes;
         try { bytes = Base64.getDecoder().decode(base64.replaceAll("\\s", "").replace('-', '+').replace('_', '/')); }
@@ -127,12 +130,21 @@ record ChatRequest(String model, String engineJson, boolean stream, boolean incl
             if (readers != null && readers.hasNext()) {
                 ImageReader r = readers.next();
                 try {
+                    // ImageIO reads TIFF and WBMP too, which the engine can't decode: only what the message names
+                    if (!DECODED.contains(r.getFormatName().toLowerCase(java.util.Locale.ROOT))) return refuseImage();
                     r.setInput(in, true, true);
                     long px = (long) r.getWidth(0) * r.getHeight(0);
                     if (px > 0) return px;
                 } finally { r.dispose(); }
             }
         } catch (IOException | RuntimeException e) { /* not an image it can read: said below */ }
+        return refuseImage();
+    }
+
+    /** The image formats the engine decodes (stb_image) that ImageIO can read the size of, by ImageIO's names. */
+    private static final java.util.Set<String> DECODED = java.util.Set.of("png", "jpeg", "jpg", "gif", "bmp");
+
+    private static long refuseImage() {
         throw ApiError.badRequest("an image_url isn't a PNG, JPEG, GIF or BMP image", "messages");
     }
 

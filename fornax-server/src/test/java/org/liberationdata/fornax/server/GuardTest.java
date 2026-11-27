@@ -63,6 +63,15 @@ class GuardTest {
             assertEquals(200, status(send("POST", "/v1/chat/completions", CHAT, h)), h);
     }
 
+    @Test void anyAddressIn127IsLoopbackToo() throws Exception {
+        start(FornaxServer.builder());
+        int p = server.port();
+        for (String h : List.of("Host: 127.0.0.2:" + p, "Host: 127.255.255.254:" + p, "Host: 127.1.2.3:" + p))
+            assertEquals(200, status(send("POST", "/v1/chat/completions", CHAT, h)), h);
+        for (String h : List.of("Host: 127.256.0.1:" + p, "Host: 127.0.0.01x:" + p, "Host: 1127.0.0.1:" + p, "Host: 127.0.0.1.5:" + p))
+            assertEquals(403, status(send("POST", "/v1/chat/completions", CHAT, h)), h);
+    }
+
     @Test void aRebindingHostIsRefused() throws Exception {
         start(FornaxServer.builder());
         int p = server.port();
@@ -190,7 +199,9 @@ class GuardTest {
         // a preflight carries no credentials, so it needs none; the request after it does
         assertEquals(204, status(send("OPTIONS", "/v1/chat/completions", null, host(), "Origin: https://app.example",
                 "Access-Control-Request-Method: POST")));
-        assertEquals(401, status(send("POST", "/v1/chat/completions", CHAT, host(), "Origin: https://app.example")));
+        String refused = send("POST", "/v1/chat/completions", CHAT, host(), "Origin: https://app.example");
+        assertEquals(401, status(refused));
+        assertEquals("https://app.example", header(refused, "Access-Control-Allow-Origin"), "the page can read why");
         assertEquals(1 + 1, engines.requests.size());
     }
 
