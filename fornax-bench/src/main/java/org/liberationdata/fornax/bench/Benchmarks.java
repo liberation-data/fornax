@@ -36,8 +36,8 @@ import java.util.concurrent.Callable;
  * Cases: {@code chat} (qwen3-4b: time to the first token of a ~512-token prompt, and tokens per second over 128
  * generated after it) and
  * {@code image} (FLUX.2 [klein], 768x768, 12 steps: seconds, cold with the load and warm) and
- * {@code serving} (qwen3-4b over the OpenAI API, 1 to 8 streaming clients at once: fornax server with 4 slots, and with
- * 1, against llama-server with 4; tokens a second across all clients, and time to first token and request latency,
+ * {@code serving} (qwen3-4b over the OpenAI API, 1 to 8 streaming clients at once: fornax server with 4 slots, with 4
+ * slots in a worker process (fornax.isolation=process), and with 1, against llama-server with 4; tokens a second across all clients, and time to first token and request latency,
  * median and 95th percentile). Each side's peak GPU memory
  * is sampled from the amdgpu driver's sysfs counters (VRAM and GTT, above what was in use before it started), where
  * there are any. Writes {@code results.json} (with the machine, the engines' pins and the command behind every row) and
@@ -235,15 +235,24 @@ public class Benchmarks {
     static void serving(Path out, List<Row> rows) throws Exception {
         Path gguf = FornaxHub.standard().fetch(CHAT_MODEL, PullListener.logging()).get("gguf");
         String llamaServer = tool("llama.server", "llama-server");
-        for (int parallel : List.of(SERVE_SLOTS, 1)) {
-            var m = GpuMemory.peakDuring(() -> {
-                try (var server = org.liberationdata.fornax.server.FornaxServer.builder().port(0).model(gguf.toString())
-                        .contextSize(SERVE_CTX).parallel(parallel).budgetBytes(64L << 30).log(x -> {}).build().start()) {
-                    return drive("http://127.0.0.1:" + server.port());
-                }
-            });
-            addServingRows(rows, "Fornax --parallel " + parallel, "fornax server (llama.cpp " + Machine.pin("llama.cpp") + ")",
-                    parallel, m, "./gradlew :fornax-bench:benchmarks --args='" + out + " serving' -Pllama.server=" + llamaServer);
+        record Side(int parallel, boolean isolated) {}
+        for (Side side : List.of(new Side(SERVE_SLOTS, false), new Side(SERVE_SLOTS, true), new Side(1, false))) {
+            int parallel = side.parallel();
+            // the server's models read fornax.isolation as they load: in a worker process each, batching there
+            if (side.isolated()) System.setProperty("fornax.isolation", "process");
+            try {
+                var m = GpuMemory.peakDuring(() -> {
+                    try (var server = org.liberationdata.fornax.server.FornaxServer.builder().port(0).model(gguf.toString())
+                            .contextSize(SERVE_CTX).parallel(parallel).budgetBytes(64L << 30).log(x -> {}).build().start()) {
+                        return drive("http://127.0.0.1:" + server.port());
+                    }
+                });
+                addServingRows(rows, "Fornax --parallel " + parallel + (side.isolated() ? ", isolated" : ""),
+                        "fornax server (llama.cpp " + Machine.pin("llama.cpp") + ")", parallel, m,
+                        "./gradlew :fornax-bench:benchmarks --args='" + out + " serving' -Pllama.server=" + llamaServer);
+            } finally {
+                if (side.isolated()) System.clearProperty("fornax.isolation");
+            }
         }
         int port = 18_000 + (int) (ProcessHandle.current().pid() % 1000);
         List<String> cmd = List.of(llamaServer, "-m", gguf.toString(), "-ngl", "99", "-np", String.valueOf(SERVE_SLOTS),

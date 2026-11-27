@@ -33,9 +33,13 @@ context, where llama-bench sizes its own to the test.
 
 With 4 slots, `fornax server --parallel 4` keeps pace with llama-server's own `-np 4` at every load: within 3% on
 throughput, and no longer a wait for the first token. Against one slot (`--parallel 1`, the default, where requests take
-turns), four clients get 2.8 times the tokens a second between them, and wait 0.7 s for their first token instead of
-11.5 s. Past the slots (8 clients) both servers queue the rest, so throughput stays where 4 left it and the wait grows.
-The three extra slots cost about 0.9 GB here: their KV cache, 3 × 2048 tokens.
+turns), four clients get 2.8 times the tokens a second between them, and wait at most 0.7 s for their first token
+(95th percentile) instead of 11.5 s. Past the slots (8 clients) both servers queue the rest, so throughput stays where 4
+left it and the wait grows. The three extra slots cost about 0.9 GB here: their KV cache, 3 × 2048 tokens.
+
+[Isolated](/docs/guides/isolation/) (`FORNAX_ISOLATION=process`), the model and its slots run in a worker process, and
+the batching works there as it does in-process: the same throughput and the same 95th-percentile wait at every load.
+At 4 clients the median wait for the first token was 0.66 s, against 0.35 s in-process and 0.68 s for llama-server.
 
 ## Images
 
