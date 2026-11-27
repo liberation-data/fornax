@@ -62,7 +62,7 @@ import static java.lang.foreign.ValueLayout.JAVA_LONG;
  * them; {@link Vectors} searches the embeddings.
  *
  * <p>Threads: calls run one at a time, in arrival order, from any thread (a model loaded with slots runs that many
- * at once, and runs callbacks on its batch thread). The blocking methods ({@link #chat} and the
+ * at once, and in process runs callbacks on its batch thread). The blocking methods ({@link #chat} and the
  * rest) run on the calling thread, callback included. The {@code ...Async} methods run on this model's own platform
  * thread and return a {@link CompletableFuture}, so a virtual thread awaiting one doesn't pin its carrier; streaming
  * goes to a {@link Flow.Subscriber}. {@link #cancel()} and {@link #close()} are safe from any thread.
@@ -382,13 +382,15 @@ public final class LlamaModel implements AutoCloseable {
      * <p>Every slot has {@code contextSize} tokens of context of its own, so the context takes {@code slots} times the
      * memory, and a request that fills its slot ends with "length" whatever the others do. A consumer of pieces runs
      * on the model's batch thread, so one that blocks holds up every slot; the async and streaming methods hand
-     * pieces to a buffer instead. Not yet: images (a vision alias loads without its mmproj), and isolated models.
+     * pieces to a buffer instead. Not yet: images (a vision alias loads without its mmproj). With
+     * {@code -Dfornax.isolation=process} it loads in a worker process, as {@link #isolated(String, int, int, int)} does,
+     * and a consumer of pieces runs on the calling thread instead.
      * @param gpuLayers -1 offloads every layer. @param contextSize each slot's context, in tokens (more than 0; llama.cpp
      * rounds it up to a multiple of 256)
      * @param slots 1 to 256 (llama.cpp's limit)
      */
     public LlamaModel(String ggufPath, int gpuLayers, int contextSize, int slots) {
-        this(ggufPath, null, Mode.CHAT, gpuLayers, contextSize, slots > 1 ? null : defaultWorker(ggufPath), true, slots);
+        this(ggufPath, null, Mode.CHAT, gpuLayers, contextSize, defaultWorker(ggufPath), true, slots);
     }
 
     /** The worker fornax.isolation asks for, or null for in-process. */
@@ -406,8 +408,7 @@ public final class LlamaModel implements AutoCloseable {
         this.mode = Objects.requireNonNull(mode, "mode");
         try {
             if (slots < 1) throw new IllegalArgumentException("slots must be at least 1");
-            if (slots > 1 && Isolation.configured() == Isolation.PROCESS)
-                throw new IllegalArgumentException("a model with slots runs in-process; fornax.isolation=process doesn't batch yet");
+            if (slots > 1 && mode != Mode.CHAT) throw new IllegalArgumentException("slots are for chat; " + mode + " runs one call at a time");
             if (slots > 1 && contextSize <= 0)
                 throw new IllegalArgumentException("a model with slots needs each slot's context size");
             boolean askedForMmproj = mmprojPath != null;
@@ -430,7 +431,7 @@ public final class LlamaModel implements AutoCloseable {
             Worker.Instance r = null;
             try {
                 r = worker.open(LlamaService.class.getName(),
-                        LlamaService.config(ggufPath, mmprojPath, mode, gpuLayers, contextSize));
+                        LlamaService.config(ggufPath, mmprojPath, mode, gpuLayers, contextSize, slots), slots);
                 Wire.In info = new Wire.In(r.invoke("info", null));
                 vision = info.bool();
                 embeddingSize = info.integer();
@@ -442,11 +443,14 @@ public final class LlamaModel implements AutoCloseable {
             Worker.Instance instance = r;
             remote = instance;
             handle = null;
-            this.slots = 1;
+            this.slots = slots;
             batcher = null;
-            thread = new ModelThread(name, () -> {
+            Runnable destroy = () -> {
                 try { instance.close(); } finally { if (ownsWorker) worker.close(); }
-            }, instance::cancel, null);
+            };
+            // with slots, the worker batches: as many calls go to it at once, and each stops on its own
+            thread = slots > 1 ? new ModelThread(name, slots, destroy, instance::cancel)
+                    : new ModelThread(name, destroy, instance::cancel, null);
             return;
         }
         remote = null;
@@ -542,6 +546,14 @@ public final class LlamaModel implements AutoCloseable {
         return new LlamaModel(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize, workerFor(ggufPath), true);
     }
 
+    /**
+     * {@link #isolated(String)} with slots, as {@link #LlamaModel(String, int, int, int)}: the worker batches up to
+     * {@code slots} requests at once, and they go to it together. A crash fails every request in flight.
+     */
+    public static LlamaModel isolated(String ggufPath, int gpuLayers, int contextSize, int slots) {
+        return new LlamaModel(ggufPath, null, Mode.CHAT, gpuLayers, contextSize, workerFor(ggufPath), true, slots);
+    }
+
     /** {@link #isolated(String)} loaded for chat, embeddings or reranking, as {@link #LlamaModel(String, int, int, Mode)}. */
     public static LlamaModel isolated(String ggufPath, int gpuLayers, int contextSize, Mode mode) {
         return new LlamaModel(ggufPath, null, mode, gpuLayers, contextSize, workerFor(ggufPath), true);
@@ -564,14 +576,19 @@ public final class LlamaModel implements AutoCloseable {
         return new LlamaModel(ggufPath, mmprojPath, Mode.CHAT, gpuLayers, contextSize, java.util.Objects.requireNonNull(worker), false);
     }
 
+    /** {@link #isolated(Worker, String, String, int, int)} with slots, as {@link #isolated(String, int, int, int)}. */
+    public static LlamaModel isolated(Worker worker, String ggufPath, int gpuLayers, int contextSize, int slots) {
+        return new LlamaModel(ggufPath, null, Mode.CHAT, gpuLayers, contextSize, java.util.Objects.requireNonNull(worker), false, slots);
+    }
+
     /** {@link #isolated(Worker, String, String, int, int)} loaded for chat, embeddings or reranking. */
     public static LlamaModel isolated(Worker worker, String ggufPath, int gpuLayers, int contextSize, Mode mode) {
         return new LlamaModel(ggufPath, null, mode, gpuLayers, contextSize, java.util.Objects.requireNonNull(worker), false);
     }
 
     /** In this JVM whatever fornax.isolation says: what a worker loads. */
-    static LlamaModel inProcess(String ggufPath, String mmprojPath, Mode mode, int gpuLayers, int contextSize) {
-        return new LlamaModel(ggufPath, mmprojPath, mode, gpuLayers, contextSize, null, false);
+    static LlamaModel inProcess(String ggufPath, String mmprojPath, Mode mode, int gpuLayers, int contextSize, int slots) {
+        return new LlamaModel(ggufPath, mmprojPath, mode, gpuLayers, contextSize, null, false, slots);
     }
 
     /** Whether this model runs in a worker process. */
@@ -618,6 +635,7 @@ public final class LlamaModel implements AutoCloseable {
      * About how much memory the KV cache of {@code contextTokens} tokens takes for this GGUF (F16 keys and values in
      * every layer, as llama.cpp's default), read from its header without loading it: what a model with slots adds,
      * {@code slots} times its context, besides its weights. Models with sliding-window or recurrent layers take less.
+     * It loads the engine library in this JVM, as {@link #mediaMarker()} does, even when every model is isolated.
      * @throws IllegalStateException if the file can't be read as a GGUF
      */
     public static long kvCacheBytes(String ggufPath, int contextTokens) {

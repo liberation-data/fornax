@@ -23,7 +23,7 @@ import java.util.function.Consumer;
  *
  * <p>Calls go straight to the model's own methods with the worker's {@link Call}, which the worker's ModelThread runs
  * one at a time: its token upcalls poll that Call, so a cancel from the parent stops the generation even if it arrives
- * before the generation has started.
+ * before the generation has started. A model with slots runs that many calls at once (see {@link #lanes()}).
  */
 public final class LlamaService implements WorkerService {
     private final LlamaModel model;
@@ -33,8 +33,12 @@ public final class LlamaService implements WorkerService {
         Wire.In in = new Wire.In(config);
         String gguf = in.string(), mmproj = in.string();
         Mode mode = Mode.valueOf(in.string());
-        model = LlamaModel.inProcess(gguf, mmproj, mode, in.integer(), in.integer());
+        int gpuLayers = in.integer(), contextSize = in.integer();
+        model = LlamaModel.inProcess(gguf, mmproj, mode, gpuLayers, contextSize, in.integer());
     }
+
+    /** A model with slots batches its calls: as many run at once, each stopping through its own Call. */
+    @Override public int lanes() { return model.slots(); }
 
     @Override public byte[] call(String method, byte[] args, Call call, Consumer<byte[]> events) {
         Wire.In in = new Wire.In(args == null ? new byte[0] : args);
@@ -77,8 +81,9 @@ public final class LlamaService implements WorkerService {
 
     // ---- the encoding, shared with LlamaModel's isolated side ----
 
-    static byte[] config(String gguf, String mmproj, Mode mode, int gpuLayers, int contextSize) {
-        return new Wire.Out().string(gguf).string(mmproj).string(mode.name()).integer(gpuLayers).integer(contextSize).toBytes();
+    static byte[] config(String gguf, String mmproj, Mode mode, int gpuLayers, int contextSize, int slots) {
+        return new Wire.Out().string(gguf).string(mmproj).string(mode.name()).integer(gpuLayers).integer(contextSize)
+                .integer(slots).toBytes();
     }
 
     static byte[] chatArgs(List<Message> messages, Options o, boolean stream) {

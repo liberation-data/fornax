@@ -585,6 +585,27 @@ class ModelThreadTest {
         assertEquals(3, t.lanes());
     }
 
+    /** The per-call cancel gets the running call it stops, only that one, and never a call still queued. */
+    @Test void aPerCallCancelGetsOnlyTheRunningCallItStops() throws Exception {
+        List<Call> cancelled = Collections.synchronizedList(new ArrayList<>());
+        ModelThread t = new ModelThread("lanes", 1, () -> {}, cancelled::add);
+        CompletableFuture<Call> running = new CompletableFuture<>();
+        CountDownLatch release = new CountDownLatch(1);
+        CompletableFuture<Integer> a = t.submit(c -> {
+            running.complete(c);
+            try { release.await(); } catch (InterruptedException e) { throw new RuntimeException(e); }
+            return 1;
+        });
+        Call ca = running.get(5, TimeUnit.SECONDS);
+        CompletableFuture<Integer> queued = t.submit(c -> 2);
+        queued.cancel(true);
+        assertEquals(List.of(), cancelled, "a queued call isn't the engine's to stop");
+        a.cancel(true);
+        assertEquals(List.of(ca), cancelled);
+        release.countDown();
+        t.close();
+    }
+
     @Test void aCallbackThreadCantMakeABlockingCallOrClose() throws Exception {
         ModelThread t = new ModelThread("lanes", 2, () -> {});
         CompletableFuture<Throwable> seen = new CompletableFuture<>();
