@@ -798,13 +798,13 @@ const theme = 'vitesse-dark';
                             <h2>Fast enough to build on.</h2>
                             <p>
                                 A 4B model streams about 75 tokens a second into a Java callback. A one-minute song takes 15 seconds,
-                                a minute of speech is transcribed word by word in under two, and a whole track splits into four stems in
+                                55 seconds of speech is transcribed word by word in under two, and a whole track splits into four stems in
                                 26. All from plain Java calls: no Python, no server.
                             </p>
                             <p style="font-size: 16px">
-                                Measured on our reference machine, a Ryzen AI Max+ 395 laptop on Vulkan.
-                                <a href="/docs/benchmarks/">Benchmarks</a> has the command behind every figure, and sets each against the
-                                engine’s own tool.
+                                Measured on our reference machine, a Ryzen AI Max+ 395 laptop on Vulkan. <a href="/docs/benchmarks/">Benchmarks</a> has
+                                the commands behind the chat, image and song figures, and sets them against the engine’s own tool and
+                                ComfyUI; the guides give the rest.
                             </p>
                         </div>
                         <div class="table-card">
@@ -859,7 +859,8 @@ const theme = 'vitesse-dark';
                             <h3>Your GPU, your OS.</h3>
                             <p>
                                 One Java API, and the native libraries for your platform. Vulkan and ROCm run the full test suite every
-                                night; Metal passes it on Apple silicon. Pick the backend when you add the natives.
+                                night; Metal passes it on Apple silicon. The natives jar you add picks the backend; for ROCm, build the
+                                engines yourself.
                             </p>
                         </div>
                         <div class="backends">
