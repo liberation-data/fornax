@@ -22,4 +22,10 @@ class LlamaSlotsTest {
         assertTrue(e.getMessage().contains("slots must be at least 1"), e.getMessage());
     }
 
+    /** A worker's config with slots for a mode that isn't chat (the parent never sends one) is refused as it loads. */
+    @Test void slotsAreForChatOnly() {
+        var e = assertThrows(IllegalArgumentException.class,
+                () -> new LlamaService(LlamaService.config(NONE, null, LlamaModel.Mode.EMBED, -1, 2048, 2)));
+        assertTrue(e.getMessage().contains("slots are for chat"), e.getMessage());
+    }
 }
