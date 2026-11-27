@@ -143,7 +143,13 @@ public final class Json {
                     case 't' -> b.append('\t');
                     case 'u' -> {
                         if (i + 4 > s.length()) throw error("short \\u escape");
-                        b.append((char) Integer.parseInt(s.substring(i, i + 4), 16));
+                        int u = 0;
+                        for (int k = 0; k < 4; k++) {   // four hex digits: Integer.parseInt would take a sign too
+                            int d = Character.digit(s.charAt(i + k), 16);
+                            if (d < 0 || s.charAt(i + k) > 'f') throw error("bad \\u escape");
+                            u = u << 4 | d;
+                        }
+                        b.append((char) u);
                         i += 4;
                     }
                     default -> throw error("bad escape \\" + e);
@@ -151,18 +157,38 @@ public final class Json {
             }
         }
 
+        /** A number as JSON writes one: -?(0|[1-9][0-9]*)(.[0-9]+)?([eE][+-]?[0-9]+)?. */
         Object number() {
             int start = i;
-            while (i < s.length() && "+-0123456789.eE".indexOf(s.charAt(i)) >= 0) i++;
-            String n = s.substring(start, i);
-            if (n.isEmpty()) throw error("unexpected '" + s.charAt(start) + "'");
-            try {
-                if (n.contains(".") || n.contains("e") || n.contains("E")) return Double.parseDouble(n);
-                try { return Long.parseLong(n); }
-                catch (NumberFormatException tooBig) { return Double.parseDouble(n); }  // valid JSON, past a long
-            } catch (NumberFormatException ex) {
-                throw error("bad number " + n);
+            if (i < s.length() && s.charAt(i) == '-') i++;
+            int intStart = i;
+            digits();
+            if (i == intStart) throw error(i < s.length() ? "unexpected '" + s.charAt(i) + "'" : "unexpected end");
+            if (s.charAt(intStart) == '0' && i - intStart > 1) throw error("a number with a leading 0");
+            boolean whole = true;
+            if (i < s.length() && s.charAt(i) == '.') {
+                i++;
+                if (digits() == 0) throw error("a number without digits after its '.'");
+                whole = false;
             }
+            if (i < s.length() && (s.charAt(i) == 'e' || s.charAt(i) == 'E')) {
+                i++;
+                if (i < s.length() && (s.charAt(i) == '+' || s.charAt(i) == '-')) i++;
+                if (digits() == 0) throw error("a number without digits in its exponent");
+                whole = false;
+            }
+            String n = s.substring(start, i);
+            if (whole) {
+                try { return Long.parseLong(n); }
+                catch (NumberFormatException tooBig) { /* valid JSON, past a long */ }
+            }
+            return Double.parseDouble(n);
+        }
+
+        private int digits() {
+            int from = i;
+            while (i < s.length() && s.charAt(i) >= '0' && s.charAt(i) <= '9') i++;
+            return i - from;
         }
     }
 }

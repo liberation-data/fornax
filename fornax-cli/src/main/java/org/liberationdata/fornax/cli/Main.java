@@ -38,6 +38,7 @@ public final class Main {
               speak ["text"]           text to speech (kokoro)
               transcribe <audio.wav>   speech to text (whisper-base.en)
               see <model> <image>      ask a vision model about an image (qwen3-vl-4b, ...)
+              server [-m model]...     serve models over an OpenAI-compatible HTTP API
               test <model>             load, generate a little, report speed
               info                     native libraries, Java and cache locations
 
@@ -49,9 +50,10 @@ public final class Main {
             Map.entry("pull", Pull.USAGE), Map.entry("list", Listing.USAGE), Map.entry("rm", Remove.USAGE),
             Map.entry("chat", Chat.USAGE), Map.entry("image", Image.USAGE), Map.entry("song", Song.USAGE),
             Map.entry("speak", Speak.USAGE), Map.entry("transcribe", Transcribe.USAGE), Map.entry("see", See.USAGE),
-            Map.entry("test", SmokeTest.USAGE), Map.entry("info", Info.USAGE));
+            Map.entry("server", Server.USAGE), Map.entry("test", SmokeTest.USAGE), Map.entry("info", Info.USAGE));
 
     public static void main(String[] argv) {
+        Server.httpLimits();   // before any HTTP server class loads
         System.exit(run(argv, System.out, System.err));
     }
 
@@ -72,7 +74,7 @@ public final class Main {
         String help = COMMAND_USAGE.get(cmd);
         if (help == null) { err.println("fornax: unknown command " + cmd + "\n\n" + usage()); return 2; }
         try {
-            Args a = Args.parse(rest, valueOptions(cmd), flags(cmd));
+            Args a = Args.parse(rest, valueOptions(cmd), flags(cmd), cmd.equals("server") ? Server.SHORT : Map.of());
             if (a.has("help")) { out.println(help); return 0; }
             FornaxHub hub = FornaxHub.standard();
             BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
@@ -86,6 +88,7 @@ public final class Main {
                 case "speak" -> Speak.run(a, hub, in, out, err);
                 case "transcribe" -> Transcribe.run(a, hub, out, err);
                 case "see" -> See.run(a, hub, out, err);
+                case "server" -> Server.run(a, hub, out, err);
                 case "test" -> SmokeTest.run(a, hub, out);
                 case "info" -> { noArgs(a); yield Info.run(hub, out); }
                 default -> throw new IllegalStateException(cmd);
@@ -130,6 +133,7 @@ public final class Main {
             case "speak" -> Speak.OPTIONS;
             case "transcribe" -> Transcribe.OPTIONS;
             case "see" -> See.OPTIONS;
+            case "server" -> Server.OPTIONS;
             case "test" -> SmokeTest.OPTIONS;
             default -> Set.of();
         };
@@ -141,6 +145,7 @@ public final class Main {
             case "speak" -> Speak.FLAGS;
             case "transcribe" -> Transcribe.FLAGS;
             case "see" -> See.FLAGS;
+            case "server" -> Server.FLAGS;
             default -> Set.of();
         };
     }

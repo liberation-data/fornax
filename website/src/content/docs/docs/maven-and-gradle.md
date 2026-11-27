@@ -26,6 +26,7 @@ The Java modules, each with sources and javadoc jars:
 | `fornax-yue2` | YuE2 songs (yue2.cpp) |
 | `fornax-whisper` | speech to text with word timings (whisper.cpp) |
 | `fornax-demucs` | stem separation: vocals and backing, drums, bass, ... (stems.cpp) |
+| `fornax-server` | an OpenAI-compatible HTTP server over the engines (JDK only) |
 | `fornax-core` | what they share; each engine module brings it in |
 | `fornax-bom` | the versions of all of these and the natives below, to import once |
 
