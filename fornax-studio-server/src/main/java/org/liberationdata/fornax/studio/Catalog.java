@@ -1,6 +1,7 @@
 package org.liberationdata.fornax.studio;
 
 import org.liberationdata.fornax.HfCache;
+import org.liberationdata.fornax.hub.GgufFiles;
 import org.liberationdata.fornax.llama.LlamaModel;
 
 import java.io.IOException;
@@ -20,7 +21,8 @@ import java.util.stream.Stream;
 /**
  * What in the Hugging Face cache Fornax can run, as the studio offers it:
  * <ul>
- *   <li><b>chat</b>: every GGUF language model in the cache (llama.cpp), found by scanning it;</li>
+ *   <li><b>chat</b>: every GGUF language model in the cache (llama.cpp), found by scanning it, but the speech-only models
+ *       (whose mmproj makes or transcribes audio, and doesn't also chat);</li>
  *   <li><b>image</b>, <b>song</b> and <b>video</b>: the presets the Fornax examples use (stable-diffusion.cpp, ACE-Step,
  *       YuE2, LTX-2.5), each a set of files, available when all of them are downloaded;</li>
  *   <li><b>vision</b>: the vision language models Fornax knows by name ({@link LlamaModel.Weights}), each a GGUF and its
@@ -145,6 +147,10 @@ final class Catalog {
                         }
                     }
                 }
+                // A speech model (text to speech, speech recognition, voice cloning) is a GGUF beside a projector that
+                // makes or transcribes audio; Chat can't talk to it, though its architecture may be a chat model's.
+                // An audio chat model, which hears or speaks and also chats, stays.
+                if (files.entrySet().stream().anyMatch(e -> GgufFiles.isAuxiliary(e.getKey()) && GgufHeader.onlySpeech(e.getValue()))) continue;
                 for (var e : files.entrySet()) {
                     String file = e.getKey();
                     String base = Path.of(file).getFileName().toString();
