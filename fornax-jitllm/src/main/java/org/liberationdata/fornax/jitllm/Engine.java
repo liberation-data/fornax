@@ -15,6 +15,7 @@ import org.beehive.jitllm.api.ModelOptions;
 import org.beehive.jitllm.api.SessionOptions;
 import org.beehive.jitllm.api.TextGenerationModel;
 import org.beehive.jitllm.api.ThinkingMode;
+import java.nio.charset.StandardCharsets;
 import org.liberationdata.fornax.Call;
 import org.liberationdata.fornax.llama.LlamaModel.Message;
 
@@ -38,8 +39,8 @@ final class Engine implements AutoCloseable {
     private final int contextLength;             // tokens: the one asked for, else the model's own
     private final boolean opensInside;           // the prompt opens a think block, so replies start inside it
     private final boolean thinkingControl;       // the model's template can turn thinking on and off
-    private GenerationSession session;           // chat, or null; opened for sessionThinking
-    private boolean sessionThinking = true;      // false: the session was opened with thinking disabled
+    private GenerationSession session;           // chat, or null; opened with sessionThinking
+    private boolean sessionThinking;             // the session thinks (for a model with thinking control)
     private volatile CancellationToken running;  // the call in progress, or null
 
     Engine(Path gguf, int contextSize, boolean embed) {
@@ -47,7 +48,7 @@ final class Engine implements AutoCloseable {
         if (contextSize > 0) options.contextLength(contextSize);
         try { model = LocalModels.load(gguf, options.build()); }
         catch (IOException e) { throw new UncheckedIOException(gguf + ": " + e.getMessage(), e); }
-        catch (RuntimeException e) { throw outOfMemory(e); }
+        catch (RuntimeException e) { throw unsupported(outOfMemory(e)); }
         try {
             if (!(model instanceof TextGenerationModel t))
                 throw new IllegalArgumentException(gguf + " isn't a language model jitllm can generate with");
@@ -57,7 +58,7 @@ final class Engine implements AutoCloseable {
             opensInside = model.info().architecture().toLowerCase(Locale.ROOT).startsWith("deepseek_r1");
             thinkingControl = model.info().capabilities().thinkingControl();
             embeddings = embed ? EmbeddingSession.open(t) : null;
-            session = embed ? null : t.newSession();
+            session = embed ? null : open(true);
         } catch (RuntimeException e) {
             model.close();
             throw outOfMemory(e);
@@ -104,28 +105,42 @@ final class Engine implements AutoCloseable {
     /**
      * The session for a request's thinking: the one open, else (for a model whose template turns thinking on and off,
      * when a request asks for the other setting) a new one in its place. One session at a time: a second would
-     * reserve a second context's memory.
+     * reserve a second context's memory, while a switch costs well under a second (0.7 s for Qwen3 0.6B on an M4 Pro).
      */
     private GenerationSession session(Boolean thinking) {
-        boolean want = thinking == null || thinking || !thinkingControl;
-        if (session != null && want == sessionThinking) return session;
+        boolean want = !Boolean.FALSE.equals(thinking);   // on unless the request turns it off, as llama.cpp
+        if (session != null && (want == sessionThinking || !thinkingControl)) return session;
         if (session != null) session.close();
         session = null;   // until one opens: a failure leaves none, and the next call tries again
-        try {
-            session = want ? text.newSession()
-                    : text.newSession(SessionOptions.builder().thinkingMode(ThinkingMode.DISABLED).build());
-        } catch (RuntimeException e) { throw outOfMemory(e); }
-        sessionThinking = want;
+        session = open(want);
         return session;
     }
 
-    /** One embedding per text; a text longer than the context is a bad request, as it is for llama.cpp. */
+    /**
+     * A chat session: for a model whose template turns thinking on and off, thinking as asked (on by default, as
+     * llama.cpp's {@code enable_thinking}); for any other, the model's own.
+     */
+    private GenerationSession open(boolean thinking) {
+        try {
+            GenerationSession s = !thinkingControl ? text.newSession() : text.newSession(SessionOptions.builder()
+                    .thinkingMode(thinking ? ThinkingMode.ENABLED : ThinkingMode.DISABLED).build());
+            sessionThinking = thinking;
+            return s;
+        } catch (RuntimeException e) { throw outOfMemory(e); }
+    }
+
+    /**
+     * One embedding per text; a text longer than the context is a bad request ({@code rc=2}), as it is for llama.cpp.
+     * A text is tokenized for the check only when it could be too long: a token is at least one byte of it.
+     */
     float[][] embed(List<String> texts) {
         int room = Math.max(1, contextLength - 5);   // EmbeddingSession's own room: the end-of-text token and a margin
         for (int i = 0; i < texts.size(); i++) {
-            int n = embeddings.tokens(texts.get(i)).size();
+            String t = texts.get(i);
+            if (t.length() <= room && t.getBytes(StandardCharsets.UTF_8).length <= room) continue;
+            int n = embeddings.tokens(t).size();
             if (n > room)
-                throw new IllegalStateException("input " + i + " is " + n + " tokens, more than the context holds ("
+                throw new IllegalStateException("jitllm (rc=2): input " + i + " is " + n + " tokens, more than the context holds ("
                         + contextLength + " tokens)");
         }
         try { return embeddings.embedAll(texts).toArray(float[][]::new); }
@@ -154,13 +169,25 @@ final class Engine implements AutoCloseable {
     static RuntimeException outOfMemory(RuntimeException e) {
         for (Throwable t = e; t != null; t = t.getCause()) {
             if (t instanceof InsufficientDeviceMemoryException) {
-                String budget = System.getProperty("tornado.device.memory", TornadoJvm.DEVICE_MEMORY);
-                return new IllegalStateException("jitllm ran out of GPU memory (TornadoVM's budget is " + budget
+                String budget = System.getProperty("tornado.device.memory");   // a worker always has one
+                return new IllegalStateException("jitllm ran out of GPU memory ("
+                        + (budget == null ? "TornadoVM's default budget" : "TornadoVM's budget is " + budget)
                         + "): set -Dtornado.device.memory=<N>GB on the JVM that runs Fornax, or use a smaller context or "
                         + "quantization", e);
             }
         }
         return e;
+    }
+
+    /**
+     * A file jitllm has no model for (a vision or embedding-only architecture, say) as a bad request ({@code rc=7}):
+     * jitllm says so before it allocates anything.
+     */
+    static RuntimeException unsupported(RuntimeException e) {
+        String m = String.valueOf(e.getMessage());
+        return e instanceof IllegalStateException && m.contains("GPUL-MOD-002")
+                ? ChatJson.badRequest(m.substring(m.indexOf(']') + 1).strip() + "; vision models run on llama.cpp")
+                : e;
     }
 
     /** OpenAI's finish reasons: "length" when the reply was cut short, else "stop". */

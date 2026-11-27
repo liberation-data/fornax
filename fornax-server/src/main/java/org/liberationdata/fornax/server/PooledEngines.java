@@ -204,6 +204,13 @@ final class PooledEngines implements Engines {
      * A failure the request caused (rc 2: the prompt is longer than the context; 6: a bad schema; 7: bad input) as a
      * 400; a prompt too long has OpenAI's {@code context_length_exceeded} code, which clients check to trim a conversation.
      */
+    /** An engine's message without its "engine (rc=N): " prefix. */
+    static String withoutCode(IllegalStateException e) {
+        String m = String.valueOf(e.getMessage());
+        int at = m.indexOf("): ");
+        return at < 0 ? m : m.substring(at + 3);
+    }
+
     static RuntimeException engineError(IllegalStateException e) {
         Matcher m = RC.matcher(String.valueOf(e.getMessage()));
         if (m.find() && Set.of("2", "6", "7").contains(m.group(1))) {
@@ -219,9 +226,15 @@ final class PooledEngines implements Engines {
     @Override public float[][] embed(String model, List<String> texts) {
         Found f = find(model, Use.EMBED, true);
         try (ModelPool.Lease<AutoCloseable> lease = lease(f)) {
-            try {
-                return lease.model() instanceof JitLlmModel j ? j.embed(texts) : ((LlamaModel) lease.model()).embed(texts);
+            if (lease.model() instanceof JitLlmModel j) {
+                // only a text longer than the context is the request's fault; running out of GPU memory isn't
+                try { return j.embed(texts); }
+                catch (IllegalStateException e) {
+                    if (RC.matcher(String.valueOf(e.getMessage())).find()) throw ApiError.badRequest(withoutCode(e), "input");
+                    throw e;
+                }
             }
+            try { return ((LlamaModel) lease.model()).embed(texts); }
             catch (IllegalStateException e) { throw ApiError.badRequest(e.getMessage(), "input"); }   // a text longer than the context
         }
     }
@@ -429,9 +442,16 @@ final class PooledEngines implements Engines {
     }
 
     private AutoCloseable load(Found f) {
-        if (jitllm && (f.use() == Use.CHAT || f.use() == Use.EMBED))
-            return new JitLlmModel(f.file("gguf").toString(), contextSize,
-                    f.use() == Use.EMBED ? JitLlmModel.Mode.EMBED : JitLlmModel.Mode.CHAT);
+        if (jitllm && (f.use() == Use.CHAT || f.use() == Use.EMBED)) {
+            try {
+                return new JitLlmModel(f.file("gguf").toString(), contextSize,
+                        f.use() == Use.EMBED ? JitLlmModel.Mode.EMBED : JitLlmModel.Mode.CHAT);
+            } catch (IllegalStateException e) {
+                // a file jitllm has no model for (a vision GGUF named by path or reference): the request's to fix
+                if (String.valueOf(e.getMessage()).contains("(rc=7)")) throw ApiError.badRequest(f.id() + ": " + withoutCode(e), "model");
+                throw e;
+            }
+        }
         int slots = slots(f);
         if (slots > 1) return new LlamaModel(f.file("gguf").toString(), -1, contextSize, slots);
         return switch (f.use()) {

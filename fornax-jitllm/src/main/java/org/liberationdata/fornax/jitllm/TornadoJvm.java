@@ -42,15 +42,17 @@ public final class TornadoJvm {
     }
 
     /**
-     * The SDK's argfile: its own {@code tornado-argfile}, else one written from {@code tornado-argfile.template} (as
-     * the SDK's {@code tornado} launcher does) into this user's cache directory, as the SDK may not be writable. The
-     * worker's JVM options come from it, so it is created readable by this user only.
+     * The worker's argfile: the SDK's own {@code tornado-argfile}, else one written from
+     * {@code tornado-argfile.template} (as the SDK's {@code tornado} launcher does), without the working directory
+     * TornadoVM puts first on the module path (see {@link #withoutWorkingDirectory}). It is written into this user's
+     * cache directory, as the SDK may not be writable, and created readable by this user only, as the worker's JVM
+     * options come from it.
      */
     static Path argfile(Path home) {
-        Path argfile = home.resolve("tornado-argfile");
-        if (Files.isRegularFile(argfile)) return argfile;
+        Path own = home.resolve("tornado-argfile");
         try {
-            String text = expand(Files.readString(home.resolve("tornado-argfile.template"), StandardCharsets.UTF_8), home);
+            String text = withoutWorkingDirectory(Files.isRegularFile(own) ? Files.readString(own, StandardCharsets.UTF_8)
+                    : expand(Files.readString(home.resolve("tornado-argfile.template"), StandardCharsets.UTF_8), home));
             Path dir = privateDirectory(cacheRoot().resolve("tornadovm"));
             Path out = dir.resolve("tornado-argfile-" + Integer.toHexString(home.toString().hashCode()));
             Path tmp = Files.createTempFile(dir, "argfile", ".tmp");
@@ -82,6 +84,18 @@ public final class TornadoJvm {
             }
         }
         return out.toString();
+    }
+
+    private static final java.util.regex.Pattern WORKING_DIRECTORY =
+            java.util.regex.Pattern.compile("(?m)((?:--module-path|-p)(?:[ \\t]+|=)\"?)\\.[:;]");
+
+    /**
+     * The argfile without the {@code .} TornadoVM puts first on {@code --module-path}: the worker starts in the
+     * application's working directory, and every jar there would be read as a module as it boots, so a stray or
+     * duplicate one (an app run from its lib directory) would stop the worker starting.
+     */
+    static String withoutWorkingDirectory(String argfile) {
+        return WORKING_DIRECTORY.matcher(argfile).replaceAll("$1");
     }
 
     /** The user's Fornax cache directory, as fornax-core's natives cache finds it. */

@@ -67,9 +67,15 @@ class JitLlmModelGpuTest {
         try (var llm = new JitLlmModel(thinker, 2048)) {
             String ask = "{\"messages\": [{\"role\": \"user\", \"content\": \"What is 17*3?\"}], \"temperature\": 0, \"max_tokens\": 600";
             Object on = Json.parse(llm.chatJson(ask + "}", null));
+            long t0 = System.nanoTime();
             Object off = Json.parse(llm.chatJson(ask + ", \"enable_thinking\": false}", null));
+            long t1 = System.nanoTime();
+            Object offAgain = Json.parse(llm.chatJson(ask + ", \"enable_thinking\": false}", null));
+            long t2 = System.nanoTime();
             Object onAgain = Json.parse(llm.chatJson(ask + ", \"enable_thinking\": true}", null));
+            System.out.printf("thinking off after on: %.2fs (session switch), off again: %.2fs%n", (t1 - t0) / 1e9, (t2 - t1) / 1e9);
             System.out.println("thinking on: " + on + "\nthinking off: " + off);
+            assertEquals(Json.get(off, "message", "content"), Json.get(offAgain, "message", "content"));
             assertFalse(((String) Json.get(on, "message", "reasoning_content")).isBlank());
             assertTrue(Json.get(off, "message", "reasoning_content") == null
                     || ((String) Json.get(off, "message", "reasoning_content")).isBlank(), off.toString());
@@ -77,6 +83,22 @@ class JitLlmModelGpuTest {
             assertTrue(((String) Json.get(off, "message", "content")).contains("51"), off.toString());
             assertFalse(((String) Json.get(onAgain, "message", "reasoning_content")).isBlank());
         }
+    }
+
+    @Test void aFileJitllmHasNoModelForIsABadRequest(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+        java.nio.file.Path gguf = dir.resolve("vision.gguf");   // a GGUF whose architecture jitllm doesn't run
+        java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+        java.nio.ByteBuffer h = java.nio.ByteBuffer.allocate(64).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        h.put("GGUF".getBytes()).putInt(3).putLong(0).putLong(1);
+        b.write(h.array(), 0, h.position());
+        byte[] key = "general.architecture".getBytes(), value = "clip".getBytes();
+        java.nio.ByteBuffer kv = java.nio.ByteBuffer.allocate(64).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        kv.putLong(key.length).put(key).putInt(8).putLong(value.length).put(value);
+        b.write(kv.array(), 0, kv.position());
+        java.nio.file.Files.write(gguf, b.toByteArray());
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> new JitLlmModel(gguf.toString(), 256).close());
+        System.out.println("unsupported: " + e.getMessage());
+        assertTrue(e.getMessage().contains("(rc=7)") && e.getMessage().contains("clip"), e.getMessage());
     }
 
     @Test void cancelStopsAGeneration() throws Exception {
