@@ -13,6 +13,7 @@ timing; the backing is a karaoke track or a bed for a new vocal. The class is `D
 hf download thepatch/htdemucs-GGUF htdemucs-42M-v1.0-F32.gguf
 ```
 
+<!-- snippet: StemSeparation#separate -->
 ```java
 import org.liberationdata.fornax.Audio;
 import org.liberationdata.fornax.demucs.DemucsModel;
@@ -63,6 +64,7 @@ The demucs code and weights are MIT licensed. Any other stems.cpp GGUF loads by 
 
 ## Options
 
+<!-- snippet: StemSeparation#options -->
 ```java
 var options = DemucsModel.Options.DEFAULT
         .withShifts(2)       // average 2 randomly time-shifted passes (demucs --shifts): a little cleaner, 2x the time
@@ -78,6 +80,7 @@ to load its GPU build there ([Fornax says it found no GPU](/docs/gpu-drivers/#fo
 
 A progress callback hears `done` of `total` segment passes, on the calling thread:
 
+<!-- snippet: StemSeparation#progress -->
 ```java
 Stems s = demucs.separate(audio, DemucsModel.Options.DEFAULT,
         (done, total) -> System.out.printf("%d/%d%n", done, total));

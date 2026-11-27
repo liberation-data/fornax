@@ -1,7 +1,8 @@
 # Publishes Fornax to Maven Central as org.fornax4j:*: the Java modules (fornax-core, fornax-llama, fornax-tts, fornax-sd,
 # fornax-acestep, fornax-yue2, fornax-whisper, fornax-demucs), the fornax command (fornax-cli, which JBang runs) and one natives jar per platform and backend (fornax-natives-<os>-<arch>-<backend>).
 #
-# On a published GitHub Release tagged v<version> (v0.1.0 publishes 0.1.0). Run by hand for a dry run, which builds
+# On a published GitHub Release tagged v<version> (v0.1.0 publishes 0.1.0). The upload waits for a maintainer to
+# approve it in the `release` environment. Run by hand for a dry run, which builds
 # and signs every jar exactly as a release does, and stops before the upload; the signed repository is left as an
 # artifact to look through. A run by hand that isn't a dry run must be on a v* tag.
 # After a release, verify-central waits for repo1.maven.org to serve it and builds samples/hello-fornax from there.
@@ -170,6 +171,9 @@ jobs:
     needs: [version, natives]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    # A real release waits in the `release` environment for a maintainer to approve the upload; it allows main and v* tags.
+    # A dry run uploads nothing, so it skips the environment and needs no approval.
+    environment: ${{ needs.version.outputs.dry_run != 'true' && 'release' || '' }}
     env:
       VERSION: ${{ needs.version.outputs.version }}
       DRY_RUN: ${{ needs.version.outputs.dry_run }}

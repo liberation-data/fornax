@@ -12,6 +12,7 @@ and unloads the ones used least recently when it needs room.
 
 ## Borrowing a model
 
+<!-- snippet: ModelPoolGuide#pool -->
 ```java
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.ModelPool;
@@ -57,6 +58,7 @@ The size you pass is your estimate of the memory a model uses. `ModelPool.sizeOf
 weight files, which is a reasonable estimate of what loading them takes. Add a margin for large contexts or large images if you need
 to.
 
+<!-- snippet: ModelPoolGuide#mixed -->
 ```java
 import org.liberationdata.fornax.sd.DiffusionModel;
 
@@ -74,6 +76,7 @@ Any `AutoCloseable` can go in a pool, so the same pool can hold your own resourc
 
 ## Looking inside, and letting go
 
+<!-- snippet: ModelPoolGuide#entries -->
 ```java
 for (ModelPool.Entry e : pool.entries()) {
     System.out.printf("%s: %d MB, loaded=%s, inUse=%s, last used %s%n",

@@ -14,6 +14,7 @@ The request formats are the engines' own, so their READMEs are the full referenc
 ACE-Step is four models working together: a 5 Hz language model that plans the song (metadata, lyrics and audio
 codes), a text encoder, a DiT that generates the audio, and a VAE that decodes it.
 
+<!-- snippet: Songs#acestep -->
 ```java
 import org.liberationdata.fornax.acestep.AceStepModel;
 
@@ -43,6 +44,7 @@ hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Emb
 
 To pick each file yourself, pass the four, as paths or [model references](/docs/guides/models/#by-reference):
 
+<!-- snippet: Songs#acestep-files -->
 ```java
 String repo = "Serveurperso/ACE-Step-1.5-GGUF";
 try (var songs = new AceStepModel(repo + ":acestep-5Hz-lm-1.7B-Q8_0.gguf", repo + ":Qwen3-Embedding-0.6B-Q8_0.gguf",
@@ -79,6 +81,7 @@ back with the song, and yue2.cpp can take an edited one back in its request (as 
 YuE2's weights are CC BY-NC 4.0: no commercial use of what it makes.
 :::
 
+<!-- snippet: Songs#yue2 -->
 ```java
 import org.liberationdata.fornax.yue2.Yue2Model;
 

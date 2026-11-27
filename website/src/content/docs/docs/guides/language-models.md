@@ -9,6 +9,7 @@ Gemma, Mistral and the rest. The class is `LlamaModel`. The same class embeds te
 
 ## Load a model
 
+<!-- snippet: LanguageModels#load -->
 ```java
 import org.liberationdata.fornax.llama.LlamaModel;
 
@@ -44,6 +45,7 @@ use `chatAsync`, `chatJsonAsync` and `extractAsync`, which return a `Completable
 
 ## Chat
 
+<!-- snippet: LanguageModels#chat -->
 ```java
 import org.liberationdata.fornax.llama.LlamaModel.Message;
 import org.liberationdata.fornax.llama.LlamaModel.Options;
@@ -75,6 +77,7 @@ context: send the whole conversation every time, with earlier replies as `Messag
 | `minP` | 0.05 | min-p sampling |
 | `seed` | -1 | -1 means random |
 
+<!-- snippet: LanguageModels#options -->
 ```java
 Options exact = Options.DEFAULT.withTemperature(0).withMaxTokens(1024);   // greedy, for repeatable answers
 Options again = Options.DEFAULT.withSeed(42);                           // sampled, but the same each run
@@ -86,6 +89,7 @@ Options custom = new Options(256, 0.8f, 0.95f, 0.05f, 7);              // every 
 Pass a `Consumer<String>` and each piece of text arrives as soon as it is generated. The call still returns the whole
 `Result` at the end.
 
+<!-- snippet: LanguageModels#stream -->
 ```java
 llm.chat(List.of(Message.user("Write a haiku about a fornax.")), Options.DEFAULT, System.out::print);
 ```
@@ -97,6 +101,7 @@ thread, with a bounded buffer, use `chatAsync(messages, options, subscriber)` (s
 To stop early, call `cancel()` from any other thread (or from the callback). The generation stops after the current
 token and the call returns what it has so far. It works with or without a callback.
 
+<!-- snippet: LanguageModels#cancel -->
 ```java
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -118,6 +123,7 @@ try {
 (Jinja) chat template and parses its reply with the same code as `llama-server`, so it understands tool calls and
 reasoning in each model's own format.
 
+<!-- snippet: LanguageModels#chat-json -->
 ```java
 String reply = llm.chatJson("""
         {"messages": [{"role": "user", "content": "Say hello in French."}],
@@ -162,6 +168,7 @@ Fornax has no JSON library of its own on `main`; the examples below use Jackson,
 Put a JSON Schema at the top level of the request, under `json_schema`. llama.cpp turns it into a grammar, so the
 model can only produce JSON that fits.
 
+<!-- snippet: LanguageModels#json-schema -->
 ```java
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -192,6 +199,7 @@ Describe your tools in OpenAI's format. When the model wants one, the reply's `f
 `message.tool_calls` says which function to call with which arguments. Run it, add the model's message and your
 result to the conversation, and ask again.
 
+<!-- snippet: LanguageModels#tool-calls -->
 ```java
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -236,6 +244,7 @@ do best with few tools and clear descriptions.
 `complete` skips the chat template and continues the text you give it exactly as written. Use it for base models, or
 when you format the prompt yourself.
 
+<!-- snippet: LanguageModels#complete -->
 ```java
 Result r = llm.complete("The three most common glazes for stoneware are", Options.DEFAULT.withMaxTokens(64), null);
 ```
