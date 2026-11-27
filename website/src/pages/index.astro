@@ -436,7 +436,7 @@ const theme = 'vitesse-dark';
             .cmd { display: inline-block; padding: 12px 16px; border-radius: 10px; background: #120a06; border: 1px solid #3a2519; color: #fff; font-size: 15px; }
             .cmd::before { content: '$ '; color: var(--accent); }
 
-            .how { padding: 96px 32px; }
+            .how { padding: 96px 32px; background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
             .how header { max-width: 820px; display: flex; flex-direction: column; gap: 16px; margin-bottom: 40px; }
             .how header p:not(.eyebrow) { margin: 0; font-size: 18px; line-height: 1.65; color: var(--muted); }
             .feature { display: flex; flex-direction: column; gap: 12px; }
@@ -799,13 +799,13 @@ const theme = 'vitesse-dark';
                             <div class="backends">
                                 <span class="ok">Vulkan <small>tested</small></span>
                                 <span>ROCm (HIP) <small>builds</small></span>
+                                <span class="ok">Metal <small>tested</small></span>
                                 <span>CUDA <small>untested</small></span>
-                                <span>Metal <small>untested</small></span>
                             </div>
                             <p style="font-size: 16px">
                                 The build script knows the ROCm, CUDA and Metal backends of the underlying engines. HIP has run LTX video
-                                on the same machine, faster than Vulkan; the CUDA and Metal builds haven’t been tested yet. Reports and
-                                fixes welcome.
+                                on the same machine, faster than Vulkan. Metal passes the test suite on an Apple M2 Max (songs, video and
+                                Intel Macs not run yet); the CUDA build hasn’t been tested yet. Reports and fixes welcome.
                             </p>
                         </div>
                         <div class="table-card">
