@@ -19,6 +19,7 @@ holds a model or two, a plain model or a [ModelPool](/docs/guides/model-pool/) i
 
 ## Serving a model
 
+<!-- snippet: DispatchGuide#dispatch -->
 ```java
 import org.liberationdata.fornax.Dispatch;
 import org.liberationdata.fornax.Dispatch.QoS;
@@ -44,6 +45,7 @@ A request gets the model to itself. The worker runs nothing else meanwhile.
   the future that `body` returns completes, and then gives the model back. Use the model's async methods in the body,
   so its streaming and cancel work as they always do:
 
+  <!-- snippet: DispatchGuide#submit -->
   ```java
   qwen.submit(QoS.INTERACTIVE, llm -> llm.chatAsync(messages, options, subscriber));   // Flow streaming
   qwen.submit(QoS.BATCH, llm -> llm.extractAsync(messages, schema, options));
@@ -115,6 +117,7 @@ retry the failed request, because its stream may already have gone to the caller
 
 ## Looking inside
 
+<!-- snippet: DispatchGuide#stats -->
 ```java
 for (Dispatch.Entry e : dispatch.entries())          // least recently used first
     System.out.printf("%s in worker %d (pid %d), inUse=%s%n", e.key(), e.worker(), dispatch.worker(e.worker()).pid(), e.inUse());
