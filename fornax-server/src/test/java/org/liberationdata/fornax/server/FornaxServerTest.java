@@ -190,7 +190,7 @@ class FornaxServerTest {
     }
 
     @Test void imagesGoToAVisionModelOnly() throws Exception {
-        String png = Base64.getEncoder().encodeToString(new byte[]{1, 2, 3});
+        String png = ChatRequestTest.png(2, 2);
         String msg = "[{\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"What is it?\"}, "
                 + "{\"type\": \"image_url\", \"image_url\": {\"url\": \"data:image/png;base64," + png + "\"}}]}]";
         assertEquals(200, post("/v1/chat/completions", "{\"model\": \"vision\", \"messages\": " + msg + "}").statusCode());
@@ -297,6 +297,10 @@ class FornaxServerTest {
         assertEquals("Hello|alloy|1.5", engines.requests.get(0));
         assertEquals(400, post("/v1/audio/speech", "{\"input\": \"Hello\", \"response_format\": \"mp3\"}").statusCode());
         assertEquals(400, post("/v1/audio/speech", "{\"input\": \"\"}").statusCode());
+        var tooLong = post("/v1/audio/speech", "{\"input\": \"" + "a".repeat(FornaxServer.MAX_SPEECH_INPUT + 1) + "\"}");
+        assertEquals(400, tooLong.statusCode());
+        assertEquals("input", get(json(tooLong), "error", "param"));
+        assertEquals(200, post("/v1/audio/speech", "{\"input\": \"" + "\u00e9".repeat(FornaxServer.MAX_SPEECH_INPUT) + "\"}").statusCode());
     }
 
     @Test void transcriptions() throws Exception {

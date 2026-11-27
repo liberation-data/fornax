@@ -452,9 +452,14 @@ public final class FornaxServer implements AutoCloseable {
 
     // ---- /v1/audio ----
 
+    /** The most characters {@code /v1/audio/speech} speaks in one request, as OpenAI's. */
+    static final int MAX_SPEECH_INPUT = 4096;
+
     private void speech(HttpExchange ex) throws IOException {
         Map<String, Object> body = Json.object(body(ex));
         if (!(body.get("input") instanceof String input) || input.isBlank()) throw ApiError.badRequest("input is required", "input");
+        if (input.codePointCount(0, input.length()) > MAX_SPEECH_INPUT)   // as OpenAI: speech is one request's text, not a book's
+            throw ApiError.badRequest("input can be at most " + MAX_SPEECH_INPUT + " characters; split longer text", "input");
         String model = ChatRequest.model(body, engines.defaultModel(Use.SPEECH));
         Object format = body.get("response_format");
         if (format != null && !"wav".equals(format)) throw ApiError.badRequest("response_format must be wav", "response_format");

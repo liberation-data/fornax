@@ -1,6 +1,11 @@
 package org.liberationdata.fornax.server;
 
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,18 +28,24 @@ record ChatRequest(String model, String engineJson, boolean stream, boolean incl
 
     /** Message content part types the engine reads. */
     private static final Set<String> PARTS = Set.of("text", "image_url");
+    /**
+     * The most pixels a request's images may have in all (8192 x 8192): the engine decodes each to RGB before scaling it
+     * down, and a small compressed image can say it is enormous.
+     */
+    static final long MAX_PIXELS = 1L << 26;
 
     /** {@code body} as a request for chatJson; {@code defaultModel} (or null) when it names none. */
     static ChatRequest of(Map<String, Object> body, String defaultModel) {
         String model = model(body, defaultModel);
         List<Object> messages = Json.list(body.get("messages"));
         if (messages == null || messages.isEmpty()) throw ApiError.badRequest("messages must be a non-empty array", "messages");
-        boolean images = false;
+        long[] pixels = {0};
         for (Object m : messages) {
             Map<String, Object> msg = Json.map(m);
             if (msg == null || !(msg.get("role") instanceof String)) throw ApiError.badRequest("each message needs a role", "messages");
-            images |= images(msg);
+            images(msg, pixels);
         }
+        boolean images = pixels[0] > 0;
         Object n = body.get("n");
         if (n != null && !(n instanceof Long l && l == 1)) throw ApiError.badRequest("n must be 1: Fornax makes one choice a request", "n");
 
@@ -87,11 +98,10 @@ record ChatRequest(String model, String engineJson, boolean stream, boolean incl
         return model;
     }
 
-    /** Whether the message has image parts, after checking its content parts are ones the engine reads. */
-    private static boolean images(Map<String, Object> msg) {
+    /** Checks the message's content parts are ones the engine reads, adding its images' pixels to {@code pixels[0]}. */
+    private static void images(Map<String, Object> msg, long[] pixels) {
         List<Object> parts = Json.list(msg.get("content"));
-        if (parts == null) return false;
-        boolean images = false;
+        if (parts == null) return;
         for (Object p : parts) {
             Object type = org.liberationdata.fornax.Json.get(p, "type");
             if (!(type instanceof String t) || !PARTS.contains(t))
@@ -100,10 +110,30 @@ record ChatRequest(String model, String engineJson, boolean stream, boolean incl
                 Object url = org.liberationdata.fornax.Json.get(p, "image_url", "url");
                 if (!(url instanceof String u) || !u.startsWith("data:") || !u.contains(";base64,"))
                     throw ApiError.badRequest("image_url must be a base64 data: URI (data:image/png;base64,...); the server doesn't fetch URLs", "messages");
-                images = true;
+                pixels[0] += pixels(u.substring(u.indexOf(";base64,") + 8));
+                if (pixels[0] > MAX_PIXELS)
+                    throw ApiError.badRequest("the images can have at most " + MAX_PIXELS / 1_000_000 + " megapixels in all; scale them down", "messages");
             }
         }
-        return images;
+    }
+
+    /** An image_url's width times height, read from its header (it isn't decoded here); a 400 for one that isn't an image. */
+    static long pixels(String base64) {
+        byte[] bytes;
+        try { bytes = Base64.getDecoder().decode(base64.replaceAll("\\s", "").replace('-', '+').replace('_', '/')); }
+        catch (IllegalArgumentException e) { throw ApiError.badRequest("an image_url's data isn't valid base64", "messages"); }
+        try (var in = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
+            var readers = in == null ? null : ImageIO.getImageReaders(in);
+            if (readers != null && readers.hasNext()) {
+                ImageReader r = readers.next();
+                try {
+                    r.setInput(in, true, true);
+                    long px = (long) r.getWidth(0) * r.getHeight(0);
+                    if (px > 0) return px;
+                } finally { r.dispose(); }
+            }
+        } catch (IOException | RuntimeException e) { /* not an image it can read: said below */ }
+        throw ApiError.badRequest("an image_url isn't a PNG, JPEG, GIF or BMP image", "messages");
     }
 
     /** response_format as the engine's json_schema, or null for plain text. */

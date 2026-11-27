@@ -63,7 +63,7 @@ tool-call format, with llama-server's templates and parsers. A request takes:
 - `stream: true`: server-sent events in OpenAI's chunk format, ending with `data: [DONE]`;
   `stream_options: {"include_usage": true}` adds the token counts in a last chunk
 - images, for a vision model (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`): `image_url` content parts with a base64
-  `data:` URI; the server doesn't fetch URLs
+  `data:` URI of a PNG, JPEG, GIF or BMP, up to 67 megapixels (8192 x 8192) in all a request; the server doesn't fetch URLs
 - `chat_template_kwargs: {"enable_thinking": false}` turns a reasoning model's thinking off
 
 A reasoning model's thinking comes back in `reasoning_content`, apart from `content`. When streaming, the content
@@ -99,7 +99,7 @@ server keeps no files, so `response_format: "url"` is refused.
 
 ### Speech and transcription
 
-`/v1/audio/speech` speaks `input` with `kokoro` unless `model` names another speech alias. `voice` is one of the
+`/v1/audio/speech` speaks `input` (up to 4096 characters, as OpenAI's) with `kokoro` unless `model` names another speech alias. `voice` is one of the
 model's voices (`fornax speak --list-voices`); OpenAI's voice names (`alloy`, `nova`, ...) get the model's default.
 The reply is a WAV, so ask for `response_format: "wav"` (an OpenAI client asking for MP3 gets an error).
 

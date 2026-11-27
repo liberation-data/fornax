@@ -2,7 +2,13 @@ package org.liberationdata.fornax.server;
 
 import org.junit.jupiter.api.Test;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.util.Base64;
 import java.util.List;
+import java.util.zip.CRC32;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -72,7 +78,7 @@ class ChatRequestTest {
         assertEquals(List.of(), of("{" + MSG + ", \"stop\": null}").stops());
         assertFalse(of("{" + MSG + "}").images());
         assertTrue(of("{\"messages\": [{\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"?\"}, "
-                + "{\"type\": \"image_url\", \"image_url\": {\"url\": \"data:image/jpeg;base64,AAAA\"}}]}]}").images());
+                + "{\"type\": \"image_url\", \"image_url\": {\"url\": \"data:image/png;base64," + png(2, 2) + "\"}}]}]}").images());
         assertThrows(ApiError.class, () -> of("{\"messages\": [{\"role\": \"user\", \"content\": [{\"type\": \"input_audio\"}]}]}"));
     }
 
@@ -86,5 +92,44 @@ class ChatRequestTest {
         assertDoesNotThrow(() -> of("{" + MSG + ", \"n\": 1}"));
         ApiError none = assertThrows(ApiError.class, () -> ChatRequest.of(Json.object("{" + MSG + "}"), null));
         assertEquals("model", none.param);
+    }
+
+    /** A real PNG this size, as base64. */
+    static String png(int w, int h) {
+        var out = new ByteArrayOutputStream();
+        try { ImageIO.write(new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB), "png", out); }
+        catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
+        return Base64.getEncoder().encodeToString(out.toByteArray());
+    }
+
+    /** A PNG's signature and header alone, saying it is this size: a few bytes that would decode to w x h pixels. */
+    static String pngHeader(int w, int h) {
+        ByteBuffer ihdr = ByteBuffer.allocate(17).put("IHDR".getBytes()).putInt(w).putInt(h).put(new byte[]{8, 2, 0, 0, 0});
+        CRC32 crc = new CRC32();
+        crc.update(ihdr.array());
+        ByteBuffer b = ByteBuffer.allocate(8 + 4 + 17 + 4).put(new byte[]{(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
+                .putInt(13).put(ihdr.array()).putInt((int) crc.getValue());
+        return Base64.getEncoder().encodeToString(b.array());
+    }
+
+    static String withImages(String... base64) {
+        var parts = new StringBuilder("{\"type\": \"text\", \"text\": \"?\"}");
+        for (String b : base64) parts.append(", {\"type\": \"image_url\", \"image_url\": {\"url\": \"data:image/png;base64,").append(b).append("\"}}");
+        return "{\"messages\": [{\"role\": \"user\", \"content\": [" + parts + "]}]}";
+    }
+
+    @Test void imagesAreCheckedBeforeTheEngineDecodesThem() {
+        assertTrue(of(withImages(png(4, 3))).images());
+        assertTrue(of(withImages(pngHeader(4096, 4096))).images(), "the header is enough");
+        String mime = png(4, 3).replaceAll("(.{8})", "$1\\\\n");   // line breaks, as a MIME encoder writes it
+        assertTrue(of(withImages(mime)).images());
+        for (String bad : List.of("%%%%", Base64.getEncoder().encodeToString("not an image".getBytes()))) {
+            ApiError e = assertThrows(ApiError.class, () -> of(withImages(bad)), bad);
+            assertEquals(400, e.status);
+            assertEquals("messages", e.param);
+        }
+        ApiError huge = assertThrows(ApiError.class, () -> of(withImages(pngHeader(9000, 9000))));
+        assertTrue(huge.getMessage().contains("megapixels"), huge.getMessage());
+        assertThrows(ApiError.class, () -> of(withImages(pngHeader(6000, 6000), pngHeader(6000, 6000))), "the pixels of all of them count");
     }
 }
