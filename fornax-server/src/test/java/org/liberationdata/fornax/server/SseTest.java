@@ -46,8 +46,10 @@ class SseTest {
     /** A client that has stopped reading: its writes block until released. */
     static final class Stuck extends OutputStream {
         final CountDownLatch writing = new CountDownLatch(1), release = new CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicInteger writes = new java.util.concurrent.atomic.AtomicInteger();
         @Override public void write(int b) { write(new byte[]{(byte) b}, 0, 1); }
         @Override public void write(byte[] b, int off, int len) {
+            writes.incrementAndGet();
             writing.countDown();
             try { release.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         }
@@ -71,6 +73,25 @@ class SseTest {
             stuck.release.countDown();   // before close: a's close waits for its write
             a.close();
             b.close();
+            Sse.keepAliveMillis = 3_000;
+        }
+    }
+
+    @Test void aStuckStreamHasOneKeepAliveUnderWayNotOnePerTick() throws Exception {
+        Sse.keepAliveMillis = 20;
+        var stuck = new Stuck();
+        var a = new Sse(exchange(stuck), () -> {});
+        try {
+            assertTrue(stuck.writing.await(5, TimeUnit.SECONDS));
+            Thread.sleep(300);   // some 15 ticks while the first write is stuck
+            stuck.release.countDown();
+            Thread.sleep(30);
+            // a write queued per tick would all go out now, some 15 at once; with one under way, a tick or two's worth
+            // (the bound leaves room for a slow machine pausing during the sleep)
+            assertTrue(stuck.writes.get() < 8, stuck.writes.get() + " keep-alives");
+        } finally {
+            stuck.release.countDown();
+            a.close();
             Sse.keepAliveMillis = 3_000;
         }
     }
