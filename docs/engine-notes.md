@@ -64,6 +64,11 @@ surprises you.
   The patch is to be proposed upstream. HIP has no such timeout (ROCm work goes through KFD user queues, which is why
   ComfyUI never hit it) and was about 2.7× faster per LTX step than Vulkan on the 8060S (44 s against 119 s at
   672×448×313, after a slower first step), so it stays the better backend for long clips.
+- **Vulkan's long-clip output is wrong above about 37k refine tokens (#112).** With the chunking above, the two-stage
+  LTX recipe survives at 1344×896×313, but from 257 frames (38,808 refine tokens) on, the Vulkan output is haze and the
+  audio decorrelates; 241 frames (36,456) is clean. HIP with the same chunks forced on is bit-identical to HIP
+  unsplit, and the Vulkan draft stage alone is clean at 257 frames, so the fault is in Vulkan's refine pass at that
+  size (or the latent upscaler), not in the chunking arithmetic. Use HIP for long clips until #112 is fixed.
 - **HIP graphs overflow a JVM thread's stack.** ggml's HIP backend captures the graph as a HIP graph, and ROCm's
   `hip::Graph::ScheduleOneNode` recurses once per node. On a JVM thread (smaller stack than a CLI's 8 MB main
   thread) LTX segfaults in libamdhip64 during text encoding. `GGML_CUDA_DISABLE_GRAPHS=1` fixes it, and Fornax sets it by default (`-Dfornax.gpu.graphs=true` turns graphs back on).
