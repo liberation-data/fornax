@@ -46,6 +46,8 @@ public class Snippets {
     static final String SKIP = "// --8<-- [skip]";
 
     public static void main(String[] args) throws IOException {
+        for (String a : args)   // a mistyped --check would otherwise rewrite the docs instead of checking them
+            if (a.startsWith("--") && !a.equals("--check")) { System.err.println("unknown option " + a + " (only --check)"); System.exit(2); }
         boolean check = List.of(args).contains("--check");
         List<Path> docs = new ArrayList<>();
         for (String a : args) if (!a.startsWith("--")) docs.add(Path.of(a));
@@ -125,7 +127,12 @@ public class Snippets {
             }
             int end = i + 1;
             while (end < lines.size() && !closes(lines.get(end), indent, fence)) end++;
-            if (end == lines.size()) { problems.add(doc + ":" + (i + 1) + ": unclosed ```java block"); out.addAll(lines.subList(i, lines.size())); break; }
+            if (end == lines.size()) {   // the marker did get its block, so only the block is reported
+                problems.add(doc + ":" + (i + 1) + ": unclosed ```java block");
+                out.addAll(lines.subList(i, lines.size()));
+                pending = null;
+                break;
+            }
             out.add(line);
             if (pending == null) {
                 problems.add(doc + ":" + (i + 1) + ": ```java block with no snippet marker before it");

@@ -133,7 +133,7 @@ class SnippetsTest {
     void anUnclosedJavaBlockIsAProblem() throws Exception {
         String doc = "<!-- snippet: A#b -->\n```java\nold\n";
         assertEquals(doc, fill(doc));
-        assertTrue(problems.contains("doc.md:2: unclosed ```java block"), problems.toString());
+        assertEquals(List.of("doc.md:2: unclosed ```java block"), problems);
     }
 
     /** A copy of the repository's layout with one doc, one snippet and the script. */
@@ -148,6 +148,14 @@ class SnippetsTest {
     }
 
     /** The script's exit status, run from {@code cwd} as {@code java scripts/Snippets.java}, but by absolute path. */
+    @Test
+    void anUnknownOptionIsRefusedWithoutWritingTheDoc(@TempDir Path dir) throws Exception {
+        String stale = "<!-- snippet: A#b -->\n```java\nold\n```\n";
+        Path repo = repo(dir, stale);
+        assertEquals(2, run(repo, repo, "--chek"));
+        assertEquals(stale, Files.readString(repo.resolve("README.md")));
+    }
+
     static int run(Path repo, Path cwd, String... args) throws Exception {
         List<String> cmd = new ArrayList<>(List.of(ProcessHandle.current().info().command().orElseThrow(),
                 repo.resolve("scripts/Snippets.java").toString()));
