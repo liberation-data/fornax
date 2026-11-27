@@ -424,13 +424,15 @@ public final class FornaxServer implements AutoCloseable {
         Object dims = body.get("dimensions");
         int dimensions = dims == null ? 0 : (int) Math.min(Integer.MAX_VALUE, ChatRequest.whole(dims, "dimensions", 1));
 
-        float[][] vectors = engines.embed(model, texts);
+        var embedded = engines.embed(model, texts);
+        float[][] vectors = embedded.vectors();
         List<Object> data = new ArrayList<>();
         for (int i = 0; i < vectors.length; i++) {
             float[] v = dimensions == 0 ? vectors[i] : truncate(vectors[i], dimensions);
             data.add(Json.obj("object", "embedding", "index", i, "embedding", "base64".equals(format) ? base64(v) : v));
         }
-        json(ex, 200, Json.obj("object", "list", "data", data, "model", model, "usage", Json.obj("prompt_tokens", 0, "total_tokens", 0)));
+        json(ex, 200, Json.obj("object", "list", "data", data, "model", model,
+                "usage", Json.obj("prompt_tokens", embedded.tokens(), "total_tokens", embedded.tokens())));
     }
 
     /** The first n dimensions, normalised again (Qwen3-Embedding is trained for this: Matryoshka representation). */

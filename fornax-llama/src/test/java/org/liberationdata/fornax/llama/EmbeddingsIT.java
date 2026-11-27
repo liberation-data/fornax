@@ -136,6 +136,19 @@ class EmbeddingsIT {
     }
 
     @Test
+    void embeddingsCountTheTokensTheTextsTook() {
+        String glaze = "a celadon glaze that crawls over a porcelain body", kiln = "the kiln fires to cone 10";
+        var one = model.embeddings(List.of(glaze), EmbedOptions.DEFAULT);
+        var both = model.embeddings(List.of(glaze, kiln), EmbedOptions.DEFAULT);
+        assertTrue(one.tokens() >= 9, one.tokens() + " tokens for " + glaze.split(" ").length + " words");
+        assertEquals(one.tokens() + model.embeddings(List.of(kiln), EmbedOptions.DEFAULT).tokens(), both.tokens(), "a sum over the texts");
+        assertArrayEquals(model.embed(List.of(glaze, kiln))[1], both.vectors()[1]);
+        assertTrue(model.embeddings(List.of(glaze), EmbedOptions.query("Find glazes")).tokens() > one.tokens(), "the prefix counts");
+        assertTrue(model.embeddings(List.of(""), EmbedOptions.DEFAULT).tokens() >= 1, "the EOS the vocab adds counts");
+        assertEquals(0, model.embeddings(List.of(), EmbedOptions.DEFAULT).tokens());
+    }
+
+    @Test
     void anEmptyTextEmbeds() {
         // Qwen3-Embedding's tokenizer appends an end-of-text, so even "" has a token to pool
         float[][] v = model.embed(List.of("", "kiln", ""));

@@ -91,8 +91,9 @@ fornax_llama * fornax_llama_create_pooled(const char * model_path, int n_gpu_lay
 int fornax_llama_n_embd(fornax_llama * h);
 
 // Embeds n texts into out (n * fornax_llama_n_embd floats, row by row). normalize non-zero: each row L2-normalised.
-// Texts are tokenized with the vocab's own BOS/EOS added, and not parsed for special tokens.
-int fornax_llama_embed(fornax_llama * h, const char ** texts, int n, int normalize, float * out,
+// Texts are tokenized with the vocab's own BOS/EOS added, and not parsed for special tokens. out_tokens, if not NULL,
+// gets each text's token count (n ints), as a usage report counts them.
+int fornax_llama_embed(fornax_llama * h, const char ** texts, int n, int normalize, float * out, int * out_tokens,
                      fornax_llama_token_cb cb, void * user);
 
 // Scores n documents against a query into out_scores (n floats, in the documents' order), as llama-server's /rerank:

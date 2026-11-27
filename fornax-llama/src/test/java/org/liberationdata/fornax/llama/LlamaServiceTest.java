@@ -77,10 +77,13 @@ class LlamaServiceTest {
     @Test
     void embeddingsAndScoresRoundTrip() {
         float[][] v = {{1f, -0.5f, Float.MIN_VALUE}, {0f, Float.NaN, 3.25f}};
-        float[][] back = LlamaService.decodeEmbeddings(LlamaService.embeddings(v));
-        assertEquals(2, back.length);
-        for (int i = 0; i < v.length; i++) assertArrayEquals(v[i], back[i]);
-        assertEquals(0, LlamaService.decodeEmbeddings(LlamaService.embeddings(new float[0][])).length);
+        var back = LlamaService.decodeEmbeddings(LlamaService.embeddings(new LlamaModel.Embeddings(v, 17)));
+        assertEquals(2, back.vectors().length);
+        for (int i = 0; i < v.length; i++) assertArrayEquals(v[i], back.vectors()[i]);
+        assertEquals(17, back.tokens());
+        var none = LlamaService.decodeEmbeddings(LlamaService.embeddings(new LlamaModel.Embeddings(new float[0][], 0)));
+        assertEquals(0, none.vectors().length);
+        assertEquals(0, none.tokens());
 
         var scores = List.of(new Scored(2, 0.99f), new Scored(0, 0.5f), new Scored(1, 0f));
         assertEquals(scores, LlamaService.decodeScores(LlamaService.scores(scores)));

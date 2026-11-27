@@ -193,10 +193,10 @@ final class PooledEngines implements Engines {
 
     // ---- embeddings ----
 
-    @Override public float[][] embed(String model, List<String> texts) {
+    @Override public LlamaModel.Embeddings embed(String model, List<String> texts) {
         Found f = find(model, Use.EMBED, true);
         try (ModelPool.Lease<LlamaModel> lease = lease(f)) {
-            try { return lease.model().embed(texts); }
+            try { return lease.model().embeddings(texts, LlamaModel.EmbedOptions.DEFAULT); }
             catch (IllegalStateException e) { throw ApiError.badRequest(e.getMessage(), "input"); }   // a text longer than the context
         }
     }

@@ -779,7 +779,7 @@ fornax_llama * fornax_llama_create_pooled(const char * model_path, int n_gpu_lay
 
 int fornax_llama_n_embd(fornax_llama * h) { return llama_model_n_embd_out(h->model); }
 
-int fornax_llama_embed(fornax_llama * h, const char ** texts, int n, int normalize, float * out,
+int fornax_llama_embed(fornax_llama * h, const char ** texts, int n, int normalize, float * out, int * out_tokens,
                      fornax_llama_token_cb cb, void * user) {
     if (h->pooling == LLAMA_POOLING_TYPE_NONE) return fail("this model was not loaded for embeddings", 14);
     if (h->pooling == LLAMA_POOLING_TYPE_RANK) return fail("this model was loaded as a reranker: it can only rerank", 14);
@@ -788,6 +788,7 @@ int fornax_llama_embed(fornax_llama * h, const char ** texts, int n, int normali
         // the text isn't parsed for special tokens: it is the caller's data, not markup.
         std::vector<std::vector<llama_token>> inputs;
         for (int i = 0; i < n; i++) inputs.push_back(common_tokenize(h->vocab, texts[i], true, false));
+        if (out_tokens) for (int i = 0; i < n; i++) out_tokens[i] = (int) inputs[i].size();
         const int dim = llama_model_n_embd_out(h->model);
         return run_pooled(h, inputs, [&](int i, const float * v) {
             common_embd_normalize(v, out + (size_t) i * dim, dim, normalize ? 2 : -1);
