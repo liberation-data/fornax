@@ -2,13 +2,15 @@ Metal: free the residency sets still registered at teardown instead of aborting.
 
 ggml frees the Metal device from a static destructor at exit; a buffer not freed first (a model the app never
 closed, a worker that exits) left a residency set registered, and GGML_ASSERT([rsets->data count] == 0) aborted the
-process on every quit (fornax#104). Upstream: ggml-org/llama.cpp#24368 (open); drop this once the pinned engines have it.
+process on every quit (fornax#104). Upstream: ggml-org/llama.cpp#24368 (open), without its GGML_LOG_DEBUG at teardown: that runs in a static destructor at
+exit, and stable-diffusion.cpp routes ggml's log to a Java upcall into a JVM that may be gone. Drop this once the pinned
+engines have the fix.
 
 diff --git a/ggml/src/ggml-metal/ggml-metal-device.m b/ggml/src/ggml-metal/ggml-metal-device.m
 index 05d7f43051ba..8372adbd3cde 100644
 --- a/ggml/src/ggml-metal/ggml-metal-device.m
 +++ b/ggml/src/ggml-metal/ggml-metal-device.m
-@@ -618,14 +618,36 @@ void ggml_metal_rsets_free(ggml_metal_rsets_t rsets) {
+@@ -618,14 +618,34 @@ void ggml_metal_rsets_free(ggml_metal_rsets_t rsets) {
          return;
      }
  
@@ -35,8 +37,6 @@ index 05d7f43051ba..8372adbd3cde 100644
 +#if defined(GGML_METAL_HAS_RESIDENCY_SETS)
 +    if (@available(macOS 15.0, iOS 18.0, tvOS 18.0, visionOS 2.0, *)) {
 +        if ([rsets->data count] != 0) {
-+            GGML_LOG_DEBUG("%s: %ld residency set(s) still registered at teardown; winding down\n",
-+                           __func__, (long) [rsets->data count]);
 +            for (id rset in rsets->data) {
 +                [rset endResidency];
 +                [rset removeAllAllocations];
