@@ -71,6 +71,10 @@ arrives as it is generated; the thinking and the tool calls (each call with its 
 call's `id` is unique to it, for the `tool` message that answers it.
 `n` must be 1, and there are no logprobs.
 
+A stream's status goes out with its first event, or with a keep-alive comment (`: keep-alive`, every 3 seconds while
+the model loads or thinks), so a failure after that (a model that won't load, an engine error) can't be a status: it
+comes as OpenAI's error event, `data: {"error": {...}}`, with no `[DONE]`, which the OpenAI clients raise as an error.
+
 When a client disconnects mid-stream, the generation stops, so the model is free for the next request. A
 non-streaming request runs to the end.
 

@@ -189,6 +189,39 @@ class FornaxServerTest {
         assertEquals("invalid_request_error", get(json(r), "error", "type"));
     }
 
+    /** A failure once the stream has started can't be a status: it is OpenAI's error event, with no [DONE] after it. */
+    @Test void aFailureMidStreamIsAnErrorEvent() throws Exception {
+        engines.failure = new IllegalStateException("llama chat failed (rc=1): the GPU fell over");
+        engines.failAfter = 2;
+        var r = post("/v1/chat/completions", "{\"stream\": true, \"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}");
+        assertEquals(200, r.statusCode());
+        assertFalse(r.body().contains("[DONE]"), r.body());
+        List<Object> data = new ArrayList<>();
+        for (String block : r.body().split("\n\n")) if (block.startsWith("data: ")) data.add(org.liberationdata.fornax.Json.parse(block.substring(6)));
+        assertEquals("Hel", get(data.get(1), "choices", 0, "delta", "content"));
+        Object last = data.getLast();
+        assertEquals("server_error", get(last, "error", "type"));
+        assertTrue(((String) get(last, "error", "message")).contains("the GPU fell over"), r.body());
+    }
+
+    /** A request that fails before anything is streamed, but after a keep-alive has sent the status, still says why. */
+    @Test void aFailureAfterAKeepAliveIsAnErrorEvent() throws Exception {
+        Sse.keepAliveMillis = 50;
+        try {
+            engines.pieceDelayMillis = 300;   // a model loading
+            engines.failure = ApiError.server("qwen3-4b: the download failed");
+            engines.failAfter = 0;
+            engines.pieces = List.of("a", "b");
+            var r = post("/v1/chat/completions", "{\"stream\": true, \"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}");
+            assertEquals(200, r.statusCode());
+            assertTrue(r.body().startsWith(": keep-alive"), r.body());
+            assertFalse(r.body().contains("[DONE]"), r.body());
+            assertTrue(r.body().contains("\"message\":\"qwen3-4b: the download failed\""), r.body());
+        } finally {
+            Sse.keepAliveMillis = 3_000;
+        }
+    }
+
     @Test void imagesGoToAVisionModelOnly() throws Exception {
         String png = ChatRequestTest.png(2, 2);
         String msg = "[{\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"What is it?\"}, "

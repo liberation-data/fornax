@@ -19,7 +19,9 @@ final class Multipart {
         String text() { return new String(bytes, StandardCharsets.UTF_8); }
     }
 
-    private static final Pattern BOUNDARY = Pattern.compile("(?i)boundary=(\"([^\"]+)\"|[^;\\s]+)");
+    /** The longest boundary RFC 2046 allows. */
+    static final int MAX_BOUNDARY = 70;
+    private static final Pattern BOUNDARY =Pattern.compile("(?i)boundary=(\"([^\"]+)\"|[^;\\s]+)");
     private static final Pattern NAME = Pattern.compile("(?i)(?:^|;)\\s*name=\"([^\"]*)\"");
     private static final Pattern FILE_NAME = Pattern.compile("(?i)(?:^|;)\\s*filename=\"([^\"]*)\"");
 
@@ -29,7 +31,11 @@ final class Multipart {
             throw ApiError.badRequest("the body must be multipart/form-data", null);
         Matcher bm = BOUNDARY.matcher(contentType);
         if (!bm.find()) throw ApiError.badRequest("multipart/form-data without a boundary", null);
-        byte[] delimiter = ("--" + (bm.group(2) != null ? bm.group(2) : bm.group(1))).getBytes(StandardCharsets.ISO_8859_1);
+        String boundary = bm.group(2) != null ? bm.group(2) : bm.group(1);
+        // RFC 2046's most; the search below costs up to the boundary's length at each byte, and the client picks it
+        if (boundary.length() > MAX_BOUNDARY)
+            throw ApiError.badRequest("a multipart boundary can be at most " + MAX_BOUNDARY + " characters", null);
+        byte[] delimiter = ("--" + boundary).getBytes(StandardCharsets.ISO_8859_1);
         Map<String, Part> parts = new LinkedHashMap<>();
         int at = indexOf(body, delimiter, 0);
         if (at < 0) throw ApiError.badRequest("multipart body without its boundary", null);

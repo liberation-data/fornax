@@ -17,6 +17,9 @@ class StubEngines implements Engines {
     volatile String toolCalls;      // the message's tool_calls JSON, or null
     volatile String finish = "stop";
     volatile long pieceDelayMillis;
+    /** Thrown by chat after this many pieces have been sent (a model failing mid-reply), or null for none. */
+    volatile RuntimeException failure;
+    volatile int failAfter;
     /** What chat was asked: the engine request JSON of each call. */
     final List<String> requests = new CopyOnWriteArrayList<>();
     final List<String> models = new CopyOnWriteArrayList<>();
@@ -31,10 +34,12 @@ class StubEngines implements Engines {
         boolean[] cancelled = {false};
         stop.attach(() -> { cancelled[0] = true; stopped.countDown(); });
         StringBuilder sent = new StringBuilder();
+        int done = 0;
         try {
             for (String p : pieces) {
                 if (cancelled[0]) break;
                 if (pieceDelayMillis > 0) Thread.sleep(pieceDelayMillis);
+                if (failure != null && done++ == failAfter) throw failure;
                 if (cancelled[0]) break;
                 sent.append(p);
                 if (onContent != null) onContent.accept(p);

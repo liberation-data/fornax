@@ -3,6 +3,8 @@ package org.liberationdata.fornax.server;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -31,5 +33,25 @@ class MultipartTest {
         assertThrows(ApiError.class, () -> Multipart.parse("multipart/form-data; boundary=q", b));
         assertThrows(ApiError.class, () -> Multipart.parse("multipart/form-data; boundary=q",
                 "--q\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nunterminated".getBytes(StandardCharsets.UTF_8)));
+    }
+
+    /**
+     * The boundary is the header's, so its length is the client's choice: a long one of dashes, over a body of dashes,
+     * made each search for it cost its length at every byte (20000 dashes over 1 MB took 7 s, a 64 MB body hours).
+     */
+    @Test void aBoundaryLongerThanRfc2046sIsRefusedAtOnce() {
+        String longest = "a".repeat(70);
+        assertEquals("x", Multipart.parse("multipart/form-data; boundary=" + longest,
+                ("--" + longest + "\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nx\r\n--" + longest + "--\r\n")
+                        .getBytes(StandardCharsets.UTF_8)).get("a").text(), "70 characters, RFC 2046's most, is taken");
+
+        byte[] dashes = new byte[1 << 20];
+        Arrays.fill(dashes, (byte) '-');
+        for (int i = 20_001; i < dashes.length; i += 20_002) dashes[i] = 'x';
+        var e = assertTimeoutPreemptively(Duration.ofSeconds(2), () -> assertThrows(ApiError.class,
+                () -> Multipart.parse("multipart/form-data; boundary=" + "-".repeat(20_000), dashes)));
+        assertEquals(400, e.status);
+        assertTrue(e.getMessage().contains("70"), e.getMessage());
+        assertThrows(ApiError.class, () -> Multipart.parse("multipart/form-data; boundary=" + "a".repeat(71), dashes));
     }
 }
