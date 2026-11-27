@@ -54,16 +54,16 @@ class ConfigReferencesTest {
         assertTrue(Files.isRegularFile(vae));
     }
 
-    @Test void anLtxSetAlsoWidensItsBf16Tensors() throws Exception {
+    @Test void anLtxSetNeedsNoTypeRules() throws Exception {
         Path model = cached("o/ltx", "ltx.safetensors"), audio = cached("o/ltx", "audio.safetensors");
         Path up = cached("o/ltx", "up.safetensors");
         for (String name : List.of("ltx-2.5-tiny", "Video:LTX-2.5-tiny")) {   // by id or alias, in any case
             var o = DiffusionModel.Config.builder().model(name, hub(SETS)).build().options();
             assertEquals(model.toString(), o.get("diffusion_model_path"));
             assertEquals(audio.toString(), o.get("audio_vae_path"));
-            assertEquals(DiffusionModel.Config.LTX_BF16_TO_F32, o.get("tensor_type_rules"), name);
+            assertFalse(o.containsKey("tensor_type_rules"), name);   // leejet/stable-diffusion.cpp#2432 made them unneeded
             assertFalse(o.containsValue(up.toString()));   // the upscaler is a request's hires.model_path
-            assertEquals(3, o.size());
+            assertEquals(2, o.size());
         }
         for (String f : List.of("flux.safetensors", "vae.safetensors", "llm.safetensors")) cached("o/flux", f);
         assertFalse(DiffusionModel.Config.builder().model("image:flux", hub(SETS)).build().options().containsKey("tensor_type_rules"));

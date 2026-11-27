@@ -29,7 +29,7 @@ The upscaler is only for the [two-stage recipe](#the-two-stage-recipe). For the 
 ## A clip with sound
 
 `Config.builder().model("ltx-2.5-distilled")` (or `"ltx-2.5-dev"`) names the four model files, downloading what's
-missing (the upscaler too, for a request's `hires.model_path`), and sets the `tensor_type_rules` below. The repo is
+missing (the upscaler too, for a request's `hires.model_path`). The repo is
 gated, so accept its terms and set `HF_TOKEN` first. File by file, as Fornax's example does:
 
 <!-- snippet: Video#ltx -->
@@ -45,8 +45,6 @@ var config = DiffusionModel.Config.builder()
         .llm(HfCache.require(ltx, "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors").toString())
         .vae(HfCache.require(ltx, "vae/ltx-2.5-video-vae-conv-bf16.safetensors").toString())
         .set("audio_vae_path", HfCache.require(ltx, "vae/ltx-2.5-audio-vae-bf16.safetensors").toString())
-        // ComfyUI's int8 LTX keeps biases, norms and embedders in bf16; widen them to f32 at load (see below).
-        .set("tensor_type_rules", DiffusionModel.Config.LTX_BF16_TO_F32)
         .build();
 
 try (var model = new DiffusionModel(config)) {
@@ -69,9 +67,10 @@ The distilled model takes 8 steps at CFG 1; `dev` takes about 20 at CFG 3.
 **Keep the audio VAE.** LTX-2.5 was trained to make sound and picture together. Leaving `audio_vae_path` out removes
 the soundtrack, but that isn't how the model was trained to run.
 
-**The `tensor_type_rules`** widen the few bf16 tensors in ComfyUI's int8 checkpoint (about 0.9 GB) to f32 when the
-model loads. ggml's Vulkan and CPU backends can't add bf16 to f32, so without them the run aborts on GPUs whose driver
-has no bf16 support. The int8 weights themselves are untouched.
+**bf16 on drivers without it.** ComfyUI's int8 checkpoint keeps a few tensors in bf16. Up to 0.2.0 they had to be
+widened to f32 with `tensor_type_rules` on GPUs whose Vulkan driver has no bf16 (the Radeon 8060S's RADV). From 0.3.0,
+stable-diffusion.cpp loads the one that broke the run, the keyframe position embedding, as f32 itself
+(leejet/stable-diffusion.cpp#2432), so no rules are needed.
 
 ## First and last frames
 

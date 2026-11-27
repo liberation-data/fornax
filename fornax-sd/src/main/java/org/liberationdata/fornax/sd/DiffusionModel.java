@@ -45,10 +45,12 @@ public final class DiffusionModel implements AutoCloseable {
      */
     public record Config(Map<String, Object> options) {
         /**
-         * ComfyUI's int8 LTX checkpoints keep biases, norms and embedders in bf16, which ggml's Vulkan and CPU backends
-         * can't add to f32: these {@code tensor_type_rules} widen them (about 0.9 GB) at load. The int8 linears are
-         * untouched. {@link Builder#model} sets them for the LTX sets.
+         * {@code tensor_type_rules} that widened the bf16 tensors of ComfyUI's int8 LTX checkpoints (about 0.9 GB) to f32
+         * at load, for Vulkan drivers without bf16. Not needed since Fornax's stable-diffusion.cpp includes
+         * leejet/stable-diffusion.cpp#2432 (0.3.0), and no longer set by {@link Builder#model}.
+         * @deprecated not needed; it only costs memory
          */
+        @Deprecated(since = "0.3.0", forRemoval = true)
         public static final String LTX_BF16_TO_F32 = ".*\\.bias=f32,.*_norm\\.weight=f32,.*to_gate_logits\\.weight=f32,"
                 + ".*adaln_single.*\\.weight=f32,.*(patchify_proj|proj_out)\\.weight=f32,"
                 + ".*(learnable_registers|keyframes_abs_pos_embedding)=f32";
@@ -92,8 +94,7 @@ public final class DiffusionModel implements AutoCloseable {
 
             /**
              * Every model path of the catalogue set with this name ({@code "flux2-klein"}, {@code "qwen-image"},
-             * {@code "ltx-2.5-distilled"}), downloading what's missing now; for an LTX set, also
-             * {@link #LTX_BF16_TO_F32}. Options set after this override it.
+             * {@code "ltx-2.5-distilled"}), downloading what's missing now. Options set after this override it.
              *
              * @throws IllegalArgumentException for a name that isn't an image or video set, before any download
              */
@@ -104,7 +105,6 @@ public final class DiffusionModel implements AutoCloseable {
                 Map<String, Path> files = hub == null ? ModelReferences.set(name, SET, "stable-diffusion.cpp")
                         : ModelReferences.set(name, SET, "stable-diffusion.cpp", hub);
                 files.forEach((role, file) -> { if (ROLE_OPTIONS.containsKey(role)) o.put(ROLE_OPTIONS.get(role), file.toString()); });
-                if (name.strip().toLowerCase(java.util.Locale.ROOT).replace("video:", "").startsWith("ltx-")) o.put("tensor_type_rules", LTX_BF16_TO_F32);
                 return this;
             }
 

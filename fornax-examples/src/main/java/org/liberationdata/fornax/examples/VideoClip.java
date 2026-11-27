@@ -20,7 +20,6 @@ import java.util.Map;
  * Needs ffmpeg on the PATH to write the .mp4 (frames and audio are kept beside it either way).
  */
 public class VideoClip {
-    static final String BF16_TO_F32 = DiffusionModel.Config.LTX_BF16_TO_F32;
 
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
@@ -38,9 +37,8 @@ public class VideoClip {
                 // -Daudio=false skips LTX's own soundtrack (Endless Country lays the song over every clip anyway).
                 .set("audio_vae_path", Boolean.parseBoolean(System.getProperty("audio", "true"))
                         ? file(dir, "vae/ltx-2.5-audio-vae-bf16.safetensors") : "")
-                // ComfyUI's int8 LTX keeps biases, norms and embedders in bf16; ggml's Vulkan and CPU backends can't
-                // add bf16 to f32, so widen those (~0.9 GB) to f32 at load. The int8 linears are untouched.
-                .set("tensor_type_rules", System.getProperty("ltx.rules", BF16_TO_F32))
+                // -Dltx.rules=... sets stable-diffusion.cpp's tensor_type_rules (none are needed since its #2432)
+                .set("tensor_type_rules", System.getProperty("ltx.rules", ""))
                 .build();
         int w = Integer.getInteger("width", 768), h = Integer.getInteger("height", 448);
         int frames = Integer.getInteger("frames", 49), fps = Integer.getInteger("fps", 24);

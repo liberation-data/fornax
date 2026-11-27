@@ -92,7 +92,7 @@ Package `org.liberationdata.fornax.sd`. See [Images](/docs/guides/images/) and [
 | `generateAsync(Request)`, `generateVideoAsync(VideoRequest)`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops a run at the next step (it throws `CancellationException`) |
 | `modelVersion()` | the model stable-diffusion.cpp detected |
 | `onProgress(sink)`, `onLog(sink)` | process-wide progress (step, steps, seconds per step) and log callbacks |
-| `DiffusionModel.Config` | `builder()`: `model(name)` for a catalogue set, `diffusionModel`, `vae`, `llm`, `controlNet`, and `set(key, value)` for any context option; a `_path` option may be a model reference. `LTX_BF16_TO_F32`: the LTX int8 checkpoints' `tensor_type_rules` |
+| `DiffusionModel.Config` | `builder()`: `model(name)` for a catalogue set, `diffusionModel`, `vae`, `llm`, `controlNet`, and `set(key, value)` for any context option; a `_path` option may be a model reference. `LTX_BF16_TO_F32` (deprecated: not needed from 0.3.0) |
 | `DiffusionModel.Request` | `prompt`, `width`, `height`, `steps`, `cfg`, `seed`, plus `refImages` and an `extra` options map; `withRefImages`, `withInitImage(image[, strength])` (img2img), `withMaskImage` (inpainting), `withControlImage(image[, strength])` (ControlNet), `withLoras`, `withExtra`. Settings the engine would ignore (a strength or mask without an init image, a control strength without a control image, a typed key in `extra`) throw `IllegalArgumentException` from `generate` |
 | `DiffusionModel.Lora` | `file`, `weight` (default 1): a LoRA for one request |
 | `DiffusionModel.VideoRequest` | the same, plus `frames` and `fps`; `withInitImage`, `withEndImage`, `withRefAudio`, `withExtra` |
