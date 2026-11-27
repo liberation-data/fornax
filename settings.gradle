@@ -19,7 +19,8 @@ include 'fornax-whisper'  // whisper.cpp: speech to text with word timings
 include 'fornax-demucs'   // stems.cpp: HTDemucs stem separation (vocals and backing)
 include 'fornax-bom'      // the BOM: every published module's version, imported once
 include 'fornax-natives'  // the natives jar for the host: Maven picks it by OS profile
-include 'fornax-cli'      // the fornax command: pull, list, chat, test, info
+include 'fornax-server'   // an OpenAI-compatible HTTP server for the engines, JDK only
+include 'fornax-cli'      // the fornax command: pull, list, chat, test, info, server
 include 'fornax-examples' // runnable demos (not published)
 include 'fornax-bench'    // A/B against ComfyUI's HTTP API (not published)
 include 'fornax-studio-server' // the local HTTP backend Fornax Studio (the desktop app) starts (not published)

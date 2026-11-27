@@ -67,6 +67,7 @@ ext.published = [
     'fornax-yue2'   : 'Fornax YuE2: YuE2 songs through yue2.cpp, in-process via Java FFM',
     'fornax-whisper': 'Fornax Whisper: speech to text with word timings through whisper.cpp, in-process via Java FFM',
     'fornax-demucs' : 'Fornax Demucs: stem separation (vocals, drums, bass, ...) with HTDemucs through stems.cpp, in-process via Java FFM',
+    'fornax-server' : 'Fornax server: an OpenAI-compatible HTTP API (chat, embeddings, images, speech, transcription) over the Fornax engines, JDK only',
 ]
 configure(subprojects.findAll { published.containsKey(it.name) || it.name.startsWith('fornax-natives') || it.name == 'fornax-bom' }) { p ->
     if (p.name in pomOnly) apply plugin: 'java-platform'  // before the publishing plugin's configure below
@@ -209,6 +210,15 @@ project(':fornax-demucs') {
     }
 }
 
+project(':fornax-server') {
+    dependencies {
+        api project(':fornax-llama')
+        implementation project(':fornax-sd')
+        implementation project(':fornax-tts')
+        implementation project(':fornax-whisper')
+    }
+}
+
 project(':fornax-cli') {
     apply plugin: 'application'
     // The natives, as the samples take them: a fornax-natives jar, here every one this build has (settings.gradle
@@ -225,6 +235,7 @@ project(':fornax-cli') {
         implementation project(':fornax-yue2')
         implementation project(':fornax-tts')
         implementation project(':fornax-whisper')
+        implementation project(':fornax-server')
         // 0.1.0's natives jar says Java 25 in its metadata (it holds no classes), so ask for it as 25
         natives.each { n -> runtimeOnly(n) { attributes { attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25) } } }
     }
