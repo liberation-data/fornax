@@ -6,18 +6,19 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpPrincipal;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Sse's keep-alives, against exchanges whose response body this test controls. */
+/**
+ * Sse over its EventStream (whose keep-alives EventStreamTest covers), against an exchange whose response body this
+ * test controls.
+ */
 class SseTest {
     /** An exchange whose response body is the given stream; the rest isn't used by Sse. */
     static HttpExchange exchange(OutputStream body) {
@@ -43,40 +44,6 @@ class SseTest {
         };
     }
 
-    /** A client that has stopped reading: its writes block until released. */
-    static final class Stuck extends OutputStream {
-        final CountDownLatch writing = new CountDownLatch(1), release = new CountDownLatch(1);
-        final java.util.concurrent.atomic.AtomicInteger writes = new java.util.concurrent.atomic.AtomicInteger();
-        @Override public void write(int b) { write(new byte[]{(byte) b}, 0, 1); }
-        @Override public void write(byte[] b, int off, int len) {
-            writes.incrementAndGet();
-            writing.countDown();
-            try { release.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-        }
-    }
-
-    @Test void aClientThatStopsReadingDoesntHoldUpAnotherStreamsKeepAlives() throws Exception {
-        Sse.keepAliveMillis = 20;
-        var stuck = new Stuck();
-        var fine = new ByteArrayOutputStream() {
-            final CountDownLatch kept = new CountDownLatch(3);
-            @Override public synchronized void write(byte[] b, int off, int len) { super.write(b, off, len); kept.countDown(); }
-        };
-        var a = new Sse(exchange(stuck), () -> {});
-        var b = new Sse(exchange(fine), () -> {});
-        try {
-            assertTrue(stuck.writing.await(5, TimeUnit.SECONDS), "the stuck stream's keep-alive is being written");
-            // with the write on the timer thread, b would get no keep-alive until a's returned
-            assertTrue(fine.kept.await(5, TimeUnit.SECONDS), "the other stream kept getting keep-alives");
-            assertTrue(fine.toString(StandardCharsets.UTF_8).startsWith(": keep-alive\n\n"));
-        } finally {
-            stuck.release.countDown();   // before close: a's close waits for its write
-            a.close();
-            b.close();
-            Sse.keepAliveMillis = 3_000;
-        }
-    }
-
     @Test void aKeepAliveThatFailsStillNoticesTheClientHasGone() throws Exception {
         Sse.keepAliveMillis = 20;
         var gone = new CountDownLatch(1);
@@ -87,28 +54,6 @@ class SseTest {
             assertTrue(gone.await(5, TimeUnit.SECONDS), "onGone ran from the keep-alive's own thread");
             assertThrows(java.util.concurrent.CancellationException.class, () -> a.data(Json.obj("x", 1)));
         } finally {
-            a.close();
-            Sse.keepAliveMillis = 3_000;
-        }
-    }
-
-    @Test void aStuckStreamHasOneKeepAliveUnderWayNotOnePerTick() throws Exception {
-        Sse.keepAliveMillis = 20;
-        var stuck = new Stuck();
-        var a = new Sse(exchange(stuck), () -> {});
-        try {
-            assertTrue(stuck.writing.await(5, TimeUnit.SECONDS));
-            Thread.sleep(300);   // some 15 ticks while the first write is stuck
-            long released = System.nanoTime();
-            stuck.release.countDown();
-            Thread.sleep(30);
-            int writes = stuck.writes.get();
-            long since = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - released);
-            // a write queued per tick would all go out now, some 15 at once; with one under way, a tick or two's worth
-            // plus one per tick since (a slow machine may wake from the sleep late, and the writes don't block now)
-            assertTrue(writes < 8 + since / 20, writes + " keep-alives in " + since + " ms");
-        } finally {
-            stuck.release.countDown();
             a.close();
             Sse.keepAliveMillis = 3_000;
         }

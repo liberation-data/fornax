@@ -762,7 +762,7 @@ public final class StudioServer {
     String refusal(HttpExchange ex) {
         int port = http.getAddress().getPort();
         String host = ex.getRequestHeaders().getFirst("Host");
-        if (host == null || !Set.of("127.0.0.1:" + port, "localhost:" + port, "[::1]:" + port).contains(host.toLowerCase(java.util.Locale.ROOT)))
+        if (!org.liberationdata.fornax.http.Loopback.host(host, port))
             return "only Fornax Studio may call this server (wrong Host)";
         if (ex.getRequestHeaders().containsKey("Origin")) return "only Fornax Studio may call this server (a web page's Origin)";
         if (secret != null && !ex.getRequestURI().getPath().equals("/api/health")) {

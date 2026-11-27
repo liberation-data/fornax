@@ -76,7 +76,8 @@ class CallerTest {
 
     @Test void theStudiosOwnRequestsAreServed() throws Exception {
         start(null);
-        for (String h : List.of(host(), "Host: localhost:" + server.port(), "Host: LOCALHOST:" + server.port(), "Host: [::1]:" + server.port()))
+        for (String h : List.of(host(), "Host: localhost:" + server.port(), "Host: LOCALHOST:" + server.port(), "Host: [::1]:" + server.port(),
+                "Host: 127.0.0.2:" + server.port()))
             assertTrue(send("GET", "/api/catalogue", null, h).startsWith("HTTP/1.1 200"), h);
     }
 
