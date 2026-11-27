@@ -21,9 +21,9 @@ surprises you.
   ghost structures. `DiffusionModel` now selects the model when a model path is given, and refuses contradictory
   settings.
 - **bf16 on RADV.** The Radeon 8060S (Strix Halo) Vulkan driver reports `bf16: 0`, so bf16 ops fall back to the
-  CPU, which has no f32 + bf16 add, and the run aborts. stable-diffusion.cpp never converts `.bias` tensors, so
-  `tensor_type_rules` alone couldn't fix it. `native/patches/stable-diffusion.cpp/0001` lets an explicit bf16→f32
-  rule widen any tensor.
+  CPU, which has no f32 + bf16 add, and an LTX-2.5 run aborted. Fornax carried a patch (`0001`, bf16→f32 rules for any
+  tensor) until leejet/stable-diffusion.cpp#2432 (from Fornax's report) loaded LTX's bf16 tensors as F32 upstream.
+  Since the pin includes it, LTX renders on RADV with no patch and no rules (checked at 336×224, 49 frames, with audio).
 - **Long GPU submissions hit the amdgpu compute timeout.** ggml-vulkan puts up to 100 graph nodes in each
   submission. One big decode (LTX's audio VAE at full size) can exceed the kernel's timeout and lose the device.
   `GGML_VK_MAX_NODES_PER_SUBMIT=8` (`-Dfornax.vulkan.maxNodesPerSubmit=8`) fixed it. ComfyUI never hit this, because PyTorch on ROCm launches many small

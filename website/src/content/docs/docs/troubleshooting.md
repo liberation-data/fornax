@@ -80,10 +80,10 @@ FORNAX_ACESTEP_VAE_CHUNK=256 ./gradlew song --args='song.wav'
 CPU, which has no f32 + bf16 add. stable-diffusion.cpp never converts `.bias` tensors, so its `tensor_type_rules`
 alone couldn't fix it.
 
-**Fix:** Fornax patches stable-diffusion.cpp (`native/patches/stable-diffusion.cpp/0001`) so that an explicit
-bf16→f32 rule can widen any tensor. Then widen the bf16 tensors when the model loads, with `tensor_type_rules` in the
-`Config`. The [Video](/docs/guides/video/#a-clip-with-sound) guide has the rules for ComfyUI's int8 LTX-2.5, which
-widen about 0.9 GB and leave the int8 weights alone.
+**Fix:** from 0.3.0 nothing: stable-diffusion.cpp loads LTX-2.5's bf16 tensors as f32 itself
+(leejet/stable-diffusion.cpp#2432, which Fornax's pin includes). On 0.2.0, widen them with
+`.set("tensor_type_rules", DiffusionModel.Config.LTX_BF16_TO_F32)`; 0.2.0 carries the patch that lets the rules
+reach `.bias` tensors.
 
 ## A hires refine that ghosts
 
