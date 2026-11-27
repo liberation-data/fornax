@@ -69,10 +69,31 @@ class GgufHeaderTest {
                 GgufHeader.read(p));
     }
 
-    @Test void aProjectorThatTakesOrMakesAudioSpeaksAudio() throws Exception {
-        assertTrue(GgufHeader.speaksAudio(write("asr.gguf", gguf("clip.has_audio_encoder", true))));
-        assertTrue(GgufHeader.speaksAudio(write("tts.gguf", gguf("clip.has_gen_audio_encoder", true))));
-        assertFalse(GgufHeader.speaksAudio(write("vision.gguf", gguf("clip.has_vision_encoder", true, "clip.has_audio_encoder", false))));
+    @Test void aVoiceOrATranscriberIsOnlySpeech() throws Exception {
+        assertTrue(GgufHeader.onlySpeech(write("tts.gguf", gguf("clip.has_gen_audio_encoder", true, "clip.gen.audio.projector_type", "soprano"))));
+        assertTrue(GgufHeader.onlySpeech(write("clone.gguf", gguf("clip.has_audio_encoder", true, "clip.audio.projector_type", "zonos3_spkenc",
+                "clip.has_gen_audio_encoder", true, "clip.gen.audio.projector_type", "zonos3_gen"))));
+        assertTrue(GgufHeader.onlySpeech(write("asr.gguf", gguf("clip.has_audio_encoder", true, "clip.audio.projector_type", "qwen3a"))));
+        // An unknown voice can't answer in Chat, so it stays out.
+        assertTrue(GgufHeader.onlySpeech(write("new-tts.gguf", gguf("clip.has_gen_audio_encoder", true))));
+    }
+
+    @Test void anAudioChatModelIsNotOnlySpeech() throws Exception {
+        // LFM3-Audio hears and speaks, and chats in text.
+        assertFalse(GgufHeader.onlySpeech(write("lfm3.gguf", gguf("clip.has_audio_encoder", true, "clip.audio.projector_type", "lfm3a",
+                "clip.has_gen_audio_encoder", true, "clip.gen.audio.projector_type", "lfm3a_gen"))));
+        // Ultravox, Voxtral, Qwen2.5-Omni hear audio and answer in text; so does any listener not known to transcribe.
+        assertFalse(GgufHeader.onlySpeech(write("voxtral.gguf", gguf("clip.has_audio_encoder", true, "clip.audio.projector_type", "voxtral"))));
+        assertFalse(GgufHeader.onlySpeech(write("vision.gguf", gguf("clip.has_vision_encoder", true, "clip.has_audio_encoder", false))));
+        // Qwen3-Omni hears with Qwen3-ASR's encoder (qwen3a) but sees too, and chats.
+        assertFalse(GgufHeader.onlySpeech(write("omni.gguf", gguf("clip.has_vision_encoder", true, "clip.vision.projector_type", "qwen3vl_merger",
+                "clip.has_audio_encoder", true, "clip.audio.projector_type", "qwen3a"))));
+    }
+
+    @Test void anAudioOnlyProjectorNamesItsTypeWithoutTheAudioPrefix() throws Exception {
+        // A projector with one modality is written with clip.projector_type, as GLM-ASR's and Voxtral's are.
+        assertTrue(GgufHeader.onlySpeech(write("glm-asr.gguf", gguf("clip.has_audio_encoder", true, "clip.projector_type", "glma"))));
+        assertFalse(GgufHeader.onlySpeech(write("voxtral1.gguf", gguf("clip.has_audio_encoder", true, "clip.projector_type", "voxtral"))));
     }
 
     @Test void notAGgufOrCutShortIsReadAsFarAsItGoes() throws Exception {
@@ -81,7 +102,7 @@ class GgufHeaderTest {
         byte[] whole = gguf("general.architecture", "llama", "clip.has_audio_encoder", true);
         Path cut = write("cut.gguf", Arrays.copyOf(whole, whole.length - 1));
         assertEquals(Map.of("general.architecture", "llama"), GgufHeader.read(cut));
-        assertFalse(GgufHeader.speaksAudio(cut));
+        assertFalse(GgufHeader.onlySpeech(cut));
     }
 
     @Test void aStringCutShortIsNotRead() throws Exception {
