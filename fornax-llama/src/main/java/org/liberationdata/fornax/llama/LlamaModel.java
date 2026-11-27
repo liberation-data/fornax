@@ -62,7 +62,7 @@ import static java.lang.foreign.ValueLayout.JAVA_LONG;
  * them; {@link Vectors} searches the embeddings.
  *
  * <p>Threads: calls run one at a time, in arrival order, from any thread (a model loaded with slots runs that many
- * at once, and runs callbacks on its batch thread). The blocking methods ({@link #chat} and the
+ * at once, and in process runs callbacks on its batch thread). The blocking methods ({@link #chat} and the
  * rest) run on the calling thread, callback included. The {@code ...Async} methods run on this model's own platform
  * thread and return a {@link CompletableFuture}, so a virtual thread awaiting one doesn't pin its carrier; streaming
  * goes to a {@link Flow.Subscriber}. {@link #cancel()} and {@link #close()} are safe from any thread.
