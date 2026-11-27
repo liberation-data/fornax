@@ -622,7 +622,7 @@ class FornaxServerTest {
              Socket s = new Socket(InetAddress.getLoopbackAddress(), small.port())) {
             int port = small.port();
             s.setSoTimeout(5000);
-            byte[] body = ("{\"stream\": true, \"messages\": [{\"role\": \"user\", \"content\": \"" + "a".repeat(700_000) + "\"}]}")
+            byte[] body = ("{\"stream\": true, \"messages\": [{\"role\": \"user\", \"content\": \"" + "a".repeat(1_000_000) + "\"}]}")
                     .getBytes(StandardCharsets.UTF_8);
             OutputStream out = s.getOutputStream();
             out.write(("POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:" + port + "\r\nContent-Length: " + body.length + "\r\n\r\n")
@@ -631,10 +631,12 @@ class FornaxServerTest {
             out.flush();
             var in = new java.io.BufferedInputStream(s.getInputStream());
             assertTrue(line(in).contains(" 200 "));   // the stream has started: its first piece is out, two to come
-            String big = "{\"input\": \"a\"" + " ".repeat(600_000) + "}";
+            // more than the room the stream leaves (about 47 KB), less than the drain: its 503 arrives rather than a reset
+            String big = "{\"input\": \"a\"" + " ".repeat(60_000) + "}";
+            assertTrue(big.length() < FornaxServer.DRAIN_BYTES);
             var r = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v1/embeddings"))
                     .POST(HttpRequest.BodyPublishers.ofString(big)).build(), HttpResponse.BodyHandlers.discarding());
-            assertEquals(503, r.statusCode(), "the stream's 700 KB is still held: 600 KB more is past 1 MB");
+            assertEquals(503, r.statusCode(), "the stream's 977 KB is still held: 59 KB more is past 1 MB");
             while (!line(in).isEmpty()) continue;   // the headers
             for (int n; (n = Integer.parseInt(line(in).strip(), 16)) > 0; line(in)) in.readNBytes(n);   // to the stream's end
             assertEquals(200, http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v1/embeddings"))
