@@ -141,6 +141,9 @@ others wait for it, unless it has slots (below).
 together in one batch (continuous batching, as llama-server's `-np` does), and more wait for a free slot. Each slot has
 its own `--ctx` tokens, so the context takes N times the memory, and `--budget-gb` counts it (the KV cache's size, from
 the model's header, besides its files). A client that hangs up, or whose deadline passes, stops only its own request.
+A streaming client that reads more slowly than the model generates is never waited for, which would hold up every
+slot: once it falls a whole buffer behind (1024 pieces), its request stops with an error event
+([overflow](/docs/guides/threading/#streaming)).
 Vision models still answer one request at a time, since a model with slots takes no images yet. The
 [benchmarks](/docs/benchmarks/) show what it buys: tokens a second across clients, and their wait for the first token.
 

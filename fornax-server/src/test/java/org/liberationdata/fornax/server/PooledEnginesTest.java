@@ -123,4 +123,18 @@ class PooledEnginesTest {
         }
         assertEquals("/Models/My-Embed.gguf", PooledEngines.canonical("/Models/My-Embed.gguf", Use.EMBED));
     }
+
+    @Test void withParallelAChatModelHasSlotsButAVisionModelAndEmbeddingsHaveOne() {
+        try (var e = new PooledEngines(hub(), new ModelPool(1L << 30, null), List.of("qwen3-4b", "qwen3-vl-4b", REF), 2048, 4,
+                PullListener.NONE, s -> {}, false)) {
+            assertEquals(4, e.slots(e.find("qwen3-4b", Use.CHAT, false)));
+            assertEquals(4, e.slots(e.find(REF, Use.CHAT, false)));
+            assertEquals(1, e.slots(e.find("qwen3-vl-4b", Use.CHAT, false)), "a model with slots takes no images");
+            assertEquals(1, e.slots(e.find(REF, Use.EMBED, false)));
+        }
+        assertThrows(IllegalArgumentException.class, () -> new PooledEngines(hub(), new ModelPool(1L << 30, null), List.of(), 0, 4,
+                PullListener.NONE, s -> {}, false), "slots need a context size each");
+        assertThrows(IllegalArgumentException.class, () -> FornaxServer.builder().parallel(0));
+        assertThrows(IllegalArgumentException.class, () -> FornaxServer.builder().parallel(257));
+    }
 }

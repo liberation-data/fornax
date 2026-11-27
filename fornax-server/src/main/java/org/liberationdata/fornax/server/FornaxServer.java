@@ -762,8 +762,9 @@ public final class FornaxServer implements AutoCloseable {
          * How many chat requests each language model runs at once (default 1). More than 1 loads it with that many
          * slots, which decode together in one batch (continuous batching), so concurrent clients share the GPU instead
          * of queueing; each slot has {@link #contextSize} tokens of its own, so the context takes that many times the
-         * memory, and the pool's budget counts it. Vision models, which a model with slots can't take images in yet,
-         * still run one request at a time.
+         * memory, and the pool's budget counts it (so {@code contextSize} must not be 0; {@link #build} refuses it).
+         * A streaming client that falls a whole buffer behind is stopped rather than waited for, which would stall
+         * every slot. Vision models, which a model with slots can't take images in yet, still run one request at a time.
          */
         public Builder parallel(int requests) {
             if (requests < 1 || requests > 256) throw new IllegalArgumentException("parallel must be from 1 to 256, not " + requests);

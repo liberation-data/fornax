@@ -39,7 +39,9 @@ import java.util.regex.Pattern;
  * The server's engines: a model named by a request is found with {@link FornaxHub} (downloaded the first time, when
  * downloads are allowed; otherwise it must be one the server was started with, or a catalogue model already
  * downloaded), and kept loaded in a {@link ModelPool}, which unloads the least recently used to stay within its budget, and idle
- * ones after its timeout. A model has one request at a time; others wait for it.
+ * ones after its timeout. A model has one request at a time; others wait for it. With {@code parallel} above 1, a language
+ * model is loaded with that many slots and has that many requests at once ({@link #chatInSlot}), its KV cache counted
+ * in its size.
  *
  * <p>A name is a catalogue alias ({@code qwen3-4b}, {@code flux2-klein}, {@code kokoro}, {@code whisper-base.en}), an
  * {@code org/name[:TAG]} reference to one GGUF (or whisper.cpp) file, or a path to one. Embeddings take
@@ -396,7 +398,7 @@ final class PooledEngines implements Engines {
     }
 
     /** A language model's slots: {@link #parallel}, except for a vision model, whose images a model with slots can't take. */
-    private int slots(Found f) {
+    int slots(Found f) {
         return f.use() == Use.CHAT && !(f.set() != null && f.set().kind() == Kind.VISION) ? parallel : 1;
     }
 
