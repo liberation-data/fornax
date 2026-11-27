@@ -26,7 +26,8 @@ final class Song {
             usage: fornax song <model> "description" [options]
 
             Makes a song from a description of its style (genre, instruments, voice, mood) and writes it as a WAV.
-            <model> is a song alias: %s. A model that isn't downloaded yet is pulled first.
+            <model> is a song alias: %s.
+            A model that isn't downloaded yet is pulled first.
             YuE2's weights are CC BY-NC 4.0: no commercial use of them or of what they make.
 
             Without --lyrics, ace-step and ace-step-xl (with the 4B lyric LM) and yue2 write their own words;

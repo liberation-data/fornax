@@ -157,6 +157,13 @@ class CommandsTest {
     }
 
     @Test
+    void seeAsksWhatTheModelIsFor() {
+        assertEquals("Describe this image.", See.question("qwen3-vl-4b"));
+        assertEquals("Describe this image.", See.question(null));   // a reference or path
+        assertEquals("OCR:", See.question("paddleocr-vl"));
+    }
+
+    @Test
     void whisperFilesGetTheirAlignmentHeads() {
         assertEquals(Alignment.BASE_EN, Transcribe.alignment(Path.of("/cache/snapshots/abc/ggml-base.en.bin")));
         assertEquals(Alignment.LARGE_V3_TURBO, Transcribe.alignment(Path.of("ggml-large-v3-turbo-q5_0.bin")));

@@ -27,8 +27,9 @@ final class See {
             usage: fornax see <model> <image> ["question"] [options]
 
             Asks a vision language model about an image (PNG, JPEG, BMP or GIF) and streams its answer.
-            The question defaults to "%s". <model> is a vision alias: %s; or a GGUF by
-            org/name:TAG or path, with its --mmproj. A model that isn't downloaded yet is pulled first.
+            The question defaults to "%s" ("OCR:" for paddleocr-vl).
+            <model> is a vision alias (%s), or a GGUF by org/name:TAG or path
+            with its --mmproj. A model that isn't downloaded yet is pulled first.
 
               --mmproj M           the model's vision encoder, by org/name:file.gguf or path (an alias brings its own)
               --system TEXT        system prompt
@@ -44,7 +45,6 @@ final class See {
         if (spec == null) throw new UsageException("which model? " + Models.kinds(Kind.VISION));
         if (image == null) throw new UsageException("which image?");
         String question = String.join(" ", a.rest(2)).strip();
-        if (question.isEmpty()) question = QUESTION;
         LlamaModel.Image picture = read(Path.of(image));
         var o = Chat.options(a);
         String mmprojSpec = a.option("mmproj", null);
@@ -60,11 +60,14 @@ final class See {
             err.printf(Locale.ROOT, "[fornax] loaded in %s%n", Fmt.seconds((System.nanoTime() - t0) / 1e9));
             List<Message> history = new ArrayList<>();
             if (a.option("system", null) != null) history.add(Message.system(a.option("system", null)));
-            history.add(Message.user(question, picture));
+            history.add(Message.user(question.isEmpty() ? question(m.set() == null ? null : m.set().id()) : question, picture));
             Chat.reply(model, history, o, a.has("think"), false, out, err);
         }
         return 0;
     }
+
+    /** The question when none is given: PaddleOCR-VL is trained to read text out ("OCR:"), the others to describe. */
+    static String question(String alias) { return alias != null && alias.startsWith("paddleocr") ? "OCR:" : QUESTION; }
 
     private static LlamaModel.Image read(Path file) {
         if (!Files.isRegularFile(file)) throw new Main.Failure("no such image: " + file);

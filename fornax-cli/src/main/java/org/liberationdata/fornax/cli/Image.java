@@ -26,7 +26,8 @@ final class Image {
     static final String USAGE = """
             usage: fornax image <model> "prompt" [options]
 
-            Draws an image from the prompt and writes it as a PNG. <model> is an image alias: %s.
+            Draws an image from the prompt and writes it as a PNG.
+            <model> is an image alias: %s.
             A model that isn't downloaded yet is pulled first (see fornax list for sizes).
 
               --out FILE           where to write it (default image.png here, numbered rather than overwrite one;
