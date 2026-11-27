@@ -28,7 +28,7 @@ The Java modules, each with sources and javadoc jars:
 | `fornax-demucs` | stem separation: vocals and backing, drums, bass, ... (stems.cpp) |
 | `fornax-server` | an OpenAI-compatible HTTP server over the engines (JDK only) |
 | `fornax-core` | what they share; each engine module brings it in |
-| `fornax-cli` | the [`fornax` command](/docs/guides/cli/), with `Main-Class` set, for `jbang org.fornax4j:fornax-cli:0.2.0`. Its POM takes the natives through `fornax-natives` (below), so Maven and JBang pick the host's jar; a Gradle build adds one itself |
+| `fornax-cli` | the [`fornax` command](/docs/guides/cli/), with `Main-Class` set, for `jbang org.fornax4j:fornax-cli:0.3.0`. Its POM takes the natives through `fornax-natives` (below), so Maven and JBang pick the host's jar; a Gradle build adds one itself |
 | `fornax-bom` | the versions of all of these and the natives below, to import once |
 
 The natives, one jar per platform and GPU backend, each with all seven engines' libraries:
