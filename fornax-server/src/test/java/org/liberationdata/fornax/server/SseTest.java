@@ -77,6 +77,21 @@ class SseTest {
         }
     }
 
+    @Test void aKeepAliveThatFailsStillNoticesTheClientHasGone() throws Exception {
+        Sse.keepAliveMillis = 20;
+        var gone = new CountDownLatch(1);
+        var a = new Sse(exchange(new OutputStream() {
+            @Override public void write(int b) throws java.io.IOException { throw new java.io.IOException("broken pipe"); }
+        }), gone::countDown);
+        try {
+            assertTrue(gone.await(5, TimeUnit.SECONDS), "onGone ran from the keep-alive's own thread");
+            assertThrows(java.util.concurrent.CancellationException.class, () -> a.data(Json.obj("x", 1)));
+        } finally {
+            a.close();
+            Sse.keepAliveMillis = 3_000;
+        }
+    }
+
     @Test void aStuckStreamHasOneKeepAliveUnderWayNotOnePerTick() throws Exception {
         Sse.keepAliveMillis = 20;
         var stuck = new Stuck();

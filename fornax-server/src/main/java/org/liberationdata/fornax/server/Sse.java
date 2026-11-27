@@ -19,9 +19,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * that won't load) still gets an error status. While nothing else is sent (a model loading, a reasoning model
  * thinking), a {@code : keep-alive} comment is sent every {@link #keepAliveMillis}, which clients skip. The one timer
  * thread only decides that one is due; the write itself runs on a virtual thread, so a client that reads slowly holds up
- * its own stream and no one else's keep-alives. A write that
- * fails means the client has gone: {@code onGone} runs once (it stops the generation), and {@link #data} throws a
- * CancellationException, which from a model's callback stops the generation too.
+ * its own stream and no one else's keep-alives. A write that fails means the client has gone: {@code onGone} runs
+ * once (it stops the generation), and {@link #data} throws a CancellationException, which from a model's callback
+ * stops the generation too.
  */
 final class Sse implements AutoCloseable {
     private final HttpExchange exchange;
