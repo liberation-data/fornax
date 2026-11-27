@@ -64,8 +64,16 @@ class SchemasTest {
     @Test void anEscapedPropertiesKeyIsStillChecked() {
         String escaped = object(300, 0).replace("\"properties\"", "\"propert\\u0069es\"");
         assertEquals("properties", ((java.util.Map<?, ?>) Json.parse(escaped)).keySet().toArray()[1]);
-        assertThrows(IllegalArgumentException.class, () -> Schemas.requireBuildableJson(escaped, "x"));
+        assertThrows(IllegalArgumentException.class, () -> Schemas.requireBuildableJson("{\"json_schema\": " + escaped + "}", "x"));
         Schemas.requireBuildableJson("{\"messages\": [{\"role\": \"user\", \"content\": \"hi\"}]}", "x");
+    }
+
+    /** Only json_schema and tools become grammars: an object elsewhere (a message's, say) isn't one, and the error names which. */
+    @Test void onlyTheRequestsSchemasAreChecked() {
+        Schemas.requireBuildableJson("{\"messages\": [{\"role\": \"user\", \"content\": \"hi\", \"x\": " + object(300, 0) + "}]}", "x");
+        var e = assertThrows(IllegalArgumentException.class, () -> Schemas.requireBuildableJson("{\"messages\": [], \"tools\": "
+                + "[{\"type\": \"function\", \"function\": {\"name\": \"f\", \"parameters\": " + object(300, 0) + "}}]}", "the request"));
+        assertTrue(e.getMessage().startsWith("tools has an object with 300 optional properties"), e.getMessage());
     }
 
     @Test void aDeeplyNestedDocumentDoesntOverflowTheWalk() {

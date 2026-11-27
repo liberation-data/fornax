@@ -117,18 +117,22 @@ public final class Schemas {
     public static final int MAX_DEPTH = 256;
 
     /**
-     * requireBuildable on a request's JSON text, parsing it only if it could hold an object schema: if it names
-     * "properties", or escapes a character, as {@code "propert\\u0069es"} could. First, without parsing, it refuses
-     * JSON nested more than {@link #MAX_DEPTH} levels.
+     * requireBuildable on a request's json_schema and tools, the parts the engine makes grammars of, parsing its JSON
+     * text only if it could hold an object schema: if it names "properties", or escapes a character, as
+     * {@code "propert\\u0069es"} could. First, without parsing, it refuses JSON nested more than {@link #MAX_DEPTH}
+     * levels; what names the request in that message.
      */
     static void requireBuildableJson(String json, String what) {
         if (depth(json) > MAX_DEPTH)
             throw new IllegalArgumentException(what + " is nested more than " + MAX_DEPTH + " levels deep");
-        if (json.contains("\"properties\"") || json.contains("\\u")) requireBuildable(Json.parse(json), what);
+        if ((json.contains("\"properties\"") || json.contains("\\u")) && Json.parse(json) instanceof Map<?, ?> req) {
+            requireBuildable(req.get("json_schema"), "json_schema");
+            requireBuildable(req.get("tools"), "tools");
+        }
     }
 
     /** How deep json's arrays and objects nest, brackets in strings aside. */
-    static int depth(String json) {
+    public static int depth(String json) {
         int depth = 0, most = 0;
         boolean inString = false;
         for (int i = 0; i < json.length(); i++) {
