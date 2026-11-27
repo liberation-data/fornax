@@ -213,6 +213,14 @@ class FornaxServerTest {
         assertEquals("failed to load model.gguf: bad magic", get(json(r), "error", "message"), r.body());
     }
 
+    /** Only the caller's body is cut: whoever runs the server (start's failure, a model that won't load) sees the path. */
+    @Test void aServerErrorKeepsItsPathsForTheOperator() {
+        ApiError e = ApiError.server("qwen3-4b: /home/someone/.cache/m.gguf: permission denied");
+        assertEquals("qwen3-4b: /home/someone/.cache/m.gguf: permission denied", e.getMessage());
+        assertEquals("qwen3-4b: m.gguf: permission denied", get(e.body(), "error", "message"));
+        assertEquals("no /a/b here", get(ApiError.badRequest("no /a/b here", null).body(), "error", "message"), "only a 500");
+    }
+
     /** A directory with a space in it (a Windows user name, macOS's Application Support) is a directory all the same. */
     @Test void withoutPathsCutsDirectoriesWithSpacesAndDriveLetterSlashes() {
         assertEquals("open model.gguf failed", ApiError.withoutPaths("open C:\\Users\\John Smith\\.cache\\model.gguf failed"));
