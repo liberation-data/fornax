@@ -48,13 +48,19 @@ final class ApiError extends RuntimeException {
         return server(e.getMessage() != null ? e.getMessage() : e.toString());
     }
 
-    /** Unix (/a/b/file) and Windows (C:\\a\\file) paths with a directory, as their last segment. */
+    /**
+     * Unix (/a/b/file) and Windows (C:\a\file, C:/a/file) paths with a directory, as their last segment. A directory
+     * may have spaces in it (C:\Users\John Smith, Application Support), as long as no word of it has a colon, comma
+     * or semicolon, so prose after a file name ("model.gguf: bad tensor a/b") isn't taken for one.
+     */
     static String withoutPaths(String message) {
         return PATH.matcher(message).replaceAll("$1");
     }
 
     private static final java.util.regex.Pattern PATH = java.util.regex.Pattern.compile(
-            "(?:(?<![\\w.:/])/|\\b[A-Za-z]:\\\\)(?:[^\\s/\\\\'\"()]+[/\\\\])+([^\\s/\\\\'\"()]*)");
+            "(?:(?<![\\w.:/])/|\\b[A-Za-z]:[/\\\\])"
+            + "(?:(?:[^\\s/\\\\'\"()]+|[^\\s/\\\\'\"():,;]+(?: [^\\s/\\\\'\"():,;]+)+)[/\\\\])+"
+            + "([^\\s/\\\\'\"()]*)");
 
     Map<String, Object> body() {
         return Json.obj("error", Json.obj("message", getMessage(), "type", type, "param", param, "code", code));

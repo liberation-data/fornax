@@ -213,6 +213,16 @@ class FornaxServerTest {
         assertEquals("failed to load model.gguf: bad magic", get(json(r), "error", "message"), r.body());
     }
 
+    /** A directory with a space in it (a Windows user name, macOS's Application Support) is a directory all the same. */
+    @Test void withoutPathsCutsDirectoriesWithSpacesAndDriveLetterSlashes() {
+        assertEquals("open model.gguf failed", ApiError.withoutPaths("open C:\\Users\\John Smith\\.cache\\model.gguf failed"));
+        assertEquals("model.gguf: bad magic", ApiError.withoutPaths("/Users/jb/Library/Application Support/fornax/model.gguf: bad magic"));
+        assertEquals("open model.gguf failed", ApiError.withoutPaths("open C:/Users/x/model.gguf failed"));
+        // a space-separated word isn't swallowed into a directory across a colon or comma
+        assertEquals("model.gguf: bad tensor a/b", ApiError.withoutPaths("/a/model.gguf: bad tensor a/b"));
+        assertEquals("m.gguf in 3 layers, 1/2 done", ApiError.withoutPaths("/a/m.gguf in 3 layers, 1/2 done"));
+    }
+
     @Test void withoutPathsKeepsWhatIsntALocalPath() {
         assertEquals("model.gguf", ApiError.withoutPaths("/a/b/model.gguf"));
         assertEquals("open model.gguf failed", ApiError.withoutPaths("open C:\\Users\\x\\model.gguf failed"));
