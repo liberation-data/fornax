@@ -356,7 +356,8 @@ class FornaxServerTest {
         assertEquals("embedding", get(j, "data", 1, "object"));
         assertEquals(1L, get(j, "data", 1, "index"));
         assertEquals(List.of(0.6, 0.8, 0.0, 1.0), get(j, "data", 1, "embedding"));
-        assertNotNull(get(j, "usage", "prompt_tokens"));
+        assertEquals(4L, get(j, "usage", "prompt_tokens"));   // the stub's: each text's length plus one
+        assertEquals(4L, get(j, "usage", "total_tokens"));
 
         // base64: little-endian float32s, which the openai clients ask for by default
         Object b = json(post("/v1/embeddings", "{\"model\": \"e\", \"input\": \"a\", \"encoding_format\": \"base64\"}"));

@@ -107,7 +107,7 @@ public final class LlamaModel implements AutoCloseable {
                 FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_INT));
         static final MethodHandle N_EMBD = LIB.function("fornax_llama_n_embd", FunctionDescriptor.of(JAVA_INT, ADDRESS));
         static final MethodHandle EMBED = LIB.function("fornax_llama_embed", FunctionDescriptor.of(JAVA_INT,
-                ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+                ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
         static final MethodHandle RERANK = LIB.function("fornax_llama_rerank", FunctionDescriptor.of(JAVA_INT,
                 ADDRESS, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         static final MethodHandle CREATE_BATCHED = LIB.function("fornax_llama_create_batched",
@@ -317,6 +317,12 @@ public final class LlamaModel implements AutoCloseable {
         /** Reranking: {@link #rerank}, for a reranker GGUF (rank pooling, with a classifier head). */
         RERANK
     }
+
+    /**
+     * Embeddings with what they cost: one vector per text, in order, and the tokens the texts took (with the prefix and
+     * the vocab's BOS/EOS), as an OpenAI usage report counts them.
+     */
+    public record Embeddings(float[][] vectors, int tokens) {}
 
     /**
      * How {@link #embed(List, EmbedOptions)} embeds. prefix (null for none) goes before each text, verbatim; normalize
@@ -730,7 +736,7 @@ public final class LlamaModel implements AutoCloseable {
 
     /** {@link #embed(List, EmbedOptions)}, on this model's thread. */
     public CompletableFuture<float[][]> embedAsync(List<String> texts, EmbedOptions o) {
-        return thread.submit(c -> embedOn(c, texts, o));
+        return thread.submit(c -> embedOn(c, texts, o).vectors());
     }
 
     /** {@link #rerank(String, List)}, on this model's thread. */
@@ -967,24 +973,30 @@ public final class LlamaModel implements AutoCloseable {
      * llama-embedding runs them. Text isn't parsed for special tokens. A text longer than the context fails
      * (split it first). {@link #cancel()} stops it between batches, with a {@link CancellationException}.
      */
-    public float[][] embed(List<String> texts, EmbedOptions o) {
+    public float[][] embed(List<String> texts, EmbedOptions o) { return embeddings(texts, o).vectors(); }
+
+    /** {@link #embed(List, EmbedOptions)}, with the tokens the texts took. */
+    public Embeddings embeddings(List<String> texts, EmbedOptions o) {
         return thread.run(c -> embedOn(c, texts, o));
     }
 
-    float[][] embedOn(Call call, List<String> texts, EmbedOptions o) {
+    Embeddings embedOn(Call call, List<String> texts, EmbedOptions o) {
         requireMode(Mode.EMBED, "embed");
         int n = texts.size(), dim = embeddingSize;
-        if (n == 0) return new float[0][];
+        if (n == 0) return new Embeddings(new float[0][], 0);
         if (remote != null) return LlamaService.decodeEmbeddings(remote(call, "embed", LlamaService.embedArgs(texts, o), null));
         try (Arena a = Arena.ofConfined()) {
             MemorySegment in = strings(a, texts, o.prefix());
             MemorySegment out = a.allocate(JAVA_FLOAT, (long) n * dim);
+            MemorySegment counts = a.allocate(JAVA_INT, n);
             MemorySegment cb = callback(a, call, null);
-            int rc = (int) N.EMBED.invokeExact(handle, in, n, o.normalize() ? 1 : 0, out, cb, MemorySegment.NULL);
+            int rc = (int) N.EMBED.invokeExact(handle, in, n, o.normalize() ? 1 : 0, out, counts, cb, MemorySegment.NULL);
             pooledResult(rc, call, "embed");
             float[][] v = new float[n][];
             for (int i = 0; i < n; i++) v[i] = out.asSlice((long) i * dim * Float.BYTES, (long) dim * Float.BYTES).toArray(JAVA_FLOAT);
-            return v;
+            int tokens = 0;
+            for (int t : counts.toArray(JAVA_INT)) tokens += t;
+            return new Embeddings(v, tokens);
         } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
     }

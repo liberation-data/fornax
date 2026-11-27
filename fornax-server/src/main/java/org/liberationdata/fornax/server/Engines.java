@@ -1,6 +1,7 @@
 package org.liberationdata.fornax.server;
 
 import org.liberationdata.fornax.Audio;
+import org.liberationdata.fornax.llama.LlamaModel.Embeddings;
 import org.liberationdata.fornax.whisper.Transcript;
 
 import java.awt.image.BufferedImage;
@@ -32,8 +33,8 @@ interface Engines extends AutoCloseable {
     /** Throws as {@link #chat} would for the model's name, before anything is loaded: for a stream's status. */
     void checkChat(String model, boolean images);
 
-    /** One embedding per text, normalised. */
-    float[][] embed(String model, List<String> texts);
+    /** One embedding per text, normalised, and the tokens they took. */
+    Embeddings embed(String model, List<String> texts);
 
     List<BufferedImage> images(String model, ImageJob job);
 

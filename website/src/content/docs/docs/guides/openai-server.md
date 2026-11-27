@@ -91,7 +91,7 @@ non-streaming request runs to the end.
 started with, or any with `--allow-downloads`). `dimensions` keeps
 the first n and normalises them again, which Qwen3-Embedding is trained for. `encoding_format: "base64"`, which the
 OpenAI clients ask for by default, is supported. Vectors are normalised, so a dot product is the cosine similarity.
-`usage` reports 0 tokens.
+`usage` counts the tokens the texts took, as OpenAI's does (`prompt_tokens` and `total_tokens`, the same).
 
 ### Images
 

@@ -57,7 +57,7 @@ Package `org.liberationdata.fornax.llama`. See [Language models](/docs/guides/la
 | `extract(messages, jsonSchema, options)` | a reply constrained to a JSON schema, as JSON text; messages may carry images |
 | `chatJson(requestJson, images, onContent)`, `complete(prompt, images, options, onPiece)` | `chatJson` and `complete` with images; `mediaMarker()` |
 | `new LlamaModel(Weights, Mode)`, `(gguf, Mode)`, `(Weights or gguf, gpuLayers, contextSize, Mode)` | a model loaded for `Mode.CHAT`, `EMBED` or `RERANK`; `mode()`. See [Embeddings and reranking](/docs/guides/embeddings/) |
-| `embed(texts[, embedOptions])`, `embed(text)`, `embedAsync(texts, embedOptions)` | embeddings (`float[][]`, L2-normalised by default); `embeddingSize()` |
+| `embed(texts[, embedOptions])`, `embed(text)`, `embedAsync(texts, embedOptions)` | embeddings (`float[][]`, L2-normalised by default); `embeddingSize()`. `embeddings(texts, embedOptions)`: the vectors with the tokens they took (`Embeddings`) |
 | `rerank(query, documents)`, `rerankAsync(query, documents)` | the documents' relevance scores, best first, as `List<Scored>` |
 | `LlamaModel.EmbedOptions` | `prefix`, `normalize`; `DEFAULT`, `query(task)` (Qwen3-Embedding's instruction format), `withPrefix`, `withNormalize` |
 | `LlamaModel.Message` | `role`, `content` and `images`; `system(...)`, `user(...)`, `user(text, images...)`, `assistant(...)` |
