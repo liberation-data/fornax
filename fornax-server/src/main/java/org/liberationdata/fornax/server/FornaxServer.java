@@ -79,8 +79,24 @@ import java.util.function.Consumer;
  * {@code -Dsun.net.httpserver.maxReqTime=120} (seconds to send a request) and {@code -Djdk.httpserver.maxConnections=512}
  * to {@code java}, as {@code fornax server} sets them. Not {@code sun.net.httpserver.maxRspTime}, which would cut off
  * a long stream.
+ *
+ * <p>One property it does set, unless given: {@code sun.net.httpserver.nodelay=true} (see {@link #NODELAY}).
  */
 public final class FornaxServer implements AutoCloseable {
+    /**
+     * Before JDK 25, the JDK HTTP server writes a reply's headers and its body in two writes, and with Nagle's algorithm
+     * on (its default) the body waits for the client to acknowledge the headers, which a client delays by up to 40 ms:
+     * every reply took 40 ms more, a stream's pieces were held back, and a reply sent before the request was read whole
+     * (a 413) could be lost to the reset as the connection closed, its body still unsent. TCP_NODELAY sends each write
+     * at once; JDK 25 buffers the headers with the body, and loses nothing by it. The JDK reads it once per JVM, when its
+     * server classes load, so it is set as this class loads; an explicit {@code -Dsun.net.httpserver.nodelay} wins.
+     */
+    static final String NODELAY = "sun.net.httpserver.nodelay";
+
+    static {
+        if (System.getProperty(NODELAY) == null) System.setProperty(NODELAY, "true");
+    }
+
     /** The port it listens on unless told otherwise. */
     public static final int DEFAULT_PORT = 54154;
     /** The embedding model {@code /v1/embeddings} knows by name (Qwen3-Embedding 0.6B), and uses when a request names none. */

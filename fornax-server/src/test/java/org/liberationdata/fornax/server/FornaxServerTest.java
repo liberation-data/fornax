@@ -258,6 +258,16 @@ class FornaxServerTest {
         assertEquals(413, big.statusCode());
     }
 
+    /** Before JDK 25, without TCP_NODELAY each reply's body waited on the client's delayed ACK of its headers: 40 ms a reply. */
+    @Test void repliesDontWaitForTheClientsAck() throws Exception {
+        assertEquals("true", System.getProperty(FornaxServer.NODELAY));
+        getPath("/health");   // the connection, opened
+        long t0 = System.nanoTime();
+        for (int i = 0; i < 100; i++) assertEquals(200, getPath("/health").statusCode());
+        long ms = (System.nanoTime() - t0) / 1_000_000;
+        assertTrue(ms < 2000, "100 replies took " + ms + " ms");
+    }
+
     @Test void theModels() throws Exception {
         var r = getPath("/v1/models");
         assertEquals(200, r.statusCode());
