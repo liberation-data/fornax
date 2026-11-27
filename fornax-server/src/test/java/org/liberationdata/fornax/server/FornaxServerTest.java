@@ -571,6 +571,7 @@ class FornaxServerTest {
             b.close();
 
             // all of it came back, and no more: two bodies fill it again, and the next is refused again
+            assertEquals(200, statusOnceItIs(port, 200));   // b's room is free (given back before its 400 went out)
             Socket c = holding(port, "/v1/embeddings", mb), d = holding(port, "/v1/audio/transcriptions", mb);
             assertEquals(503, statusOnceItIs(port, 503));
             c.close();

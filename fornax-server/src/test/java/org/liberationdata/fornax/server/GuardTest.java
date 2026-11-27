@@ -76,12 +76,48 @@ class GuardTest {
         assertEquals(403, status(send("GET", "/v1/models", null, "Host: attacker.example:" + p)));
         // No Host, or two: newer JDKs' HttpServer answer such an HTTP/1.1 request themselves (a 400) before any
         // handler runs; ours answers 403. Either way it's refused, and nothing reaches a model (checked below).
-        String none = send("POST", "/v1/chat/completions", CHAT);
+        // These two go bodiless: the JDK answers them without reading a body, and one left unread resets the connection.
+        String none = send("POST", "/v1/chat/completions", null);
         assertTrue(status(none) >= 400 && status(none) < 500, "no Host at all: " + none);
-        String two = send("POST", "/v1/chat/completions", CHAT, host(), "Host: attacker.example:" + p);   // the JDK may refuse it first, as above
+        String two = send("POST", "/v1/chat/completions", null, host(), "Host: attacker.example:" + p);   // the JDK may refuse it first, as above
         assertTrue(status(two) >= 400 && status(two) < 500, "two Hosts: " + two);
         assertEquals(403, status(send("DELETE", "/v1/nothing", null, "Host: attacker.example:" + p)), "before routing");
         assertTrue(engines.requests.isEmpty(), "nothing reached a model");
+    }
+
+    /** A refused request's body is read before the 403, so the reply arrives rather than a reset; every time. */
+    @Test void aRefusedRequestGetsItsReplyNotAReset() throws Exception {
+        start(FornaxServer.builder());
+        String body = "{\"messages\": [{\"role\": \"user\", \"content\": \"" + "a".repeat(FornaxServer.DRAIN_BYTES - 100) + "\"}]}";
+        for (int i = 0; i < 50; i++) {
+            String reply = send("POST", "/v1/chat/completions", body, host(), "Origin: https://evil.example", "Content-Type: text/plain");
+            assertEquals(403, status(reply), "try " + i);
+            assertNull(header(reply, "Connection"), "the connection may stay open: the body was all read");
+        }
+        assertTrue(engines.requests.isEmpty());
+    }
+
+    /** Past the drain, the 403 says the connection closes; a client still sending may then see a reset instead. */
+    @Test void aRefusedBodyPastTheDrainClosesTheConnection() throws Exception {
+        start(FornaxServer.builder());
+        int replies = 0;
+        for (int i = 0; i < 20; i++) {
+            try (Socket s = new Socket(InetAddress.getLoopbackAddress(), server.port())) {
+                s.setSoTimeout(5000);
+                OutputStream out = s.getOutputStream();
+                int length = FornaxServer.DRAIN_BYTES * 2;   // more than the drain: all of it sent, as a real client would
+                out.write(("POST /v1/chat/completions HTTP/1.1\r\n" + host() + "\r\nOrigin: https://evil.example\r\nContent-Length: "
+                        + length + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                out.write(new byte[length]);
+                out.flush();
+                String reply = new String(s.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                assertEquals(403, status(reply), reply);
+                assertEquals("close", header(reply, "Connection"));
+                replies++;
+            } catch (java.net.SocketException reset) { /* accepted past the drain */ }
+        }
+        assertTrue(replies > 0, "the 403 arrived at least once in 20");
+        assertTrue(engines.requests.isEmpty());
     }
 
     @Test void onIpv6LoopbackItsOwnUrlIsServed() throws Exception {

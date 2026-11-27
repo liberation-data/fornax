@@ -248,8 +248,7 @@ public final class FornaxServer implements AutoCloseable {
             status[0] = error(ex, ApiError.server(e.getMessage() != null ? e.getMessage() : e.toString()));
             if (!(e instanceof IOException)) log.accept("error in " + method + " " + path + ": " + e);
         } finally {
-            Integer kb = held.remove(ex);
-            if (kb != null) buffering.release(kb);
+            release(ex);
             ex.close();
             log.accept(String.format(Locale.ROOT, "%s %s %d %.2fs", method, path, status[0], (System.nanoTime() - t0) / 1e9));
         }
@@ -289,6 +288,7 @@ public final class FornaxServer implements AutoCloseable {
         engines.checkChat(req.model(), req.images());   // a name it won't serve is still an error status, not a stream
         Stopper stopper = new Stopper();
         generating.add(stopper);
+        release(ex);   // the request is parsed: its body's room is free before the stream starts
         Sse sse = new Sse(ex, stopper::stop);
         boolean[] roleSent = {false};
         Consumer<Map<String, Object>> delta = d -> {
@@ -620,26 +620,61 @@ public final class FornaxServer implements AutoCloseable {
         return new ApiError(413, "invalid_request_error", "the request is larger than " + maxBody / (1 << 20) + " MB", null, "request_too_large");
     }
 
-    private static void json(HttpExchange ex, int status, Object body) throws IOException {
+    private void json(HttpExchange ex, int status, Object body) throws IOException {
         send(ex, status, "application/json", Json.write(body).getBytes(StandardCharsets.UTF_8));
     }
 
-    private static void send(HttpExchange ex, int status, String type, byte[] body) throws IOException {
+    private void send(HttpExchange ex, int status, String type, byte[] body) throws IOException {
+        release(ex);
         ex.getResponseHeaders().set("Content-Type", type);
         boolean head = ex.getRequestMethod().equals("HEAD");
         ex.sendResponseHeaders(status, head ? -1 : body.length);
         if (!head) try (OutputStream out = ex.getResponseBody()) { out.write(body); }
     }
 
-    /** Sends the error, unless a reply has already started; returns the status. */
-    private static int error(HttpExchange ex, ApiError e) {
+    /**
+     * Gives back the room this request's body held, before its reply goes out: a client that has its reply may send its
+     * next request at once, and must find the room free (it was given back only after the reply, and so not yet).
+     */
+    private void release(HttpExchange ex) {
+        Integer kb = held.remove(ex);
+        if (kb != null) buffering.release(kb);
+    }
+
+    /** The most of an unread request body read (and dropped) before an error reply; the JDK's own drain is the same. */
+    static final int DRAIN_BYTES = 64 << 10;
+
+    /**
+     * Sends the error, unless a reply has already started; returns the status. A body the request still has unread is
+     * read first, up to {@link #DRAIN_BYTES}: a reply sent over unread bytes can be lost to the reset the connection's
+     * close then sends, so the client would see a reset instead of the 403 or 413. Past that, the connection closes
+     * after the reply ({@code Connection: close}), and a client still sending may see the reset.
+     */
+    private int error(HttpExchange ex, ApiError e) {
         try {
             if (ex.getResponseCode() == -1) {
+                if (!drained(ex)) ex.getResponseHeaders().set("Connection", "close");
                 if (e.status == 503) ex.getResponseHeaders().set("Retry-After", "1");
                 json(ex, e.status, e.body());
             }
         } catch (IOException ignored) { /* the client has gone */ }
         return e.status;
+    }
+
+    /** Reads what is left of the request body, up to {@link #DRAIN_BYTES}; whether it all was. */
+    static boolean drained(HttpExchange ex) {
+        try {
+            InputStream in = ex.getRequestBody();
+            byte[] buf = new byte[8192];
+            long read = 0;
+            for (int n; (n = in.read(buf)) != -1; ) {
+                read += n;
+                if (read > DRAIN_BYTES) return false;
+            }
+            return true;
+        } catch (IOException e) {
+            return true;   // already closed (the JDK drained it then) or the client has gone: nothing to wait for
+        }
     }
 
     private static byte[] randomBytes(int n) {
