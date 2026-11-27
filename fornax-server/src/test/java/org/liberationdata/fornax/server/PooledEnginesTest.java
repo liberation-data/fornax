@@ -109,4 +109,18 @@ class PooledEnginesTest {
         var other = new IllegalStateException("llama chat failed (rc=3): llama_process failed: 1");
         assertSame(other, PooledEngines.engineError(other));
     }
+
+    /** A catalogue alias or the embedding model's name in another case is the same model, not a second one loaded. */
+    @Test void aNameInAnotherCaseIsTheSameModel() {
+        try (var e = engines(true, "QWEN3-EMBEDDING-0.6B", "Qwen3-4B")) {
+            assertEquals("EMBED:qwen3-embedding-0.6b", e.find("QWEN3-EMBEDDING-0.6B", Use.EMBED, false).key());
+            assertEquals("EMBED:qwen3-embedding-0.6b", e.find("qwen3-embedding-0.6b", Use.EMBED, false).key());
+            assertEquals("CHAT:qwen3-4b", e.find("QWEN3-4B", Use.CHAT, false).key());
+            assertEquals("CHAT:" + REF.toUpperCase(java.util.Locale.ROOT), e.find(REF.toUpperCase(java.util.Locale.ROOT), Use.CHAT, false).key(),
+                    "a reference keeps its case");
+            assertEquals(List.of("qwen3-embedding-0.6b", "qwen3-4b"), e.models().stream().map(Engines.Listed::id).limit(2).toList(),
+                    "listed by their ids");
+        }
+        assertEquals("/Models/My-Embed.gguf", PooledEngines.canonical("/Models/My-Embed.gguf", Use.EMBED));
+    }
 }

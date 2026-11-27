@@ -150,14 +150,24 @@ record ChatRequest(String model, String engineJson, boolean stream, boolean incl
         throw ApiError.badRequest("response_format.type must be text, json_object or json_schema", "response_format");
     }
 
-    private static List<String> stops(Object stop) {
+    /** The most stop sequences a request may give, as OpenAI's. */
+    static final int MAX_STOPS = 4;
+    /**
+     * The longest a stop sequence may be, in characters: a stream holds back as much as the longest, less one, and
+     * each piece of the reply is searched for each.
+     */
+    static final int MAX_STOP_LENGTH = 256;
+
+    static List<String> stops(Object stop) {
         if (stop == null) return List.of();
-        if (stop instanceof String s) return List.of(s);
-        List<Object> l = Json.list(stop);
+        List<Object> l = stop instanceof String s ? List.of(s) : Json.list(stop);
         if (l == null) throw ApiError.badRequest("stop must be a string or an array of strings", "stop");
+        if (l.size() > MAX_STOPS) throw ApiError.badRequest("stop can have at most " + MAX_STOPS + " sequences", "stop");
         List<String> out = new ArrayList<>();
         for (Object o : l) {
             if (!(o instanceof String s)) throw ApiError.badRequest("stop must be a string or an array of strings", "stop");
+            if (s.length() > MAX_STOP_LENGTH)
+                throw ApiError.badRequest("a stop sequence can be at most " + MAX_STOP_LENGTH + " characters", "stop");
             out.add(s);
         }
         return out;

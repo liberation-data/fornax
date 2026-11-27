@@ -97,6 +97,8 @@ public final class FornaxServer implements AutoCloseable {
     /** The KB of {@link #buffering} each request in hand holds, given back when it is answered. */
     private final Map<HttpExchange, Integer> held = new java.util.concurrent.ConcurrentHashMap<>();
     private final Runnable warm;
+    /** Held while a transcription's audio is decoded and transcribed: one at a time (see {@link #transcriptions}). */
+    private final java.util.concurrent.Semaphore transcribing = new java.util.concurrent.Semaphore(1);
     /** The chat generations running, which {@link #close} stops. */
     private final Set<Stopper> generating = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final Object stopped = new Object();
@@ -519,16 +521,27 @@ public final class FornaxServer implements AutoCloseable {
             throw ApiError.badRequest("response_format must be json, text, verbose_json, srt or vtt", "response_format");
         String language = parts.containsKey("language") && !parts.get("language").text().isBlank() ? parts.get("language").text().strip() : null;
         String prompt = parts.containsKey("prompt") && !parts.get("prompt").text().isBlank() ? parts.get("prompt").text() : null;
-        Audio audio;
-        try { audio = Audio.readWav(file.bytes()); }
-        catch (IOException | RuntimeException e) {
-            throw ApiError.badRequest("file must be a WAV (" + e.getMessage() + "); convert other formats first, e.g. ffmpeg -i in.mp3 in.wav", "file");
+        // Decoded, a WAV is floats for two channels: an 8-bit mono file is 8 times its size, more again resampled and
+        // mixed down, which {@link #buffering} doesn't count. So one is decoded at a time, and held only while it is
+        // transcribed (as each whisper model takes one request at a time anyway); others wait with just their bytes.
+        try { transcribing.acquire(); }
+        catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiError(503, "server_error", "the server is stopping", null, "server_busy");
         }
-        // it is resampled to whisper's 16 kHz, so a header's rate sizes the work: 1 Hz would be 16000 times the samples
-        if (audio.sampleRate() < MIN_SAMPLE_RATE || audio.sampleRate() > MAX_SAMPLE_RATE)
-            throw ApiError.badRequest("file's sample rate must be from " + MIN_SAMPLE_RATE + " to " + MAX_SAMPLE_RATE + " Hz, not "
-                    + audio.sampleRate(), "file");
-        Transcript t = engines.transcribe(model, audio, language, prompt);
+        Audio audio;
+        Transcript t;
+        try {
+            try { audio = Audio.readWav(file.bytes()); }
+            catch (IOException | RuntimeException e) {
+                throw ApiError.badRequest("file must be a WAV (" + e.getMessage() + "); convert other formats first, e.g. ffmpeg -i in.mp3 in.wav", "file");
+            }
+            // it is resampled to whisper's 16 kHz, so a header's rate sizes the work: 1 Hz would be 16000 times the samples
+            if (audio.sampleRate() < MIN_SAMPLE_RATE || audio.sampleRate() > MAX_SAMPLE_RATE)
+                throw ApiError.badRequest("file's sample rate must be from " + MIN_SAMPLE_RATE + " to " + MAX_SAMPLE_RATE + " Hz, not "
+                        + audio.sampleRate(), "file");
+            t = engines.transcribe(model, audio, language, prompt);
+        } finally { transcribing.release(); }
         String text = t.text().strip();
         switch (format) {
             case "text" -> send(ex, 200, "text/plain; charset=utf-8", (text + "\n").getBytes(StandardCharsets.UTF_8));

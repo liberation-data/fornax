@@ -46,4 +46,19 @@ class JsonTest {
         assertThrows(IllegalArgumentException.class, () -> Json.parse("{} extra"));
         assertThrows(IllegalArgumentException.class, () -> Json.parse("\"unterminated"));
     }
+
+    /** Numbers and escapes as JSON writes them: Long.parseLong and Integer.parseInt took a sign, leading zeros and more. */
+    @Test
+    void numbersAndEscapesAreStrict() {
+        for (String bad : new String[]{"+1", "01", "-01", "1.", ".1", "1e", "1e+", "-", "--1", "0x10", "1.5.5", "\"\\u+041\"",
+                "\"\\u-041\"", "\"\\u 041\"", "\"\\u12\"", "\"\\uzzzz\"", "\"\\u\uff10\uff10\uff14\uff11\""})
+            assertThrows(IllegalArgumentException.class, () -> Json.parse(bad), bad);
+        assertEquals(0L, Json.parse("0"));
+        assertEquals(0L, Json.parse("-0"));
+        assertEquals(-0.0, Json.parse("-0.0"));
+        assertEquals(1500.0, Json.parse("1.5E+3"));
+        assertEquals(1e-3, Json.parse("1e-3"));
+        assertEquals(Double.POSITIVE_INFINITY, Json.parse("1e999"));
+        assertEquals("A\u00e9\ud800", Json.parse("\"\\u0041\\u00E9\\ud800\""));
+    }
 }

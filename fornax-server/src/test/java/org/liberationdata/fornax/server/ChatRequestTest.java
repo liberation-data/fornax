@@ -132,4 +132,16 @@ class ChatRequestTest {
         assertTrue(huge.getMessage().contains("megapixels"), huge.getMessage());
         assertThrows(ApiError.class, () -> of(withImages(pngHeader(6000, 6000), pngHeader(6000, 6000))), "the pixels of all of them count");
     }
+
+    /** As OpenAI: at most 4 stop sequences. Each is searched for in every piece of the reply, and a stream holds back the longest. */
+    @Test void stopSequencesAreLimited() {
+        assertEquals(List.of("a", "b", "c", "d"), of("{" + MSG + ", \"stop\": [\"a\", \"b\", \"c\", \"d\"]}").stops());
+        String longest = "x".repeat(ChatRequest.MAX_STOP_LENGTH);
+        assertEquals(List.of(longest), of("{" + MSG + ", \"stop\": \"" + longest + "\"}").stops());
+        for (String bad : List.of("[\"a\", \"b\", \"c\", \"d\", \"e\"]", "\"" + longest + "x\"", "[\"a\", \"" + longest + "x\"]")) {
+            ApiError e = assertThrows(ApiError.class, () -> of("{" + MSG + ", \"stop\": " + bad + "}"), bad);
+            assertEquals(400, e.status);
+            assertEquals("stop", e.param);
+        }
+    }
 }

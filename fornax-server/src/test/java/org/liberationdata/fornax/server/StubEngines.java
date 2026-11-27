@@ -26,6 +26,9 @@ class StubEngines implements Engines {
     /** Counted down when a generation is stopped (a stop sequence, or a client that went away). */
     final CountDownLatch stopped = new CountDownLatch(1);
     volatile boolean closed;
+    /** Transcriptions running now, the most at once, and how long each takes. */
+    final java.util.concurrent.atomic.AtomicInteger transcribing = new java.util.concurrent.atomic.AtomicInteger(), mostTranscribing = new java.util.concurrent.atomic.AtomicInteger();
+    volatile long transcribeMillis;
 
     @Override public String chat(String model, String requestJson, boolean images, Consumer<String> onContent, Stopper stop) {
         checkChat(model, images);
@@ -81,6 +84,10 @@ class StubEngines implements Engines {
     }
 
     @Override public Transcript transcribe(String model, Audio audio, String language, String prompt) {
+        mostTranscribing.accumulateAndGet(transcribing.incrementAndGet(), Math::max);
+        try { Thread.sleep(transcribeMillis); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        finally { transcribing.decrementAndGet(); }
         models.add(model);
         requests.add(audio.sampleRate() + "|" + language + "|" + prompt);
         var hello = new Transcript.Word(0.0, 0.4, " Hello", 0.9f);

@@ -121,6 +121,9 @@ allow it), so that whoever can call the server can't make it download many gigab
 (`.allowDownloads(true)`) lets a request name anything Fornax loads: a catalogue alias, an `org/name[:TAG]` reference
 or a path to a GGUF, downloaded the first time it's asked for.
 
+An alias in any case (`QWEN3-4B`) is the same model as its catalogue id (`qwen3-4b`), loaded once; an
+`org/name:TAG` reference or a path is taken as given, as the Hub and the filesystem may care about its case.
+
 A model is loaded on first use and kept loaded in a [`ModelPool`](/docs/guides/model-pool/): within `--budget-gb` (models' file sizes), the least recently used are
 unloaded to make room, and a model unused for `--idle-minutes` is unloaded. A model answers one request at a time;
 others wait for it.
@@ -156,11 +159,13 @@ So that one request can't take all the memory, or a model for days, a request be
 for the body):
 
 - the body: 64 MB (`maxBodyBytes`), with JSON nested at most 128 levels deep
-- chat: images of up to 67 megapixels in all; the reply is at most the context (`--ctx`), less the prompt
+- chat: images of up to 67 megapixels in all; 4 `stop` sequences of up to 256 characters each; the reply is at most
+  the context (`--ctx`), less the prompt
 - embeddings: 2048 inputs, each within the context
 - images: 4 megapixels each, 8 a request, 100 steps
 - speech: 4096 characters
-- transcription: a WAV at 8 to 384 kHz (the body limit is about 35 minutes of 16 kHz 16-bit mono)
+- transcription: a WAV at 8 to 384 kHz (the body limit is about 35 minutes of 16 kHz 16-bit mono). Decoded, a WAV
+  is several times its size, so one is decoded at a time, while it is transcribed; others wait with just their bytes
 
 A request's body is read whole before it waits for its model, and kept until it is answered. So that many at once
 can't fill the heap, the bodies held at once are limited to 256 MB in all (`maxBufferedBytes`, at least

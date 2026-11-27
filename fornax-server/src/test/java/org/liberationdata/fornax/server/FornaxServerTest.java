@@ -370,6 +370,25 @@ class FornaxServerTest {
         }
     }
 
+    /** Decoded, a WAV is several times its size: requests to transcribe wait with their bytes, and one is decoded at a time. */
+    @Test void transcriptionsAreDecodedOneAtATime() throws Exception {
+        java.io.File wav = java.io.File.createTempFile("fornax-server", ".wav");
+        try {
+            Audio.ofMono(new float[1600], 16000).writeWav(wav);
+            byte[] audio = java.nio.file.Files.readAllBytes(wav.toPath());
+            engines.transcribeMillis = 150;
+            var pool = java.util.concurrent.Executors.newFixedThreadPool(3);
+            try {
+                List<java.util.concurrent.Future<HttpResponse<String>>> all = new ArrayList<>();
+                for (int i = 0; i < 3; i++) all.add(pool.submit(() -> multipart(Map.of("model", "whisper-base.en"), audio)));
+                for (var f : all) assertEquals(200, f.get(10, TimeUnit.SECONDS).statusCode());
+            } finally { pool.shutdownNow(); }
+            assertEquals(1, engines.mostTranscribing.get());
+        } finally {
+            assertTrue(wav.delete());
+        }
+    }
+
     /** A small request that would make the server allocate or compute without bound is a 400 before any engine runs. */
     @Test void oneRequestCantExhaustTheServer() throws Exception {
         // 2049 one-letter inputs: within the body limit, but a 64 MB body of them would be 16M vectors

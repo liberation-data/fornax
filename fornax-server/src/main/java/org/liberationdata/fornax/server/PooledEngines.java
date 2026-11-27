@@ -201,7 +201,8 @@ final class PooledEngines implements Engines {
         for (var e : pool.entries()) if (e.loaded()) loaded.add(e.key());
         for (String name : configured) {
             Use use = use(name);
-            out.putIfAbsent(name, new Listed(name, kind(name, use), loaded.contains(key(use, canonical(name)))));
+            String id = canonical(name, use);
+            out.putIfAbsent(id, new Listed(id, kind(id, use), loaded.contains(key(use, id))));
         }
         for (String key : loaded) {
             int colon = key.indexOf(':');
@@ -241,13 +242,25 @@ final class PooledEngines implements Engines {
         return ModelCatalog.byName(name).map(ModelSet::id).orElse(name.strip());
     }
 
+    /**
+     * The name a model is kept by: a catalogue alias as its id, and the embedding model's name as {@link #EMBEDDING},
+     * in whatever case they were given (else {@code QWEN3-4B} and {@code qwen3-4b} would be loaded twice); a reference
+     * or a path as given, as the Hub and the filesystem may care about its case.
+     */
+    static String canonical(String name, Use use) {
+        if (ModelReferences.isPath(name)) return name;
+        if (use == Use.EMBED) return name.equalsIgnoreCase(EMBEDDING) ? EMBEDDING : name;   // aliases aren't embeddings
+        return canonical(name);
+    }
+
     private static String key(Use use, String id) { return use + ":" + id; }
 
     /**
      * The model a request names, for use. With {@code fetch}, its files too, downloaded the first time; without, only
      * checked (no network, nothing loaded), so a stream can still get an error status.
      */
-    Found find(String name, Use use, boolean fetch) {
+    Found find(String model, Use use, boolean fetch) {
+        String name = canonical(model, use);
         Found known = found.get(key(use, name));   // a name found once needs no hub (nor its progress line) again
         if (known != null) return known;
         Found f = locate(name, use, fetch);

@@ -12,12 +12,21 @@ final class ApiError extends RuntimeException {
     final int status;
     final String type, param, code;
 
+    /** The longest message an error carries: one that quotes what was sent (a model's name, a bad number) is cut short. */
+    static final int MAX_MESSAGE = 1000;
+
     ApiError(int status, String type, String message, String param, String code) {
-        super(message);
+        super(shorten(message));
         this.status = status;
         this.type = type;
         this.param = param;
         this.code = code;
+    }
+
+    private static String shorten(String m) {
+        if (m == null || m.length() <= MAX_MESSAGE) return m;
+        int end = Character.isHighSurrogate(m.charAt(MAX_MESSAGE - 1)) ? MAX_MESSAGE - 1 : MAX_MESSAGE;   // never half a pair
+        return m.substring(0, end) + "...";
     }
 
     static ApiError badRequest(String message, String param) {
