@@ -1,0 +1,58 @@
+# Can GitHub's free Apple-silicon runners run Fornax on Metal (#26)? Chats a few tokens from Qwen3 0.6B with the
+# released macOS natives and checks that llama.cpp offloaded the model's layers to Metal. By hand, and on a PR that
+# changes this check.
+name: Metal smoke test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/metal-smoke.yml'
+      - '.github/metal-smoke/**'
+
+permissions:
+  contents: read
+
+# macOS minutes cost the most: a newer run on the same PR replaces an older one.
+concurrency:
+  group: metal-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  metal:
+    name: Metal on macos-latest
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: maven
+          cache-dependency-path: .github/metal-smoke/pom.xml
+
+      - name: The machine
+        run: |
+          sw_vers; sysctl -n machdep.cpu.brand_string; echo "$(( $(sysctl -n hw.memsize) / 1073741824 )) GB"
+          system_profiler SPDisplaysDataType | sed -n '1,25p' || true
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B-GGUF
+          key: hf-qwen3-0.6b-q8
+
+      - name: Fetch Qwen3 0.6B
+        run: |
+          python3 -m pip install -q --user --break-system-packages 'huggingface_hub[cli]' 2>/dev/null || python3 -m pip install -q --user 'huggingface_hub[cli]'
+          export PATH="$(python3 -m site --user-base)/bin:$PATH"
+          hf download Qwen/Qwen3-0.6B-GGUF Qwen3-0.6B-Q8_0.gguf
+
+      - name: The released Fornax and its Metal natives
+        run: mvn -B -q -f .github/metal-smoke/pom.xml dependency:copy-dependencies
+
+      - name: Chat on Metal
+        run: .github/metal-smoke/check.sh "$(ls .github/metal-smoke/target/dependency/*.jar | tr '\n' ':')"

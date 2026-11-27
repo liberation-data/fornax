@@ -167,9 +167,53 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # The Apple-silicon natives this release is about to upload, loaded on GitHub's macOS runner (whose paravirtual GPU
+  # runs Metal, #26): Qwen3 0.6B must land on a Metal device with every layer offloaded, or nothing is published. It
+  # runs on a dry run too. Uses no secrets.
+  metal-smoke:
+    name: Metal smoke test (macos-aarch64-metal)
+    needs: [version, natives]
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: natives-macos-aarch64-metal
+          path: build/native/macos-arm64-metal
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B-GGUF
+          key: hf-qwen3-0.6b-q8
+
+      - name: Fetch Qwen3 0.6B
+        run: |
+          python3 -m pip install -q --user --break-system-packages 'huggingface_hub[cli]' 2>/dev/null || python3 -m pip install -q --user 'huggingface_hub[cli]'
+          export PATH="$(python3 -m site --user-base)/bin:$PATH"
+          hf download Qwen/Qwen3-0.6B-GGUF Qwen3-0.6B-Q8_0.gguf
+
+      # The Java side from this commit, at the release's version: fornax-llama needs only fornax-core.
+      - name: Chat on Metal
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon -q :fornax-core:jar :fornax-llama:jar -Pversion="$VERSION"
+          .github/metal-smoke/check.sh "fornax-core/build/libs/fornax-core-$VERSION.jar:fornax-llama/build/libs/fornax-llama-$VERSION.jar" \
+              build/native/macos-arm64-metal
+
   publish:
     name: Publish ${{ needs.version.outputs.version }}${{ needs.version.outputs.dry_run == 'true' && ' (dry run)' || '' }}
-    needs: [version, natives]
+    needs: [version, natives, metal-smoke]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     # A real release waits in the `release` environment for a maintainer to approve the upload; it allows main and v* tags.
