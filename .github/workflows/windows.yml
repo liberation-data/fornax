@@ -56,6 +56,20 @@ jobs:
       - name: Build the engines
         run: native/build.sh ${{ matrix.backend }}
 
+      # When a build fails: the static libraries each engine's CMake build made, and its logs, to see what the link lacked.
+      - name: What the engines built
+        if: failure()
+        run: |
+          find engines-src -path '*/build-${{ matrix.backend }}/*' \( -name '*.a' -o -name '*.lib' \) | sort | head -80
+          for l in engines-src/*/build-${{ matrix.backend }}.build.log; do echo "== $l"; tail -15 "$l"; done
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: build-logs-windows-${{ matrix.backend }}
+          path: engines-src/*/build-${{ matrix.backend }}.*.log
+          retention-days: 7
+
       # Each DLL stands alone (the GCC runtime and winpthread are linked in), and exports Fornax's C API, not ggml's.
       - name: Check what each DLL needs and exports
         run: |
