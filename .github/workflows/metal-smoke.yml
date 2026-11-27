@@ -54,7 +54,8 @@ jobs:
           set -o pipefail
           model=$(ls ~/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B-GGUF/snapshots/*/Qwen3-0.6B-Q8_0.gguf | head -1)
           cp=$(ls .github/metal-smoke/target/dependency/*.jar | tr '\n' ':')
-          java --enable-native-access=ALL-UNNAMED -cp "$cp" .github/metal-smoke/MetalSmoke.java "$model" 2> llama.log | tee reply.txt
+          # FORNAX_VERBOSE: llama.cpp's full log, which says where the layers went (Fornax shows only errors otherwise)
+          FORNAX_VERBOSE=1 java --enable-native-access=ALL-UNNAMED -cp "$cp" .github/metal-smoke/MetalSmoke.java "$model" 2> llama.log | tee reply.txt
           echo "--- llama.cpp:"; grep -E 'MTL|Metal|offload|ggml_metal|using device|recommendedMaxWorkingSetSize' llama.log | head -25 || true
           offloaded=$(sed -n 's/.*offloaded \([0-9]*\)\/\([0-9]*\) layers to GPU.*/\1 \2/p' llama.log | head -1)
           [ -n "$offloaded" ] || { echo "::error::llama.cpp reported no layers offloaded"; tail -40 llama.log; exit 1; }
