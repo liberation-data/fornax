@@ -15,6 +15,7 @@ import java.util.concurrent.CancellationException;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Runs Qwen3-Reranker 0.6B when it's in the Hugging Face cache and the native library is built; skipped otherwise. */
@@ -98,6 +99,26 @@ class RerankIT {
     void emptyQueryOrDocumentStillScores() {
         assertEquals(1, model.rerank(QUERY, List.of("")).size());
         assertEquals(1, model.rerank("", List.of(DOCS.get(0))).size());
+    }
+
+    /** The context starts small and grows to fit a long pair, and the scores don't depend on its size (#109). */
+    @Test
+    void theContextStartsSmallAndGrowsToFit() {
+        assumeFalse(model.isIsolated(), "contextNow is in process only");
+        try (var m = new LlamaModel(W, Mode.RERANK)) {
+            float[] before = scores(m.rerank(QUERY, DOCS));
+            assertEquals(512, m.contextNow());
+            String longDoc = "The kiln fires stoneware to cone 10 over a long, slow climb. ".repeat(40);   // ~650 tokens with the template
+            assertEquals(1, m.rerank(QUERY, List.of(longDoc)).size());
+            assertEquals(1024, m.contextNow(), "grown to the next size that fits");
+            assertArrayEquals(before, scores(m.rerank(QUERY, DOCS)), 1e-3f, "the same scores at either size");
+        }
+    }
+
+    static float[] scores(List<Scored> ranked) {
+        float[] s = new float[ranked.size()];
+        for (Scored r : ranked) s[r.index()] = r.score();
+        return s;
     }
 
     @Test

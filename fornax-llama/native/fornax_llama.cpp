@@ -49,6 +49,7 @@ struct fornax_llama {
     llama_batch_ext * batch = nullptr;
     mtmd_context *  mctx  = nullptr;  // only for a handle from fornax_llama_create_mm
     enum llama_pooling_type pooling = LLAMA_POOLING_TYPE_NONE;  // not NONE: a handle from fornax_llama_create_pooled
+    int pooled_max = 0;  // a pooled handle's largest context: it starts smaller and grows to fit (run_pooled)
     std::vector<fornax_llama_slot> slots;  // not empty: a handle from fornax_llama_create_batched
 };
 
@@ -433,19 +434,56 @@ fornax_llama * load_model(const char * model_path, int n_gpu_layers) {
     return h;
 }
 
+// The context a pooled handle starts with (or its largest, if smaller): enough for a query or a few short texts.
+constexpr int POOLED_START = 512;
+
+// A pooled handle's context of n tokens: as llama-embedding's, one unified KV cache over as many sequences as llama.cpp
+// allows, and the whole batch in one ubatch (pooling needs every token of a sequence at once), so one input can be up
+// to n tokens.
+llama_context * pooled_context(llama_model * model, uint32_t n) {
+    llama_context_params cp = llama_context_default_params();
+    cp.n_ctx        = n;
+    cp.embeddings   = true;
+    cp.pooling_type = LLAMA_POOLING_TYPE_UNSPECIFIED;  // the model's own (GGUF <arch>.pooling_type)
+    cp.kv_unified   = true;
+    cp.n_batch = cp.n_ubatch = cp.n_ctx;
+    // no more sequences than outputs: llama.cpp sizes its output buffer for n_seq_max and asserts it fits n_batch
+    cp.n_seq_max    = std::min((uint32_t) llama_max_parallel_sequences(), cp.n_batch);
+    return llama_init_from_model(model, cp);
+}
+
 // Runs inputs through a pooled (embeddings or rerank) context, each as its own sequence, packing as many into one
 // batch as fit (n_batch tokens, n_seq_max sequences), as llama-embedding does. Calls out(i, pooled) for input i, with
 // the n_embd_out floats (or n_cls_out scores) llama.cpp pooled for it. Between batches, cb("") lets the caller stop.
 int run_pooled(fornax_llama * h, const std::vector<std::vector<llama_token>> & inputs,
                const std::function<void(int, const float *)> & out, fornax_llama_token_cb cb, void * user) {
-    const int n_batch = (int) llama_n_batch(h->ctx);
-    const int n_seq_max = (int) llama_n_seq_max(h->ctx);
+    // Grow the context to fit the call: its longest input, and as much of the whole call as the largest context
+    // holds, so a call of many short texts still goes through in few batches. Rebuilding a context (not the weights)
+    // takes well under 0.1 s (#109); it never shrinks, as the model has shown it gets inputs this size. The inputs are
+    // checked first, so one that can't fit fails without growing the context for nothing.
+    size_t longest = 0, total = 0;
     for (size_t i = 0; i < inputs.size(); i++) {
         if (inputs[i].empty()) return fail("input " + std::to_string(i) + " has no tokens", 15);
-        if ((int) inputs[i].size() > n_batch)
+        if ((int) inputs[i].size() > h->pooled_max)
             return fail("input " + std::to_string(i) + " has " + std::to_string(inputs[i].size()) +
-                        " tokens, more than the batch of " + std::to_string(n_batch) + " (raise the context size or split it)", 2);
+                        " tokens, more than the context of " + std::to_string(h->pooled_max) + " (raise the context size or split it)", 2);
+        longest = std::max(longest, inputs[i].size());
+        total += inputs[i].size();
     }
+    const size_t want = std::max(longest, std::min(total, (size_t) h->pooled_max));
+    if (want > llama_n_batch(h->ctx)) {  // want is at most pooled_max, so n stays under 2^32
+        uint32_t n = llama_n_batch(h->ctx);
+        while (n < want) n *= 2;
+        n = std::min(n, (uint32_t) h->pooled_max);
+        llama_context * bigger = pooled_context(h->model, n);
+        if (!bigger) return fail("failed to grow the context to " + std::to_string(n) + " tokens", 5);
+        llama_batch_ext_free(h->batch);
+        llama_free(h->ctx);
+        h->ctx = bigger;
+        h->batch = llama_batch_ext_init(h->ctx);
+    }
+    const int n_batch = (int) llama_n_batch(h->ctx);
+    const int n_seq_max = (int) llama_n_seq_max(h->ctx);
     size_t next = 0;
     while (next < inputs.size()) {
         const size_t first = next;
@@ -744,18 +782,10 @@ int fornax_llama_chat_json_images(fornax_llama * h, const char * request_json, c
 fornax_llama * fornax_llama_create_pooled(const char * model_path, int n_gpu_layers, int n_ctx, int rerank) {
     auto * h = load_model(model_path, n_gpu_layers);
     if (!h) return nullptr;
-    llama_context_params cp = llama_context_default_params();
-    cp.n_ctx        = n_ctx > 0 ? n_ctx : 0;
-    cp.embeddings   = true;
-    cp.pooling_type = LLAMA_POOLING_TYPE_UNSPECIFIED;  // the model's own (GGUF <arch>.pooling_type)
-    // As llama-embedding: one unified KV cache over as many sequences as llama.cpp allows, and the whole batch in one
-    // ubatch (pooling needs every token of a sequence at once), so one input can be up to n_ctx tokens.
-    cp.kv_unified   = true;
-    if (cp.n_ctx == 0) cp.n_ctx = (uint32_t) llama_model_n_ctx_train(h->model);
-    cp.n_batch = cp.n_ubatch = cp.n_ctx;
-    // no more sequences than outputs: llama.cpp sizes its output buffer for n_seq_max and asserts it fits n_batch
-    cp.n_seq_max    = std::min((uint32_t) llama_max_parallel_sequences(), cp.n_batch);
-    h->ctx = llama_init_from_model(h->model, cp);
+    // n_ctx is the largest the context grows to; it starts at POOLED_START (or n_ctx, if smaller) and grows to fit
+    // what it's given (run_pooled), so short inputs don't reserve the compute buffer of long ones.
+    h->pooled_max = n_ctx > 0 ? n_ctx : (int) llama_model_n_ctx_train(h->model);
+    h->ctx = pooled_context(h->model, (uint32_t) std::min(h->pooled_max, POOLED_START));
     if (!h->ctx) { g_err = "failed to create llama_context"; fornax_llama_destroy(h); return nullptr; }
     h->pooling = llama_pooling_type(h->ctx);
     if (rerank && h->pooling != LLAMA_POOLING_TYPE_RANK) {

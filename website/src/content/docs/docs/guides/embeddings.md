@@ -52,6 +52,9 @@ try (var emb = new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)) {
   alone (cosine 0.9999), in `llama-embedding` too: the batch changes the shapes of the GPU kernels.
 - **One text fits in the context.** The default context is 2048 tokens, and a longer text fails with an error that
   says so; see [Chunk size](#chunk-size).
+- **The context grows to fit.** It starts at 512 tokens, and grows when a call needs more (its longest text, or many
+  texts at once) up to the context size, so a model that embeds short queries doesn't hold the GPU memory of long
+  passages. Growing takes well under a tenth of a second and doesn't change the results.
 - **The pooling is the model's.** The GGUF says how to pool the model's outputs into one vector (Qwen3-Embedding
   takes the last token, the end-of-text the tokenizer appends; others take the mean or the first token).
 - Text isn't parsed for special tokens: a document that contains `<|im_end|>` embeds those characters as text.
@@ -91,7 +94,8 @@ documents)` runs it on the model's thread, and `cancel()` stops it between batch
 In EMBED and RERANK mode the context caps the longest text a call takes (for `rerank`, the query and one document
 together). It doesn't change the results: a 300-token passage gives the same vector at a context of 2048 as at 8192.
 What it does change is GPU memory, because llama.cpp works through the whole context at once in these modes and
-reserves memory for all of it up front: a 0.6B reranker takes about 2.7 GB at 2048 tokens and 10.8 GB at 8192.
+reserves memory for all of it: a 0.6B reranker takes about 2.7 GB at 2048 tokens and 10.8 GB at 8192. The context
+grows only as far as the calls need, so the context size is the most it can take.
 
 So split documents into passages before you embed them, and size the context to your longest passage:
 

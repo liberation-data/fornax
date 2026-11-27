@@ -106,6 +106,7 @@ public final class LlamaModel implements AutoCloseable {
         static final MethodHandle CREATE_POOLED = LIB.function("fornax_llama_create_pooled",
                 FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_INT));
         static final MethodHandle N_EMBD = LIB.function("fornax_llama_n_embd", FunctionDescriptor.of(JAVA_INT, ADDRESS));
+        static final MethodHandle N_CTX_SLOT = LIB.function("fornax_llama_n_ctx_slot", FunctionDescriptor.of(JAVA_INT, ADDRESS));
         static final MethodHandle EMBED = LIB.function("fornax_llama_embed", FunctionDescriptor.of(JAVA_INT,
                 ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
         static final MethodHandle RERANK = LIB.function("fornax_llama_rerank", FunctionDescriptor.of(JAVA_INT,
@@ -369,8 +370,8 @@ public final class LlamaModel implements AutoCloseable {
     /**
      * A model loaded for chat, embeddings or reranking (see {@link Mode}).
      * @param gpuLayers -1 offloads every layer. @param contextSize 0 uses the model's trained context. In EMBED and
-     *        RERANK it is also the batch: the most tokens one text (or query and document) can have, and how many
-     *        go through the model at once.
+     *        RERANK it is also the largest batch: the most tokens one text (or query and document) can have, and the
+     *        most that go through the model at once (the context starts smaller and grows; see {@link #defaultContext}).
      */
     public LlamaModel(String ggufPath, int gpuLayers, int contextSize, Mode mode) {
         this(ggufPath, null, mode, gpuLayers, contextSize, defaultWorker(ggufPath), true);
@@ -386,7 +387,9 @@ public final class LlamaModel implements AutoCloseable {
      * The context a constructor without a contextSize gives a mode: 8192 tokens for chat; 2048 for EMBED and RERANK,
      * as llama.cpp's llama-embedding does. In those modes the context is also the batch the model works through at once,
      * and its compute buffer grows with it: a 0.6B reranker takes about 2.7 GB at 2048 and 10.8 GB at 8192 (on Metal,
-     * #104). Pass a contextSize for longer texts.
+     * #104). So there the context starts at 512 tokens and grows, when a call needs it, to fit the call's longest text
+     * and as much of the whole call as contextSize holds; contextSize is how large it can get. Growing rebuilds the
+     * context (not the weights), well under 0.1 s, and it never shrinks. Pass a contextSize for longer texts.
      */
     public static int defaultContext(Mode mode) { return mode == Mode.CHAT ? 8192 : 2048; }
 
@@ -965,6 +968,17 @@ public final class LlamaModel implements AutoCloseable {
 
     /** {@link #embed(List, EmbedOptions)} with the defaults: no prefix, normalised. */
     public float[][] embed(List<String> texts) { return embed(texts, EmbedOptions.DEFAULT); }
+
+    /**
+     * The context's size now, in tokens: in EMBED and RERANK it starts small and grows to fit what it's given (up to
+     * the contextSize it was loaded with). In process only; for tests.
+     */
+    int contextNow() {
+        if (remote != null) throw new UnsupportedOperationException("contextNow is in process only");
+        return thread.run(c -> {
+            try { return (int) N.N_CTX_SLOT.invokeExact(handle); } catch (Throwable t) { throw new RuntimeException(t); }
+        });
+    }
 
     /** One text's embedding, normalised. */
     public float[] embed(String text) { return embed(List.of(text))[0]; }
