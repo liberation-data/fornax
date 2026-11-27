@@ -76,7 +76,7 @@ non-streaming request runs to the end.
 
 ### Embeddings
 
-`input` is a string or a list of them, none empty (token arrays aren't taken). The model is `qwen3-embedding-0.6b` (Qwen3-Embedding
+`input` is a string or a list of up to 2048 (as OpenAI's), none empty (token arrays aren't taken). The model is `qwen3-embedding-0.6b` (Qwen3-Embedding
 0.6B, 1024 dimensions) unless a request names another embedding GGUF by `org/name:TAG` or path (one the server was
 started with, or any with `--allow-downloads`). `dimensions` keeps
 the first n and normalises them again, which Qwen3-Embedding is trained for. `encoding_format: "base64"`, which the
@@ -92,8 +92,9 @@ r = client.images.generate(model="flux2-klein", prompt="a brick kiln at dusk", s
 open("kiln.png", "wb").write(base64.b64decode(r.data[0].b64_json))
 ```
 
-`model` is an image alias (`flux2-klein`, `qwen-image`); `size` is `WIDTHxHEIGHT` in multiples of 16 (default
-1024x1024); `n` makes up to 8, with seeds counting up from `seed`. Beyond OpenAI's: `seed`, `steps` (default 20)
+`model` is an image alias (`flux2-klein`, `qwen-image`); `size` is `WIDTHxHEIGHT` in multiples of 16, up to 4096 a side and 4
+megapixels (2048x2048, or 4096x1024; default 1024x1024); `n` makes up to 8, with seeds counting up from `seed`.
+Beyond OpenAI's: `seed`, `steps` (default 20, at most 100)
 and `cfg_scale` (4.0 for flux2-klein, 2.5 for the Qwen-Image models). Images come back as `b64_json` PNGs; the
 server keeps no files, so `response_format: "url"` is refused.
 
@@ -104,7 +105,7 @@ model's voices (`fornax speak --list-voices`); OpenAI's voice names (`alloy`, `n
 The reply is a WAV, so ask for `response_format: "wav"` (an OpenAI client asking for MP3 gets an error).
 
 `/v1/audio/transcriptions` takes a WAV `file` (multipart, as the clients send it; convert other formats first,
-`ffmpeg -i in.mp3 in.wav`), with `whisper-base.en` unless `model` names another (`whisper-large-v3-turbo` for 99
+`ffmpeg -i in.mp3 in.wav`) at 8 to 384 kHz, with `whisper-base.en` unless `model` names another (`whisper-large-v3-turbo` for 99
 languages), and `language` and `prompt`. `response_format` is `json` (the default), `text`, `srt`, `vtt` or
 `verbose_json`, which has the segments and each word's start and end.
 
@@ -141,8 +142,20 @@ fornax server [-m MODEL]... [options]
                        models and catalogue models already downloaded)
 ```
 
-`FornaxServer.builder()` has the same settings, plus the hub to download with, a download progress listener and a
-log line consumer.
+`FornaxServer.builder()` has the same settings, plus the hub to download with, a download progress listener, a
+log line consumer and the largest request body (`maxBodyBytes`).
+
+## Limits
+
+So that one request can't take all the memory, or a model for days, a request beyond these is refused (400, or 413
+for the body):
+
+- the body: 64 MB (`maxBodyBytes`), with JSON nested at most 128 levels deep
+- chat: images of up to 67 megapixels in all; the reply is at most the context (`--ctx`), less the prompt
+- embeddings: 2048 inputs, each within the context
+- images: 4 megapixels each, 8 a request, 100 steps
+- speech: 4096 characters
+- transcription: a WAV at 8 to 384 kHz (the body limit is about 35 minutes of 16 kHz 16-bit mono)
 
 ## Who may call it
 

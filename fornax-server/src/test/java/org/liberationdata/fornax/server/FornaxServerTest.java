@@ -337,6 +337,45 @@ class FornaxServerTest {
         }
     }
 
+    /** A small request that would make the server allocate or compute without bound is a 400 before any engine runs. */
+    @Test void oneRequestCantExhaustTheServer() throws Exception {
+        // 2049 one-letter inputs: within the body limit, but a 64 MB body of them would be 16M vectors
+        String many = "[" + String.join(",", java.util.Collections.nCopies(FornaxServer.MAX_EMBEDDING_INPUTS + 1, "\"a\"")) + "]";
+        var embeddings = post("/v1/embeddings", "{\"input\": " + many + "}");
+        assertEquals(400, embeddings.statusCode(), embeddings.body());
+        assertEquals("input", get(json(embeddings), "error", "param"));
+
+        // a WAV header's sample rate: 1 Hz upsampled to 16 kHz overflows, and 1000000001 Hz makes a 128 GB filter
+        java.io.File wav = java.io.File.createTempFile("fornax-server", ".wav");
+        try {
+            for (int rate : new int[]{1, 4000, 1_000_000_001}) {
+                Audio.ofMono(new float[1600], rate).writeWav(wav);
+                var r = multipart(Map.of("model", "whisper-base.en"), java.nio.file.Files.readAllBytes(wav.toPath()));
+                assertEquals(400, r.statusCode(), rate + " Hz: " + r.body());
+                assertEquals("file", get(json(r), "error", "param"));
+            }
+        } finally {
+            assertTrue(wav.delete());
+        }
+        assertTrue(engines.requests.isEmpty(), "no engine ran: " + engines.requests);
+
+        // steps, and an image's pixels: a request is one job, not days of the GPU
+        for (String bad : List.of("{\"model\": \"m\", \"prompt\": \"p\", \"steps\": 101}",
+                "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"4096x4096\"}"))
+            assertEquals(400, post("/v1/images/generations", bad).statusCode(), bad);
+        assertEquals(200, post("/v1/images/generations", "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"4096x1024\", \"steps\": 100}").statusCode());
+
+        // JSON nested beyond any request's needs is refused before it is parsed (the parser, and the engine's, recurse)
+        var deep = post("/v1/chat/completions", "[".repeat(100_000) + "]".repeat(100_000));
+        assertEquals(400, deep.statusCode(), deep.body());
+        String nested = "{\"a\": ".repeat(Json.MAX_DEPTH - 1) + "1" + "}".repeat(Json.MAX_DEPTH - 1);
+        assertEquals(400, post("/v1/chat/completions", nested).statusCode(), "deep, but only 400 for having no messages");
+        assertTrue(get(json(post("/v1/chat/completions", nested)), "error", "message").toString().contains("messages"));
+        assertTrue(get(json(deep), "error", "message").toString().contains("nested"), deep.body());
+        assertTrue(get(json(post("/v1/chat/completions", "{\"s\": \"" + "[".repeat(1000) + "\"}")), "error", "message").toString()
+                .contains("messages"), "brackets in a string aren't nesting");
+    }
+
     HttpResponse<String> multipart(Map<String, String> fields, byte[] file) throws Exception {
         String boundary = "----fornax" + System.nanoTime();
         var out = new java.io.ByteArrayOutputStream();

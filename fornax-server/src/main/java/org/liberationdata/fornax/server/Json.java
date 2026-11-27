@@ -12,14 +12,37 @@ import java.util.Map;
 final class Json {
     private Json() {}
 
+    /**
+     * The deepest a request body's arrays and objects may nest. A request needs a few levels (a JSON schema a few
+     * dozen); the parser, and the engine's, recurse, so a body of a million {@code [} would overflow their stacks.
+     */
+    static final int MAX_DEPTH = 128;
+
     /** A request body as a JSON object, or a 400 saying why it isn't one. */
     @SuppressWarnings("unchecked")
     static Map<String, Object> object(String s) {
+        if (tooDeep(s)) throw ApiError.badRequest("the body's JSON is nested more than " + MAX_DEPTH + " levels deep", null);
         Object v;
         try { v = org.liberationdata.fornax.Json.parse(s); }
         catch (IllegalArgumentException e) { throw ApiError.badRequest("the body isn't JSON: " + e.getMessage(), null); }
         if (!(v instanceof Map)) throw ApiError.badRequest("the body must be a JSON object", null);
         return (Map<String, Object>) v;
+    }
+
+    /** Whether s nests arrays and objects deeper than {@link #MAX_DEPTH} (brackets in strings aside). */
+    static boolean tooDeep(String s) {
+        int depth = 0;
+        boolean string = false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (string) {
+                if (c == '\\') i++;
+                else if (c == '"') string = false;
+            } else if (c == '"') string = true;
+            else if (c == '[' || c == '{') { if (++depth > MAX_DEPTH) return true; }
+            else if (c == ']' || c == '}') depth--;
+        }
+        return false;
     }
 
     static String write(Object v) {

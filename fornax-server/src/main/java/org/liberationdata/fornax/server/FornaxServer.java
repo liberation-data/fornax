@@ -357,6 +357,9 @@ public final class FornaxServer implements AutoCloseable {
 
     // ---- /v1/embeddings ----
 
+    /** The most inputs {@code /v1/embeddings} embeds in one request, as OpenAI's. */
+    static final int MAX_EMBEDDING_INPUTS = 2048;
+
     private void embeddings(HttpExchange ex) throws IOException {
         Map<String, Object> body = Json.object(body(ex));
         String model = ChatRequest.model(body, engines.defaultModel(Use.EMBED));
@@ -370,6 +373,8 @@ public final class FornaxServer implements AutoCloseable {
             }
         }
         if (texts.isEmpty()) throw ApiError.badRequest("input must be a string or a non-empty array of strings", "input");
+        if (texts.size() > MAX_EMBEDDING_INPUTS)   // as OpenAI: else a body of short strings is a vector each, gigabytes of them
+            throw ApiError.badRequest("input can have at most " + MAX_EMBEDDING_INPUTS + " strings; split it into several requests", "input");
         if (texts.contains("")) throw ApiError.badRequest("input can't be an empty string", "input");   // as OpenAI: it has no tokens to embed
         Object format = body.getOrDefault("encoding_format", "float");
         if (!"float".equals(format) && !"base64".equals(format)) throw ApiError.badRequest("encoding_format must be float or base64", "encoding_format");
@@ -415,7 +420,15 @@ public final class FornaxServer implements AutoCloseable {
                 "size", job.width() + "x" + job.height()));
     }
 
-    /** The image request, checked: a prompt, n from 1 to 8, a size in multiples of 16, and Fornax's own steps and cfg_scale. */
+    /** The most steps an image request may take (Fornax's own parameter; the models need 4 to 50). */
+    static final int MAX_STEPS = 100;
+    /** The most pixels an image may have (4 megapixels: 2048 x 2048, or 4096 x 1024), the most the image models make well. */
+    static final int MAX_IMAGE_PIXELS = 2048 * 2048;
+
+    /**
+     * The image request, checked: a prompt, n from 1 to 8, a size in multiples of 16 of at most {@link #MAX_IMAGE_PIXELS},
+     * and Fornax's own steps (at most {@link #MAX_STEPS}) and cfg_scale.
+     */
     static ImageJob imageJob(Map<String, Object> body) {
         if (!(body.get("prompt") instanceof String prompt) || prompt.isBlank()) throw ApiError.badRequest("prompt is required", "prompt");
         Object format = body.get("response_format");
@@ -436,12 +449,15 @@ public final class FornaxServer implements AutoCloseable {
             } catch (NumberFormatException e) { throw ApiError.badRequest("size must be WIDTHxHEIGHT, such as 1024x1024", "size"); }
             if (w < 64 || h < 64 || w > 4096 || h > 4096 || w % 16 != 0 || h % 16 != 0)
                 throw ApiError.badRequest("size must be from 64 to 4096 a side, in multiples of 16", "size");
+            if ((long) w * h > MAX_IMAGE_PIXELS)
+                throw ApiError.badRequest("size can be at most " + MAX_IMAGE_PIXELS / (1 << 20) + " megapixels (2048x2048, or 4096x1024)", "size");
         }
-        int steps = body.get("steps") == null ? 20 : (int) Math.min(1000, ChatRequest.whole(body.get("steps"), "steps", 1));
+        long steps = body.get("steps") == null ? 20 : ChatRequest.whole(body.get("steps"), "steps", 1);
+        if (steps > MAX_STEPS) throw ApiError.badRequest("steps can be at most " + MAX_STEPS, "steps");
         Object cfg = body.get("cfg_scale");
         if (cfg != null && !(cfg instanceof Number c && c.doubleValue() >= 0)) throw ApiError.badRequest("cfg_scale must be 0 or more", "cfg_scale");
         long seed = body.get("seed") == null ? ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE) : ChatRequest.whole(body.get("seed"), "seed", 0);
-        return new ImageJob(prompt, w, h, steps, cfg == null ? null : ((Number) cfg).doubleValue(), seed, (int) n);
+        return new ImageJob(prompt, w, h, (int) steps, cfg == null ? null : ((Number) cfg).doubleValue(), seed, (int) n);
     }
 
     private static byte[] png(BufferedImage img) {
@@ -451,6 +467,9 @@ public final class FornaxServer implements AutoCloseable {
     }
 
     // ---- /v1/audio ----
+
+    /** The sample rates a WAV to transcribe may have: telephone audio's to studio audio's. */
+    static final int MIN_SAMPLE_RATE = 8000, MAX_SAMPLE_RATE = 384_000;
 
     /** The most characters {@code /v1/audio/speech} speaks in one request, as OpenAI's. */
     static final int MAX_SPEECH_INPUT = 4096;
@@ -489,6 +508,10 @@ public final class FornaxServer implements AutoCloseable {
         catch (IOException | RuntimeException e) {
             throw ApiError.badRequest("file must be a WAV (" + e.getMessage() + "); convert other formats first, e.g. ffmpeg -i in.mp3 in.wav", "file");
         }
+        // it is resampled to whisper's 16 kHz, so a header's rate sizes the work: 1 Hz would be 16000 times the samples
+        if (audio.sampleRate() < MIN_SAMPLE_RATE || audio.sampleRate() > MAX_SAMPLE_RATE)
+            throw ApiError.badRequest("file's sample rate must be from " + MIN_SAMPLE_RATE + " to " + MAX_SAMPLE_RATE + " Hz, not "
+                    + audio.sampleRate(), "file");
         Transcript t = engines.transcribe(model, audio, language, prompt);
         String text = t.text().strip();
         switch (format) {
