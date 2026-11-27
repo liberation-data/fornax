@@ -25,11 +25,11 @@ import java.util.concurrent.Callable;
  * settings, so a difference is Fornax's (Java, FFM, how it drives the engine) and not the engine's.
  *
  * <pre>
- * ./gradlew :fornax-bench:benchmarks --args='out/benchmarks chat image'
- *     -Pllama.bench=/path/to/llama-bench -Psd.cli=/path/to/sd-cli
+ * ./gradlew :fornax-bench:benchmarks --args='out/benchmarks chat image serving'
+ *     -Pllama.bench=/path/to/llama-bench -Psd.cli=/path/to/sd-cli -Pllama.server=/path/to/llama-server
  * </pre>
  *
- * Build the two tools from the checkouts {@code native/build.sh} leaves under {@code engines-src/} (the pins, with
+ * Build the tools from the checkouts {@code native/build.sh} leaves under {@code engines-src/} (the pins, with
  * Fornax's patches) and the same backend; the commands are under "Running them yourself" on the site's Benchmarks page
  * ({@code website/src/content/docs/docs/benchmarks.mdx}).
  *
@@ -380,6 +380,7 @@ public class Benchmarks {
         StringBuilder b = new StringBuilder("| Bench | Side | Engine | Results | Peak GPU memory |\n|---|---|---|---|---|\n");
         for (Row r : rows) {
             StringBuilder res = new StringBuilder();
+            if (r.settings().get("clients") instanceof Integer c) res.append("clients ").append(c);   // a serving row's
             r.results().forEach((k, v) -> res.append(res.isEmpty() ? "" : ", ").append(k).append(' ').append(String.format(Locale.ROOT, "%.1f", v)));
             b.append("| ").append(r.bench()).append(" | ").append(r.side()).append(" | ").append(r.engine()).append(" | ").append(res)
                     .append(" | ").append(r.peakGpuBytes() == null ? "—" : String.format(Locale.ROOT, "%.1f GB", r.peakGpuBytes() / 1e9)).append(" |\n");

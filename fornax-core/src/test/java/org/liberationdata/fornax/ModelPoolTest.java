@@ -178,6 +178,7 @@ class ModelPoolTest {
             for (int i = 0; i < 3; i++) {
                 users.add(Thread.ofPlatform().start(() -> {
                     try (var l = pool.acquire("a", 10, 3, () -> { loads.incrementAndGet(); sleep(50); return new Fake("a", log); })) {
+                        assertFalse(l.model().closed);
                         held.countDown();
                         release.await();
                     } catch (InterruptedException e) { throw new RuntimeException(e); }
@@ -244,6 +245,34 @@ class ModelPoolTest {
             a.join(5000);
             assertTrue(log.contains("close old"), log.toString());
             assertEquals(80, pool.loadedBytes());
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Timeout(20)
+    void aFailedLoadLetsTheLeaseWaitingOnItLoadAndGivesBackItsRoom() throws Exception {
+        List<String> log = java.util.Collections.synchronizedList(new ArrayList<>());
+        try (var pool = new ModelPool(100, null)) {
+            CountDownLatch loading = new CountDownLatch(1), fail = new CountDownLatch(1);
+            var first = Thread.ofPlatform().start(() -> assertThrows(IllegalStateException.class, () -> pool.acquire("a", 10, 2, () -> {
+                loading.countDown();
+                try { fail.await(); } catch (InterruptedException e) { throw new RuntimeException(e); }
+                throw new IllegalStateException("no such file");
+            })));
+            assertTrue(loading.await(5, TimeUnit.SECONDS));
+            Fake[] got = new Fake[1];
+            var second = Thread.ofPlatform().start(() -> {
+                try (var l = pool.acquire("a", 10, 2, () -> new Fake("a", log))) { got[0] = l.model(); }
+            });
+            second.join(200);
+            assertTrue(second.isAlive(), "the second waits for the first's load");
+            fail.countDown();
+            first.join(5000);
+            second.join(5000);
+            assertNotNull(got[0], "the first's load failed, so the second loaded it");
+            assertEquals(10, pool.loadedBytes());
+            pool.acquire("b", 90, () -> new Fake("b", log)).close();   // 10 + 90 fit: the failed load's reservation is gone
+            assertFalse(got[0].closed, log.toString());
+            assertFalse(first.isAlive() || second.isAlive());
         }
     }
 

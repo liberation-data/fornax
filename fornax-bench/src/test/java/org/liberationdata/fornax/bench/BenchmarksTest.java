@@ -57,8 +57,19 @@ class BenchmarksTest {
     }
 
     @Test
+    void percentilesAreByNearestRank() {
+        assertEquals(2.0, Benchmarks.pct(List.of(3.0, 1.0, 2.0), 50));    // the median of three
+        assertEquals(3.0, Benchmarks.pct(List.of(3.0, 1.0, 2.0), 95));    // of three, the 95th is the largest
+        List<Double> twenty = new java.util.ArrayList<>();
+        for (int i = 20; i >= 1; i--) twenty.add((double) i);
+        assertEquals(10.0, Benchmarks.pct(twenty, 50));
+        assertEquals(19.0, Benchmarks.pct(twenty, 95));
+        assertEquals(7.0, Benchmarks.pct(List.of(7.0), 95));
+    }
+
+    @Test
     void casesDefaultToAllAndAnUnknownOneFailsBeforeAnyRuns() {
-        assertEquals(List.of("chat", "image"), Benchmarks.cases(new String[]{"out"}));
+        assertEquals(List.of("chat", "image", "serving"), Benchmarks.cases(new String[]{"out"}));
         assertEquals(List.of("image"), Benchmarks.cases(new String[]{"out", "image"}));
         // A typo after "chat" fails now, not after the chat case has run and its results are lost.
         var e = assertThrows(IllegalArgumentException.class, () -> Benchmarks.cases(new String[]{"out", "chat", "imgae"}));
@@ -93,6 +104,9 @@ class BenchmarksTest {
         assertEquals(4, lines.size());
         assertEquals("| image | Fornax | DiffusionModel | coldSeconds 132.1, warmSeconds 130.5 | 12.7 GB |", lines.get(2));
         assertEquals("| image | sd-cli | sd.cpp | coldSeconds 1.0 | — |", lines.get(3));
+        String serving = Benchmarks.markdown(List.of(new Benchmarks.Row("serving", "Fornax", "fornax server", "qwen3-4b",
+                Map.of("clients", 4), Map.of("tokensPerSecond", 189.04), null, "z"))).lines().toList().get(2);
+        assertEquals("| serving | Fornax | fornax server | clients 4, tokensPerSecond 189.0 | — |", serving, "a serving row says its clients");
     }
 
     @Test

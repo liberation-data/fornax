@@ -26,7 +26,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Flow;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -55,6 +59,8 @@ final class PooledEngines implements Engines {
     private final List<String> configured;
     private final int contextSize;
     private final int parallel;   // chat requests at once per language model: its slots
+    /** Each model with slots' KV cache, by GGUF: read from its header once, not on every request. */
+    private final Map<String, Long> kvBytes = new java.util.concurrent.ConcurrentHashMap<>();
     private final PullListener pulls;
     private final Consumer<String> log;
     private final boolean allowDownloads;
@@ -123,7 +129,7 @@ final class PooledEngines implements Engines {
         check(f, images);
         try (ModelPool.Lease<LlamaModel> lease = lease(f)) {
             LlamaModel m = lease.model();
-            if (m.slots() > 1) return chatInSlot(m, requestJson, onContent, stop);
+            if (m.slots() > 1) return chatInSlot(sub -> m.chatJsonAsync(requestJson, List.of(), sub), onContent, stop);
             stop.attach(m::cancel);
             try { return m.chatJson(requestJson, onContent); }
             catch (IllegalStateException e) { throw engineError(e); }
@@ -132,22 +138,37 @@ final class PooledEngines implements Engines {
     }
 
     /**
-     * A chat on a model with slots, where cancel() would stop every slot's request: this one is stopped through its own
-     * future instead, and then gets an empty reply (the client has gone, or its deadline passed).
+     * A chat on a model with slots, where cancel() would stop every slot's request. This one is stopped through its
+     * subscription instead (a stop sequence, a client that has gone): the engine then ends just this request with the
+     * text so far, as {@code cancel()} ends a serial chat, so the callers see what they would there. The content
+     * pieces arrive through a buffer on another thread, so this returns only once the last of them has been
+     * delivered: the stream's final chunk must not overtake its content.
+     * @param start runs the chat, streaming its content to the subscriber ({@code LlamaModel.chatJsonAsync})
      */
-    private static String chatInSlot(LlamaModel m, String requestJson, Consumer<String> onContent, Stopper stop) {
-        var f = m.chatJsonAsync(requestJson, List.of(), new java.util.concurrent.Flow.Subscriber<String>() {
-            @Override public void onSubscribe(java.util.concurrent.Flow.Subscription s) { s.request(Long.MAX_VALUE); }
-            @Override public void onNext(String piece) { if (onContent != null) onContent.accept(piece); }
-            @Override public void onError(Throwable t) {}
-            @Override public void onComplete() {}
-        });
-        stop.attach(() -> f.cancel(true));
+    static String chatInSlot(Function<Flow.Subscriber<String>, CompletableFuture<String>> start, Consumer<String> onContent,
+                             Stopper stop) {
+        CompletableFuture<Flow.Subscription> subscribed = new CompletableFuture<>();
+        CompletableFuture<Void> delivered = new CompletableFuture<>();   // no more pieces will reach onContent
+        // attached first, so a stop asked for already cancels the subscription in onSubscribe, before any piece
+        stop.attach(() -> subscribed.thenAccept(s -> { s.cancel(); delivered.complete(null); }));
         try {
-            return f.join();
-        } catch (java.util.concurrent.CancellationException e) {
-            throw e;
-        } catch (java.util.concurrent.CompletionException e) {
+            var f = start.apply(new Flow.Subscriber<String>() {
+                @Override public void onSubscribe(Flow.Subscription s) {
+                    subscribed.complete(s);
+                    s.request(Long.MAX_VALUE);
+                }
+                @Override public void onNext(String piece) {
+                    if (onContent == null) return;
+                    try { onContent.accept(piece); }
+                    catch (RuntimeException | Error e) { delivered.complete(null); throw e; }   // cancels the subscription
+                }
+                @Override public void onError(Throwable t) { delivered.complete(null); }
+                @Override public void onComplete() { delivered.complete(null); }
+            });
+            String reply = f.join();
+            delivered.join();
+            return reply;
+        } catch (CompletionException e) {
             if (e.getCause() instanceof IllegalStateException ise) throw engineError(ise);
             if (e.getCause() instanceof RuntimeException re) throw re;
             throw e;
@@ -365,7 +386,7 @@ final class PooledEngines implements Engines {
     <M extends AutoCloseable> ModelPool.Lease<M> lease(Found f) {
         long size = ModelPool.sizeOf(f.files().values().toArray(Path[]::new));
         int slots = slots(f);
-        if (slots > 1) size += LlamaModel.kvCacheBytes(f.file("gguf").toString(), contextSize * slots);
+        if (slots > 1) size += kvBytes.computeIfAbsent(f.file("gguf").toString(), g -> LlamaModel.kvCacheBytes(g, contextSize * slots));
         Supplier<AutoCloseable> loader = () -> {
             log.accept("loading " + f.id() + " for " + what(f.use()));
             return load(f);
