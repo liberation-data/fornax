@@ -24,10 +24,10 @@ import java.util.function.Consumer;
  * pure-Java inference engine whose kernels TornadoVM compiles at run time for CUDA, OpenCL or Metal. It takes the same
  * {@link Message}s and {@link Options} as {@code LlamaModel} and gives the same {@link Result}, so code written for
  * one runs on the other: {@code chat}, {@code chatJson} (what fornax-server serves), {@code embed}, streaming, the
- * async methods and {@code cancel}. Images, JSON-schema constrained output and reranking stay with {@code LlamaModel}.
+ * async methods and {@code cancel}. jitllm has no min-p sampling: {@link Options#minP()} is ignored. Images, JSON-schema constrained output and reranking stay with {@code LlamaModel}.
  *
  * <p>jitllm needs a TornadoVM SDK ({@code TORNADOVM_HOME}) and the JVM options it lists. When this JVM was started
- * with them, the model loads in-process. Otherwise (a plain {@code java} or {@code ./gradlew run}) it loads in a
+ * with them, {@code --add-modules jdk.incubator.vector} and {@code -Duse.tornadovm=true}, the model loads in-process. Otherwise (a plain {@code java} or {@code ./gradlew run}) it loads in a
  * {@link Worker}, a child JVM started with TornadoVM's options (see {@link TornadoJvm}), behind this same API; so does
  * every JitLlmModel with {@code -Dfornax.isolation=process}.
  *
@@ -66,6 +66,9 @@ public final class JitLlmModel implements AutoCloseable {
 
     /** In this JVM whatever fornax.isolation says: what a worker loads. */
     static JitLlmModel inProcess(String ggufPath, int contextSize, Mode mode) {
+        if (!tornadoJvm())
+            throw new IllegalStateException("jitllm in this JVM needs TornadoVM's tornado-argfile, --add-modules "
+                    + "jdk.incubator.vector and -Duse.tornadovm=true");
         return new JitLlmModel(ggufPath, contextSize, mode, null, false);
     }
 
@@ -175,7 +178,10 @@ public final class JitLlmModel implements AutoCloseable {
         if (remote != null)
             return JitLlmService.decodeString(remote(call, "chatJson", JitLlmService.chatJsonArgs(requestJson, onContent != null), onContent));
         ChatJson.Request request = ChatJson.parse(requestJson);
-        return ChatJson.response(local.chat(call, request, ChatJson.contentOnly(onContent)));
+        ChatJson.Content content = onContent == null ? null : new ChatJson.Content(onContent);
+        ChatJson.Reply reply = local.chat(call, request, content);
+        if (content != null) content.finish();
+        return ChatJson.response(reply);
     }
 
     // ---- embeddings ----
@@ -210,11 +216,18 @@ public final class JitLlmModel implements AutoCloseable {
     }
 
     /**
-     * Whether jitllm can run in this JVM: it was started with TornadoVM's modules, and fornax.isolation doesn't ask
-     * for a worker. A worker itself always runs its models in-process.
+     * Whether jitllm can run on the GPU in this JVM: it was started with TornadoVM's modules, the Vector API and
+     * {@code -Duse.tornadovm=true} (without which jitllm runs on the CPU), and fornax.isolation doesn't ask for a
+     * worker. A worker itself always runs its models in-process.
      */
     static boolean inProcessPossible() {
-        return Isolation.configured() == Isolation.IN_PROCESS && ModuleLayer.boot().findModule("tornado.runtime").isPresent();
+        return Isolation.configured() == Isolation.IN_PROCESS && tornadoJvm();
+    }
+
+    private static boolean tornadoJvm() {
+        return ModuleLayer.boot().findModule("tornado.runtime").isPresent()
+                && ModuleLayer.boot().findModule("jdk.incubator.vector").isPresent()
+                && Boolean.getBoolean("use.tornadovm");
     }
 
     private static Worker workerFor(String ggufPath) {

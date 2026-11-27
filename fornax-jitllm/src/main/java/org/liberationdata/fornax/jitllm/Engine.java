@@ -4,6 +4,7 @@ import org.beehive.jitllm.api.CancellationToken;
 import org.beehive.jitllm.api.ChatMessage;
 import org.beehive.jitllm.api.ChatRole;
 import org.beehive.jitllm.api.EmbeddingSession;
+import org.beehive.jitllm.api.FinishReason;
 import org.beehive.jitllm.api.GenerationRequest;
 import org.beehive.jitllm.api.GenerationResult;
 import org.beehive.jitllm.api.GenerationSession;
@@ -32,8 +33,10 @@ final class Engine implements AutoCloseable {
     private final GenerationSession session;      // chat, or null
     private final EmbeddingSession embeddings;    // embed, or null
     private volatile CancellationToken running;   // the call in progress, or null
+    private final String contextSize;             // for messages: tokens, or the model's own
 
     Engine(Path gguf, int contextSize, boolean embed) {
+        this.contextSize = contextSize > 0 ? contextSize + " tokens" : "the model's own";
         ModelOptions.Builder options = ModelOptions.builder();
         if (contextSize > 0) options.contextLength(contextSize);
         try { model = LocalModels.load(gguf, options.build()); }
@@ -71,6 +74,9 @@ final class Engine implements AutoCloseable {
             if (r.seed() >= 0) b.seed(r.seed());
             if (!r.stop().isEmpty()) b.stopSequences(r.stop());
             GenerationResult g = session.generate(b.build());
+            if (g.finishReason() == FinishReason.CONTEXT_FULL && g.generatedTokens() == 0 && !token.isCancelled())
+                throw new IllegalStateException("jitllm (rc=2): the prompt is " + g.promptTokens()
+                        + " tokens, more than the context holds (" + contextSize + ")");
             return new ChatJson.Reply(g.text(), g.promptTokens(), g.generatedTokens(), finishReason(g));
         } finally {
             running = null;

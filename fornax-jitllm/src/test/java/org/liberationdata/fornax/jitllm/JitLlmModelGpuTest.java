@@ -11,6 +11,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Runs a real model: ./gradlew :fornax-jitllm:test -PjitllmModel=path/to/model.gguf, with TORNADOVM_HOME set. */
@@ -28,9 +29,9 @@ class JitLlmModelGpuTest {
             assertTrue(r.promptTokens() > 0 && r.generatedTokens() > 0);
             assertEquals(r.text(), streamed.toString());
 
-            // a second call starts from an empty context: no memory of the first
+            // a second call starts from an empty context: its prompt is only its own, shorter message
             Result again = llm.chat(List.of(Message.user("Say OK.")), Options.DEFAULT.withTemperature(0).withMaxTokens(8));
-            assertTrue(again.promptTokens() < r.promptTokens() + 20, "context carried over: " + again);
+            assertTrue(again.promptTokens() < r.promptTokens(), "context carried over: " + again + " after " + r);
 
             String json = llm.chatJson("""
                     {"messages": [{"role": "user", "content": "Count from 1 to 50, separated by spaces."}],
@@ -40,6 +41,15 @@ class JitLlmModelGpuTest {
             assertEquals("length", Json.get(doc, "finish_reason"));
             assertEquals(8L, Json.get(doc, "usage", "completion_tokens"));
             assertFalse(((String) Json.get(doc, "message", "content")).isBlank());
+        }
+    }
+
+    @Test void aPromptLongerThanTheContextIsABadRequest() {
+        try (var llm = new JitLlmModel(MODEL, 64)) {
+            String request = "{\"messages\": [{\"role\": \"user\", \"content\": " + Json.quote("kiln ".repeat(200)) + "}]}";
+            IllegalStateException e = assertThrows(IllegalStateException.class, () -> llm.chatJson(request, null));
+            System.out.println("too long: " + e.getMessage());
+            assertTrue(e.getMessage().contains("(rc=2): "), e.getMessage());
         }
     }
 

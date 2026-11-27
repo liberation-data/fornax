@@ -65,14 +65,46 @@ class ChatJsonTest {
     }
 
     @Test void streamsOnlyTheContent() {
-        List<String> out = new ArrayList<>();
-        var c = ChatJson.contentOnly(out::add);
-        for (String p : List.of("<th", "ink>", "let me", " see</thi", "nk>\n\nThe", " answer")) c.accept(p);
-        assertEquals("The answer", String.join("", out));
+        assertEquals("The answer", streamed("<th", "ink>", "let me", " see</thi", "nk>\n\nThe", " answer"));
+        assertEquals(" Hi there", streamed(" ", "Hi", " there"));
+        assertEquals("", streamed("<think>never closed"));
+    }
 
-        List<String> plain = new ArrayList<>();
-        var d = ChatJson.contentOnly(plain::add);
-        for (String p : List.of(" ", "Hi", " there")) d.accept(p);
-        assertEquals(" Hi there", String.join("", plain));
+    @Test void splitsAReplyThatStartsInsideItsReasoning() {
+        Object doc = Json.parse(ChatJson.response(new ChatJson.Reply("Okay, the user asks.\n</think>\n\n51", 1, 1, "stop")));
+        assertEquals("Okay, the user asks.", Json.get(doc, "message", "reasoning_content"));
+        assertEquals("51", Json.get(doc, "message", "content"));
+        assertEquals("51", streamed("Okay,", " the user asks.\n</th", "ink>\n\n", "51"));
+        assertEquals("51 ok", streamed("To solve it</think>", "", "\n\n", "51", " ok"));
+    }
+
+    @Test void letsOutAStartThatDoesNotLookLikeReasoning() {
+        String start = "x".repeat(ChatJson.Content.UNSURE);
+        List<String> out = new ArrayList<>();
+        var c = new ChatJson.Content(out::add);
+        c.accept(start);
+        assertEquals(List.of(start), out);   // let out before the reply ends
+        c.accept(" more");
+        c.finish();
+        assertEquals(start + " more", String.join("", out));
+    }
+
+    @Test void refusesToolMessagesAndUnknownRoles() {
+        for (String req : List.of(
+                "{\"messages\": [{\"role\": \"tool\", \"content\": \"42\"}]}",
+                "{\"messages\": [{\"role\": \"assistant\", \"content\": null, \"tool_calls\": [{\"id\": \"1\"}]}]}",
+                "{\"messages\": [{\"role\": \"wizard\", \"content\": \"hi\"}]}")) {
+            IllegalStateException e = assertThrows(IllegalStateException.class, () -> ChatJson.parse(req), req);
+            assertTrue(e.getMessage().contains("(rc=7): "), e.getMessage());
+        }
+        assertEquals("developer", ChatJson.parse("{\"messages\": [{\"role\": \"developer\", \"content\": \"x\"}]}").messages().get(0).role());
+    }
+
+    private static String streamed(String... pieces) {
+        List<String> out = new ArrayList<>();
+        var c = new ChatJson.Content(out::add);
+        for (String p : pieces) c.accept(p);
+        c.finish();
+        return String.join("", out);
     }
 }

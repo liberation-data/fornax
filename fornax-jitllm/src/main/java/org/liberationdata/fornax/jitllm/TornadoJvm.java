@@ -6,17 +6,26 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * The JVM options a worker needs to run jitllm: the TornadoVM SDK's {@code tornado-argfile} (its module path, native
  * library path and module options), the Vector API, and jitllm's own switches. A release SDK that has only
- * {@code tornado-argfile.template} gets one written from it, with the SDK's path in place of {@code ${TORNADOVM_HOME}}. The SDK is {@code -Dfornax.tornadovm.home},
+ * {@code tornado-argfile.template} gets one written from it, with the SDK's path in place of {@code ${TORNADOVM_HOME}},
+ * into {@code <cache>/tornadovm}: {@code <cache>} is {@code -Dfornax.cache.dir} or {@code FORNAX_CACHE_DIR}, else the
+ * user's cache directory ({@code ~/Library/Caches/fornax} on macOS, {@code $XDG_CACHE_HOME/fornax} or
+ * {@code ~/.cache/fornax} elsewhere), never a directory other users can write to. The SDK is {@code -Dfornax.tornadovm.home},
  * else {@code TORNADOVM_HOME}; use one built for this JDK and your GPU's backend (CUDA, OpenCL or Metal).
- * Every {@code -Djitllm.*} and {@code -Dtornado.*} property of this JVM goes to the worker too.
+ * Every {@code -Djitllm.*} and {@code -Dtornado.*} property of this JVM goes to the worker too. TornadoVM's device
+ * memory budget is {@value #DEVICE_MEMORY}, as the {@code jitllm} launcher's, unless {@code -Dtornado.device.memory}
+ * says otherwise.
  */
 public final class TornadoJvm {
+    /** The worker's {@code tornado.device.memory} when this JVM sets none: the jitllm launcher's default. */
+    static final String DEVICE_MEMORY = "14GB";
+
     private TornadoJvm() {}
 
     /** The TornadoVM SDK, or an IllegalStateException that says how to set one. */
@@ -34,7 +43,8 @@ public final class TornadoJvm {
 
     /**
      * The SDK's argfile: its own {@code tornado-argfile}, else one written from {@code tornado-argfile.template} (as
-     * the SDK's {@code tornado} launcher does) into the temporary directory, as the SDK may not be writable.
+     * the SDK's {@code tornado} launcher does) into this user's cache directory, as the SDK may not be writable. The
+     * worker's JVM options come from it, so it is created readable by this user only.
      */
     static Path argfile(Path home) {
         Path argfile = home.resolve("tornado-argfile");
@@ -42,7 +52,7 @@ public final class TornadoJvm {
         try {
             String text = Files.readString(home.resolve("tornado-argfile.template"), StandardCharsets.UTF_8)
                     .replace("${TORNADOVM_HOME}", home.toString());
-            Path dir = Files.createDirectories(Path.of(System.getProperty("java.io.tmpdir"), "fornax-tornadovm"));
+            Path dir = privateDirectory(cacheRoot().resolve("tornadovm"));
             Path out = dir.resolve("tornado-argfile-" + Integer.toHexString(home.toString().hashCode()));
             Path tmp = Files.createTempFile(dir, "argfile", ".tmp");
             Files.writeString(tmp, text, StandardCharsets.UTF_8);
@@ -53,6 +63,31 @@ public final class TornadoJvm {
         }
     }
 
+    /** The user's Fornax cache directory, as fornax-core's natives cache finds it. */
+    static Path cacheRoot() {
+        String dir = setting("fornax.cache.dir", "FORNAX_CACHE_DIR");
+        if (dir != null) return Path.of(dir);
+        String home = System.getProperty("user.home");
+        if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("mac"))
+            return Path.of(home, "Library", "Caches", "fornax");
+        String xdg = System.getenv("XDG_CACHE_HOME");
+        return xdg != null && !xdg.isBlank() ? Path.of(xdg, "fornax") : Path.of(home, ".cache", "fornax");
+    }
+
+    /** dir, created if need be; on a POSIX file system, owner-only. */
+    private static Path privateDirectory(Path dir) throws IOException {
+        Files.createDirectories(dir);
+        try { Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwx------")); }
+        catch (UnsupportedOperationException notPosix) { /* Windows: the user's profile is private already */ }
+        return dir;
+    }
+
+    private static String setting(String property, String env) {
+        String v = System.getProperty(property);
+        if (v == null || v.isBlank()) v = System.getenv(env);
+        return v == null || v.isBlank() ? null : v;
+    }
+
     /** The options for a worker JVM, after Fornax's own. */
     public static List<String> workerArgs() {
         List<String> args = new ArrayList<>();
@@ -61,6 +96,7 @@ public final class TornadoJvm {
         args.add("jdk.incubator.vector");
         args.add("-Dtornado.tvm.maxbytecodesize=65536");
         args.add("-Duse.tornadovm=true");
+        if (System.getProperty("tornado.device.memory") == null) args.add("-Dtornado.device.memory=" + DEVICE_MEMORY);
         for (String key : System.getProperties().stringPropertyNames().stream().sorted().toList())
             if (key.startsWith("jitllm.") || key.startsWith("tornado.") && !key.startsWith("tornado.load."))
                 args.add("-D" + key + "=" + System.getProperty(key));

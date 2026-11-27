@@ -8,7 +8,10 @@ import org.liberationdata.fornax.llama.LlamaModel.Result;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
+import java.util.Set;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 /**
  * {@link JitLlmModel#chatJson}'s request and response, in the shape {@code LlamaModel.chatJson} takes and gives, so
@@ -42,6 +45,8 @@ final class ChatJson {
         Result result() { return new Result(text, promptTokens, generatedTokens); }
     }
 
+    private static final Set<String> ROLES = Set.of("system", "developer", "user", "assistant");
+
     /** An OpenAI chat completions request's messages and sampling; what jitllm can't do is refused. */
     static Request parse(String json) {
         Object doc;
@@ -59,6 +64,10 @@ final class ChatJson {
         for (Object o : list) {
             if (!(o instanceof Map<?, ?> m) || !(m.get("role") instanceof String role))
                 throw badRequest("each message needs a role");
+            if (!ROLES.contains(role.toLowerCase(Locale.ROOT)))
+                throw badRequest("the jitllm engine takes system, developer, user and assistant messages, not " + role);
+            if (m.get("tool_calls") instanceof List<?> calls && !calls.isEmpty())
+                throw badRequest("tool calls aren't supported by the jitllm engine");
             messages.add(new Message(role, content(m.get("content"))));
         }
         Object max = req.get("max_completion_tokens") != null ? req.get("max_completion_tokens") : req.get("max_tokens");
@@ -71,8 +80,9 @@ final class ChatJson {
     }
 
     /**
-     * The response, as LlamaModel.chatJson gives it. A reply that starts with a {@code <think>} block has that block
-     * as {@code reasoning_content}, as llama.cpp's parser gives it.
+     * The response, as LlamaModel.chatJson gives it. A reply's reasoning, a leading {@code <think>} block or the text
+     * before a {@code </think>} whose opening tag was in the prompt, is {@code reasoning_content}, as llama.cpp's
+     * parser gives it.
      */
     static String response(Reply r) {
         String[] parts = splitThinking(r.text());
@@ -83,42 +93,82 @@ final class ChatJson {
                 .append(", \"completion_tokens\": ").append(r.generatedTokens()).append("}}").toString();
     }
 
-    /** {reasoning or null, content}. */
+    private static final String OPEN = "<think>", CLOSE = "</think>";
+
+    /**
+     * {reasoning or null, content}. Some models (DeepSeek-R1 distills, Qwen3 thinking variants) have the opening
+     * {@code <think>} in their prompt, so their reply starts inside the reasoning and has only the closing tag.
+     */
     static String[] splitThinking(String text) {
         String t = text.stripLeading();
-        if (t.startsWith("<think>")) {
-            int end = t.indexOf("</think>");
-            if (end < 0) return new String[]{t.substring(7).strip(), ""};
-            return new String[]{t.substring(7, end).strip(), t.substring(end + 8).stripLeading()};
-        }
-        return new String[]{null, text};
+        boolean opened = t.startsWith(OPEN);
+        int from = opened ? OPEN.length() : 0;
+        int end = t.indexOf(CLOSE, from);
+        if (end < 0) return opened ? new String[]{t.substring(from).strip(), ""} : new String[]{null, text};
+        return new String[]{t.substring(from, end).strip(), t.substring(end + CLOSE.length()).stripLeading()};
     }
 
     /**
-     * Streams what {@link #response} puts in {@code content}: pieces in a leading {@code <think>} block are held back,
-     * as llama.cpp streams only the content.
+     * Streams what {@link #response} puts in {@code content}, as llama.cpp streams only the content. A reply that
+     * starts with {@code <think>} is held back to its {@code </think>}. One without the tag might have started inside
+     * the reasoning (its {@code <think>} in the prompt), so its start is held back until a {@code </think>} makes it
+     * reasoning, or it has run {@link #UNSURE} characters without one and without opening the way reasoning does
+     * ("Okay, the user..."). {@link #finish} lets out what is held back once the reply is complete.
      */
-    static Consumer<String> contentOnly(Consumer<String> onContent) {
-        if (onContent == null) return null;
-        StringBuilder head = new StringBuilder();   // the start of the reply, until we know whether it thinks
-        boolean[] state = {false, false};           // {decided, thinking}
-        return piece -> {
-            if (state[0] && !state[1]) { onContent.accept(piece); return; }
-            head.append(piece);
-            if (!state[0]) {
-                String t = head.toString().stripLeading();
-                if (t.isEmpty() || "<think>".startsWith(t)) return;   // not enough yet
-                state[0] = true;
-                state[1] = t.startsWith("<think>");
-                if (!state[1]) { onContent.accept(head.toString()); head.setLength(0); return; }
+    static final class Content implements Consumer<String> {
+        /** How much of a reply's start is held back, without a tag or a reasoning-like opening, before it is let out. */
+        static final int UNSURE = 200;
+        private static final Pattern REASONING = Pattern.compile(
+                "(?i)(okay|alright|hmm+|let me|let's|i need|we need|we are|the user)\\b.*", Pattern.DOTALL);
+
+        private final Consumer<String> out;
+        private final StringBuilder held = new StringBuilder();
+        private boolean deciding = true, thinking, open;   // open: the content is being let out
+        private boolean trim;                              // after a </think>: whitespace before the content is dropped
+
+        Content(Consumer<String> out) { this.out = out; }
+
+        @Override public void accept(String piece) {
+            if (open) { emit(piece); return; }
+            held.append(piece);
+            String t = held.toString().stripLeading();
+            if (deciding) {
+                if (t.isEmpty() || OPEN.startsWith(t)) return;   // not enough yet
+                if (t.startsWith(OPEN)) { deciding = false; thinking = true; }
             }
-            int end = head.indexOf("</think>");
-            if (end < 0) return;
-            String rest = head.substring(end + 8).stripLeading();
-            head.setLength(0);
-            state[1] = false;
-            if (!rest.isEmpty()) onContent.accept(rest);
-        };
+            int end = held.indexOf(CLOSE);
+            if (end >= 0) {
+                String rest = held.substring(end + CLOSE.length()).stripLeading();
+                held.setLength(0);
+                deciding = thinking = false;
+                open = trim = true;
+                emit(rest);
+                return;
+            }
+            if (deciding && t.length() >= UNSURE && !REASONING.matcher(t).matches()) release();
+        }
+
+        /** The reply is complete: a start still held back without a {@code </think>} was content after all. */
+        void finish() {
+            if (deciding && !open) release();
+        }
+
+        private void emit(String piece) {
+            if (trim) {
+                piece = piece.stripLeading();
+                if (piece.isEmpty()) return;
+                trim = false;
+            }
+            out.accept(piece);
+        }
+
+        private void release() {
+            deciding = false;
+            open = true;
+            String text = held.toString();
+            held.setLength(0);
+            if (!text.isEmpty()) out.accept(text);
+        }
     }
 
     /** A message's content: a string, or OpenAI's array of parts, of which only text is taken. */

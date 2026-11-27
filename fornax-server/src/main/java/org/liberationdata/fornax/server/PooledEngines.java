@@ -106,6 +106,7 @@ final class PooledEngines implements Engines {
     void warm() {
         for (String name : configured) {
             Found f = find(name, use(name), true);
+            if (f.use() == Use.CHAT) check(f, false);   // a model this server's engine can't run fails now, not per request
             long t0 = System.nanoTime();
             lease(f).close();   // loaded, and left in the pool
             log.accept(String.format(Locale.ROOT, "loaded %s in %.1fs", f.id(), (System.nanoTime() - t0) / 1e9));

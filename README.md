@@ -87,8 +87,10 @@ try (var llm = new JitLlmModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M")) { 
 ```
 
 It needs a TornadoVM SDK for your JDK and GPU (`TORNADOVM_HOME`, 8.2.0 or newer). A JVM started with the SDK's
-`tornado-argfile` runs the model in-process; any other JVM runs it in a [worker process](https://fornax4j.org/docs/guides/isolation/)
-that Fornax starts with those options, so a plain `java` or `./gradlew run` works too. From the command line:
+`tornado-argfile`, `--add-modules jdk.incubator.vector` and `-Duse.tornadovm=true` runs the model in-process; any
+other JVM runs it in a [worker process](https://fornax4j.org/docs/guides/isolation/) that Fornax starts with those
+options, so a plain `java` or `./gradlew run` works too. TornadoVM's device memory budget is 14 GB, as for the
+`jitllm` command; set `-Dtornado.device.memory=...` to change it. From the command line:
 
 ```sh
 fornax chat qwen3-4b "Write a haiku about a kiln" --engine jitllm

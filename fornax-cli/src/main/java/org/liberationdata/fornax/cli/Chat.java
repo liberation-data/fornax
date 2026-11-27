@@ -42,7 +42,7 @@ final class Chat {
               --temperature T      default 0.7; 0 is greedy
               --seed N             default random
               --ctx N              context size in tokens (default 8192; 0 = the model's own)
-              --gpu-layers N       layers to offload (default -1 = all; llama.cpp only)
+              --gpu-layers N       layers to offload (default -1 = all; llama.cpp only, refused with jitllm)
               --engine E           llama.cpp (default) or jitllm, a Java engine on the GPU through TornadoVM
                                    (needs TORNADOVM_HOME; language models only, no images)
               --think              show the model's reasoning (<think> blocks)""";
@@ -55,6 +55,9 @@ final class Chat {
     static int run(Args a, FornaxHub hub, BufferedReader in, PrintStream out, PrintStream err) throws IOException {
         String spec = a.positional(0);
         if (spec == null) throw new UsageException("which model? (see fornax list)");
+        Engine engine = engine(a);
+        if (engine == Engine.JITLLM && a.option("gpu-layers", null) != null)
+            throw new UsageException("--gpu-layers is for llama.cpp; jitllm runs every layer on the GPU");
         // downloaded first when it isn't in the cache; a model of another kind is refused before that
         Path gguf = Models.fetch(spec, java.util.EnumSet.of(Kind.CHAT, Kind.VISION), "chat", true, hub, err, Main.terminal()).file("gguf");
         String prompt = String.join(" ", a.rest(1));
@@ -69,7 +72,7 @@ final class Chat {
 
         err.println("[fornax] loading " + gguf);
         long t0 = System.nanoTime();
-        try (var model = engine(a).load(gguf.toString(), a.intOption("gpu-layers", -1), a.intOption("ctx", 8192))) {
+        try (var model = engine.load(gguf.toString(), a.intOption("gpu-layers", -1), a.intOption("ctx", 8192))) {
             err.printf(Locale.ROOT, "[fornax] loaded in %s%n", Fmt.seconds((System.nanoTime() - t0) / 1e9));
             List<Message> history = new ArrayList<>();
             if (system != null) history.add(Message.system(system));
