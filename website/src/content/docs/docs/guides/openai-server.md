@@ -74,7 +74,8 @@ non-streaming request runs to the end.
 ### Embeddings
 
 `input` is a string or a list of them (token arrays aren't taken). The model is `qwen3-embedding-0.6b` (Qwen3-Embedding
-0.6B, 1024 dimensions) unless a request names another embedding GGUF by `org/name:TAG` or path. `dimensions` keeps
+0.6B, 1024 dimensions) unless a request names another embedding GGUF by `org/name:TAG` or path (one the server was
+started with, or any with `--allow-downloads`). `dimensions` keeps
 the first n and normalises them again, which Qwen3-Embedding is trained for. `encoding_format: "base64"`, which the
 OpenAI clients ask for by default, is supported. Vectors are normalised, so a dot product is the cosine similarity.
 `usage` reports 0 tokens.
@@ -106,9 +107,13 @@ languages), and `language` and `prompt`. `response_format` is `json` (the defaul
 
 ## Models
 
-A request's `model` is anything Fornax loads: a [catalogue alias](/docs/guides/models/#the-catalogue), an
-`org/name[:TAG]` reference or a path to a GGUF. A model is downloaded the first time it's asked for and kept loaded in a
-[`ModelPool`](/docs/guides/model-pool/): within `--budget-gb` (models' file sizes), the least recently used are
+A request's `model` is one of the `-m` models, or a [catalogue model](/docs/guides/models/#the-catalogue) that is
+already downloaded (`fornax pull`), as is `qwen3-embedding-0.6b`. Any other is refused with a 404 (`model_not_found`, whose message says how to
+allow it), so that whoever can call the server can't make it download many gigabytes. `--allow-downloads`
+(`.allowDownloads(true)`) lets a request name anything Fornax loads: a catalogue alias, an `org/name[:TAG]` reference
+or a path to a GGUF, downloaded the first time it's asked for.
+
+A model is loaded on first use and kept loaded in a [`ModelPool`](/docs/guides/model-pool/): within `--budget-gb` (models' file sizes), the least recently used are
 unloaded to make room, and a model unused for `--idle-minutes` is unloaded. A model answers one request at a time;
 others wait for it.
 
@@ -128,6 +133,8 @@ fornax server [-m MODEL]... [options]
   --budget-gb N        memory for loaded models, by their files' size (default 24)
   --idle-minutes N     unload a model unused this long (default 15; 0 = never)
   --ctx N              context size for language and embedding models (default 8192; 0 = the model's own)
+  --allow-downloads    let a request name any model, downloading it on first use (default: only the -m
+                       models and catalogue models already downloaded)
 ```
 
 `FornaxServer.builder()` has the same settings, plus the hub to download with, a download progress listener and a

@@ -144,6 +144,7 @@ public final class Main {
             case "speak" -> Speak.FLAGS;
             case "transcribe" -> Transcribe.FLAGS;
             case "see" -> See.FLAGS;
+            case "server" -> Server.FLAGS;
             default -> Set.of();
         };
     }

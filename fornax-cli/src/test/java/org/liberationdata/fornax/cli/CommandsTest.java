@@ -221,6 +221,12 @@ class CommandsTest {
         assertEquals(2, run("server", "--port", "70000"));
         assertTrue(err.toString().contains("--port must be from 0 to 65535"), err.toString());
         assertEquals(2, run("server", "--budget-gb", "0"));
+        assertEquals(2, run("server", "--allow-downloads", "--port", "70000"));   // a flag: --port is still read
+        assertTrue(err.toString().contains("--port must be from 0 to 65535"), err.toString());
+        assertEquals(2, run("server", "--allow-downloads=yes"));
+        assertTrue(err.toString().contains("--allow-downloads doesn't take a value"), err.toString());
+        assertEquals(0, run("server", "--help"));
+        assertTrue(out.toString().contains("--allow-downloads"), out.toString());
         assertEquals(2, run("server", "-m"));
         assertTrue(err.toString().contains("--model needs a value"), err.toString());
         assertEquals(1, run("server", "-m", "ace-step-turbo", "--port", "0"));   // refused before anything is downloaded

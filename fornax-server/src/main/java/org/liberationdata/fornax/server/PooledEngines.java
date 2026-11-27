@@ -32,8 +32,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The server's engines: a model named by a request is found (and downloaded, the first time) with {@link FornaxHub},
- * and kept loaded in a {@link ModelPool}, which unloads the least recently used to stay within its budget, and idle
+ * The server's engines: a model named by a request is found with {@link FornaxHub} (downloaded the first time, when
+ * downloads are allowed; otherwise it must be one the server was started with, or a catalogue model already
+ * downloaded), and kept loaded in a {@link ModelPool}, which unloads the least recently used to stay within its budget, and idle
  * ones after its timeout. A model has one request at a time; others wait for it.
  *
  * <p>A name is a catalogue alias ({@code qwen3-4b}, {@code flux2-klein}, {@code kokoro}, {@code whisper-base.en}), an
@@ -55,6 +56,7 @@ final class PooledEngines implements Engines {
     private final int contextSize;
     private final PullListener pulls;
     private final Consumer<String> log;
+    private final boolean allowDownloads;
     private final Map<String, Found> found = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** A model name, found: its key in the pool, its files by role, and its catalogue set (null for a file or reference). */
@@ -66,7 +68,10 @@ final class PooledEngines implements Engines {
         }
     }
 
-    PooledEngines(FornaxHub hub, ModelPool pool, List<String> configured, int contextSize, PullListener pulls, Consumer<String> log) {
+    /** allowDownloads: whether a request may name a model the server wasn't started with that isn't downloaded. */
+    PooledEngines(FornaxHub hub, ModelPool pool, List<String> configured, int contextSize, PullListener pulls, Consumer<String> log,
+                  boolean allowDownloads) {
+        this.allowDownloads = allowDownloads;
         this.hub = hub;
         this.pool = pool;
         this.configured = List.copyOf(configured);
@@ -251,15 +256,18 @@ final class PooledEngines implements Engines {
         if (ModelReferences.isPath(name)) {
             if (use == Use.IMAGE || use == Use.SPEECH)
                 throw ApiError.badRequest(name + ": " + what(use) + " needs several files; name one by its alias: " + ids(kindOf(use)), "model");
+            if (!servable(name)) throw notServed(name, "isn't one this server was started with");
             return new Found(key(use, name), name, use, Map.of(use == Use.TRANSCRIPTION ? transcriptionRole : "gguf", Path.of(name)), null);
         }
         String ref = name;
-        if (use == Use.EMBED && name.equalsIgnoreCase(EMBEDDING)) ref = EMBEDDING_WEIGHTS.repo + ":" + EMBEDDING_WEIGHTS.modelFile;
+        boolean embeddingByName = use == Use.EMBED && name.equalsIgnoreCase(EMBEDDING);
+        if (embeddingByName) ref = EMBEDDING_WEIGHTS.repo + ":" + EMBEDDING_WEIGHTS.modelFile;
         var alias = ModelCatalog.byName(name);
         if (alias.isPresent() && use != Use.EMBED) {
             ModelSet m = alias.get();
             if (!fits(m.kind(), use))
                 throw ApiError.badRequest(m.id() + " is " + aKind(m.kind()) + "; " + what(use) + " takes " + ids(kindOf(use)), "model");
+            if (!servable(name) && !hub.status(m).available()) throw notServed(m.id(), "isn't downloaded");
             return new Found(key(use, m.id()), m.id(), use, fetch ? pull(m) : Map.of(), m);
         }
         if (alias.isPresent())
@@ -269,6 +277,8 @@ final class PooledEngines implements Engines {
             throw ApiError.noSuchModel("no model " + name + ": name a catalogue alias, an org/name:TAG reference or a path (GET /v1/models lists what is here)");
         if (use == Use.IMAGE || use == Use.SPEECH)
             throw ApiError.badRequest(name + ": " + what(use) + " loads a model set from the catalogue (" + ids(kindOf(use)) + "), not a reference", "model");
+        if (!servable(name) && !(embeddingByName && hub.find(EMBEDDING_WEIGHTS.repo, EMBEDDING_WEIGHTS.modelFile).isPresent()))
+            throw notServed(name, embeddingByName ? "isn't downloaded" : "isn't one this server was started with");
         if (!fetch) return new Found(key(use, name), name, use, Map.of(), null);
         Map<String, Path> files;
         try { files = hub.fetch(ref, pulls); }
@@ -280,6 +290,20 @@ final class PooledEngines implements Engines {
         String role = use == Use.TRANSCRIPTION ? (files.containsKey("gguf") ? "gguf" : transcriptionRole) : "gguf";
         if (!files.containsKey(role)) throw ApiError.badRequest(name + " isn't a GGUF model (it names " + files.keySet() + ")", "model");
         return new Found(key(use, name), name, use, Map.of(use == Use.TRANSCRIPTION ? transcriptionRole : "gguf", files.get(role)), null);
+    }
+
+    /** Whether a request may name this model whether or not it is downloaded: downloads are allowed, or it was started with it. */
+    private boolean servable(String name) {
+        if (allowDownloads) return true;
+        String c = canonical(name);
+        for (String n : configured) if (canonical(n).equalsIgnoreCase(c)) return true;
+        return false;
+    }
+
+    private static ApiError notServed(String name, String why) {
+        return ApiError.noSuchModel("no model " + name + " here: it " + why + ", and this server only serves the models it was started "
+                + "with and catalogue models already downloaded. Start it with -m " + name + ", or with --allow-downloads to let "
+                + "requests name any model (downloaded on first use). GET /v1/models lists what is here");
     }
 
     private Map<String, Path> pull(ModelSet m) {

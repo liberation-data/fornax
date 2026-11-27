@@ -61,10 +61,12 @@ import java.util.function.Consumer;
  *   <li>{@code POST /v1/audio/speech} (WAV) and {@code POST /v1/audio/transcriptions} (a WAV file, multipart)</li>
  * </ul>
  *
- * A request may name any model Fornax can load: a catalogue alias, an {@code org/name[:TAG]} reference or a path,
- * downloaded the first time and kept loaded in a {@link ModelPool} (least recently used unloaded to stay within the
- * budget, and idle ones after the idle timeout). The models given to {@link Builder#model} are downloaded and loaded
- * at {@link #start}, and the first chat one answers a request that names no model.
+ * A request may name the models given to {@link Builder#model}, which are downloaded and loaded at {@link #start}
+ * (the first chat one answers a request that names no model), and catalogue models already downloaded; any other is
+ * a 404 ({@code model_not_found}) unless {@link Builder#allowDownloads} lets a request name any model Fornax can load
+ * (a catalogue alias, an {@code org/name[:TAG]} reference or a path), downloaded the first time. Models are kept
+ * loaded in a {@link ModelPool} (least recently used unloaded to stay within the budget, and idle ones after the idle
+ * timeout).
  *
  * <p>Who may call it: it listens on 127.0.0.1 unless told otherwise; on loopback, it refuses a request whose
  * {@code Host} isn't its own address (DNS rebinding); it refuses a request from a web page (an {@code Origin}) unless
@@ -85,8 +87,10 @@ public final class FornaxServer implements AutoCloseable {
     private final Consumer<String> log;
     private final long maxBody;
     private final Runnable warm;
+    /** The chat generations running, which {@link #close} stops. */
+    private final Set<Stopper> generating = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final Object stopped = new Object();
-    private boolean running;
+    private boolean running, started;
 
     private FornaxServer(Builder b) throws IOException {
         InetAddress address = InetAddress.getByName(b.host);
@@ -98,7 +102,7 @@ public final class FornaxServer implements AutoCloseable {
             this.warm = () -> {};
         } else {
             var pooled = new PooledEngines(b.hub != null ? b.hub : FornaxHub.standard(), new ModelPool(b.budgetBytes, b.idleTimeout),
-                    b.models, b.contextSize, b.pulls, b.log);
+                    b.models, b.contextSize, b.pulls, b.log, b.allowDownloads);
             this.engines = pooled;
             this.warm = pooled::warm;
         }
@@ -124,8 +128,10 @@ public final class FornaxServer implements AutoCloseable {
         try { warm.run(); }
         catch (ApiError e) { close(); throw new IllegalStateException(e.getMessage(), e); }
         catch (RuntimeException | Error e) { close(); throw e; }
-        http.start();
-        synchronized (stopped) { running = true; }
+        synchronized (stopped) {
+            http.start();
+            started = running = true;
+        }
         return this;
     }
 
@@ -135,7 +141,9 @@ public final class FornaxServer implements AutoCloseable {
     /** The API's base URL, as an OpenAI client's base URL: {@code http://127.0.0.1:54154/v1}. */
     public String url() {
         InetAddress a = http.getAddress().getAddress();
-        String host = a.isAnyLocalAddress() ? "127.0.0.1" : a instanceof java.net.Inet6Address ? "[" + a.getHostAddress() + "]" : a.getHostAddress();
+        // ::1 as [::1], not [0:0:0:0:0:0:0:1]: the Host check takes the short form
+        String host = a.isAnyLocalAddress() ? "127.0.0.1" : a.isLoopbackAddress() && a instanceof java.net.Inet6Address ? "[::1]"
+                : a instanceof java.net.Inet6Address ? "[" + a.getHostAddress() + "]" : a.getHostAddress();
         return "http://" + host + ":" + port() + "/v1";
     }
 
@@ -144,9 +152,13 @@ public final class FornaxServer implements AutoCloseable {
         synchronized (stopped) { while (running) stopped.wait(); }
     }
 
-    /** Stops answering, waits a moment for requests in flight, and unloads every model. */
+    /** Stops answering, waits a moment for requests in flight, stops the chat generations still running, and unloads every model. */
     @Override public void close() {
+        // the listening socket is only released by the server's dispatcher, so one never started (a model that
+        // wouldn't load) is started to be stopped, or its port stays taken
+        synchronized (stopped) { if (!started) { started = true; http.start(); } }
         http.stop(1);
+        generating.forEach(Stopper::stop);   // else unloading waits for each to run to its end
         executor.shutdownNow();
         engines.close();
         synchronized (stopped) { running = false; stopped.notifyAll(); }
@@ -219,8 +231,12 @@ public final class FornaxServer implements AutoCloseable {
 
         Stopper stopper = new Stopper();
         Stops stops = new Stops(req.stops(), piece -> {});
-        String res = engines.chat(req.model(), req.engineJson(), req.images(),
-                req.stops().isEmpty() ? null : piece -> { if (stops.accept(piece)) stopper.stop(); }, stopper);
+        String res;
+        generating.add(stopper);
+        try {
+            res = engines.chat(req.model(), req.engineJson(), req.images(),
+                    req.stops().isEmpty() ? null : piece -> { if (stops.accept(piece)) stopper.stop(); }, stopper);
+        } finally { generating.remove(stopper); }
         Map<String, Object> r = Json.map(org.liberationdata.fornax.Json.parse(res));
         Map<String, Object> message = Json.map(r.get("message"));
         Object finish = r.get("finish_reason");
@@ -237,6 +253,7 @@ public final class FornaxServer implements AutoCloseable {
     private void stream(HttpExchange ex, ChatRequest req, String id, long created) {
         engines.checkChat(req.model(), req.images());   // a name it won't serve is still an error status, not a stream
         Stopper stopper = new Stopper();
+        generating.add(stopper);
         Sse sse = new Sse(ex, stopper::stop);
         boolean[] roleSent = {false};
         Consumer<Map<String, Object>> delta = d -> {
@@ -278,6 +295,7 @@ public final class FornaxServer implements AutoCloseable {
             if (!sse.abandon()) streamError(sse, e);
             else throw e;
         } finally {
+            generating.remove(stopper);
             sse.close();
         }
     }
@@ -385,7 +403,7 @@ public final class FornaxServer implements AutoCloseable {
             throw ApiError.badRequest("response_format must be b64_json: the server keeps no files to link to", "response_format");
         Object output = body.get("output_format");
         if (output != null && !"png".equals(output)) throw ApiError.badRequest("output_format must be png", "output_format");
-        int n = body.get("n") == null ? 1 : (int) ChatRequest.whole(body.get("n"), "n", 1);
+        long n = body.get("n") == null ? 1 : ChatRequest.whole(body.get("n"), "n", 1);   // checked before it is an int: 2^32 + 1 isn't 1
         if (n > 8) throw ApiError.badRequest("n can be at most 8", "n");
         Object size = body.get("size");
         int w = 1024, h = 1024;
@@ -403,7 +421,7 @@ public final class FornaxServer implements AutoCloseable {
         Object cfg = body.get("cfg_scale");
         if (cfg != null && !(cfg instanceof Number c && c.doubleValue() >= 0)) throw ApiError.badRequest("cfg_scale must be 0 or more", "cfg_scale");
         long seed = body.get("seed") == null ? ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE) : ChatRequest.whole(body.get("seed"), "seed", 0);
-        return new ImageJob(prompt, w, h, steps, cfg == null ? null : ((Number) cfg).doubleValue(), seed, n);
+        return new ImageJob(prompt, w, h, steps, cfg == null ? null : ((Number) cfg).doubleValue(), seed, (int) n);
     }
 
     private static byte[] png(BufferedImage img) {
@@ -527,6 +545,7 @@ public final class FornaxServer implements AutoCloseable {
         private Consumer<String> log = logger();
         private final List<String> models = new ArrayList<>();
         private long maxBodyBytes = 64L << 20;
+        private boolean allowDownloads;
         private Engines engines;
 
         private Builder() {}
@@ -579,6 +598,13 @@ public final class FornaxServer implements AutoCloseable {
          * says "embed" is loaded for embeddings; any other one for chat.
          */
         public Builder model(String model) { models.add(Objects.requireNonNull(model, "model").strip()); return this; }
+
+        /**
+         * Whether a request may name any model Fornax can load (a catalogue alias, an {@code org/name[:TAG]} reference
+         * or a path), downloading it the first time (default false: only the {@link #model} models and catalogue models
+         * already downloaded, as anyone who can call the server could otherwise fill its disk).
+         */
+        public Builder allowDownloads(boolean allow) { this.allowDownloads = allow; return this; }
 
         /** The largest request body taken (default 64 MB: an image or a WAV file in it). */
         public Builder maxBodyBytes(long bytes) { this.maxBodyBytes = bytes; return this; }

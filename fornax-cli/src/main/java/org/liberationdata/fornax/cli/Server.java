@@ -17,6 +17,7 @@ import java.util.Set;
 /** {@code fornax server}: Fornax's engines behind an OpenAI-compatible HTTP API ({@link FornaxServer}). */
 final class Server {
     static final Set<String> OPTIONS = Set.of("model", "port", "host", "api-key", "cors", "budget-gb", "ctx", "idle-minutes");
+    static final Set<String> FLAGS = Set.of("allow-downloads");
     static final Map<String, String> SHORT = Map.of("m", "model");
 
     static final String USAGE = """
@@ -31,8 +32,9 @@ final class Server {
               POST /v1/audio/transcriptions (a WAV file)
 
             The -m models are downloaded if need be, and loaded, before it starts; the first chat one answers
-            requests that name no model. A request may name any other model (an alias, org/name:TAG or a path),
-            which is downloaded and loaded on first use, and kept loaded within --budget-gb.
+            requests that name no model. A request may also name a catalogue model already downloaded, which is
+            loaded on first use and kept loaded within --budget-gb; any other is refused (404) unless
+            --allow-downloads lets a request name any model (an alias, org/name:TAG or a path), downloaded on first use.
 
               -m, --model M        a model to load at start (repeat for more): an alias, org/name:TAG or a path
               --port N             default %d
@@ -42,6 +44,8 @@ final class Server {
               --budget-gb N        memory for loaded models, by their files' size (default 24)
               --idle-minutes N     unload a model unused this long (default 15; 0 = never)
               --ctx N              context size for language and embedding models (default 8192; 0 = the model's own)
+              --allow-downloads    let a request name any model, downloading it on first use (default: only the -m
+                                   models and catalogue models already downloaded)
 
             curl -s localhost:%d/v1/chat/completions -d '{"messages":[{"role":"user","content":"Hi"}]}'"""
             .formatted(FornaxServer.EMBEDDING_MODEL, FornaxServer.DEFAULT_PORT, FornaxServer.DEFAULT_PORT);
@@ -62,6 +66,7 @@ final class Server {
 
         var b = FornaxServer.builder().host(host).port(port).apiKey(key).hub(hub).budgetBytes((long) (budget * (1L << 30)))
                 .idleTimeout(idle == 0 ? null : Duration.ofMinutes(idle)).contextSize(ctx)
+                .allowDownloads(a.has("allow-downloads"))
                 .pullListener(new PullLine(err, terminal)).log(s -> err.println("[fornax] " + s));
         for (String origin : a.all("cors")) b.corsOrigin(origin);
         for (String spec : a.all("model")) {

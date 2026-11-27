@@ -377,9 +377,9 @@ try (var server = FornaxServer.builder().model("qwen3-4b").build().start()) {
 
 It serves `POST /v1/chat/completions` (streaming, tools and `tool_calls`, `response_format` JSON schemas, `stop`,
 images for a vision model), `GET /v1/models`, `POST /v1/embeddings`, `POST /v1/images/generations` (base64 PNGs),
-`POST /v1/audio/speech` (WAV) and `POST /v1/audio/transcriptions` (a WAV file). A request may name any model
-Fornax loads (alias, `org/name:TAG` or path), downloaded on first use and kept loaded in a `ModelPool` within
-`--budget-gb`. It listens on 127.0.0.1, refuses a foreign `Host` (DNS rebinding) and web pages unless `--cors`
+`POST /v1/audio/speech` (WAV) and `POST /v1/audio/transcriptions` (a WAV file). A request may name the `-m`
+models and catalogue models already downloaded (with `--allow-downloads`, any model Fornax loads: alias,
+`org/name:TAG` or path, downloaded on first use), kept loaded in a `ModelPool` within `--budget-gb`. It listens on 127.0.0.1, refuses a foreign `Host` (DNS rebinding) and web pages unless `--cors`
 allows their origin, and with `--api-key` needs `Authorization: Bearer`. See
 [OpenAI-compatible server](https://fornax4j.org/docs/guides/openai-server/).
 

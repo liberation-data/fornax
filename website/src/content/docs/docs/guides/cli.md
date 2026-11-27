@@ -151,8 +151,9 @@ fornax server --host 0.0.0.0 --api-key "$KEY"             # reachable from other
 
 `fornax server` serves models over an OpenAI-compatible HTTP API: chat completions (streaming, tool calls, JSON
 schemas, images for a vision model), models, embeddings, images, speech and transcription. Point an OpenAI client's
-base URL at it. The `-m` models are downloaded if need be and loaded first; a request may name any other model,
-which is loaded on first use and kept loaded within `--budget-gb`. It listens on 127.0.0.1 only, and refuses web
+base URL at it. The `-m` models are downloaded if need be and loaded first; a request may also name a catalogue
+model already downloaded, which is loaded on first use and kept loaded within `--budget-gb`. Any other is refused
+(404) unless `--allow-downloads` lets requests name any model, downloaded on first use. It listens on 127.0.0.1 only, and refuses web
 pages unless `--cors` allows their origin. See [OpenAI-compatible server](/docs/guides/openai-server/).
 
 ## The launcher

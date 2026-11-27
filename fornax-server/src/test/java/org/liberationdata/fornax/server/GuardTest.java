@@ -80,6 +80,14 @@ class GuardTest {
         assertTrue(engines.requests.isEmpty(), "nothing reached a model");
     }
 
+    @Test void onIpv6LoopbackItsOwnUrlIsServed() throws Exception {
+        try { start(FornaxServer.builder().host("::1")); }
+        catch (IOException e) { org.junit.jupiter.api.Assumptions.abort("no IPv6 loopback here: " + e); }
+        var r = java.net.http.HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(server.url() + "/models")).build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, r.statusCode(), server.url() + ": " + r.body());
+    }
+
     @Test void onAnotherAddressAnyHostIsServed() throws Exception {
         start(FornaxServer.builder().host("0.0.0.0"));
         assertEquals(200, status(send("POST", "/v1/chat/completions", CHAT, "Host: fornax.lan:" + server.port())));

@@ -272,7 +272,8 @@ class FornaxServerTest {
         assertEquals(400, post("/v1/images/generations", "{\"prompt\": \"a kiln\"}").statusCode(), "no default image model");
         for (String bad : List.of("{\"model\": \"m\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"500x500\"}",
                 "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"big\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"n\": 9}",
-                "{\"model\": \"m\", \"prompt\": \"p\", \"response_format\": \"url\"}"))
+                "{\"model\": \"m\", \"prompt\": \"p\", \"response_format\": \"url\"}",
+                "{\"model\": \"m\", \"prompt\": \"p\", \"n\": 4294967297}", "{\"model\": \"m\", \"prompt\": \"p\", \"n\": -1}"))
             assertEquals(400, post("/v1/images/generations", bad).statusCode(), bad);
     }
 
@@ -311,6 +312,13 @@ class FornaxServerTest {
             assertEquals("16000|en|null", engines.requests.get(0));
             assertEquals(400, multipart(Map.of("model", "m"), "not a wav".getBytes(StandardCharsets.UTF_8)).statusCode());
             assertEquals(400, post("/v1/audio/transcriptions", "{}").statusCode(), "not multipart");
+            String boundary = "b0";
+            var noFile = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.port() + "/v1/audio/transcriptions"))
+                    .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                    .POST(HttpRequest.BodyPublishers.ofString("--b0\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nm\r\n--b0--\r\n")).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(400, noFile.statusCode(), noFile.body());
+            assertEquals("file", get(json(noFile), "error", "param"));
         } finally {
             assertTrue(wav.delete());
         }
@@ -329,6 +337,19 @@ class FornaxServerTest {
         return http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.port() + "/v1/audio/transcriptions"))
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(out.toByteArray())).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test void closingStopsAGenerationInFlight() throws Exception {
+        engines.pieces = java.util.Collections.nCopies(1000, "word ");
+        engines.pieceDelayMillis = 10;   // 10 seconds, unstopped
+        var reply = http.sendAsync(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.port() + "/v1/chat/completions"))
+                .POST(HttpRequest.BodyPublishers.ofString("{\"messages\": [{\"role\": \"user\", \"content\": \"Go on\"}]}")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        for (int i = 0; i < 200 && engines.requests.isEmpty(); i++) Thread.sleep(10);
+        assertFalse(engines.requests.isEmpty(), "the generation started");
+        server.close();
+        assertTrue(engines.stopped.await(3, TimeUnit.SECONDS), "closing stopped it, so unloading needn't wait for its end");
+        reply.handle((r, e) -> null).get(5, TimeUnit.SECONDS);
     }
 
     @Test void closingUnloadsTheModels() {
