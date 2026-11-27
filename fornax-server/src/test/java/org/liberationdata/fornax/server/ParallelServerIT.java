@@ -66,7 +66,8 @@ class ParallelServerIT {
     }
 
     @Test void aClientThatHangsUpStopsOnlyItsOwnRequest() throws Exception {
-        var other = CompletableFuture.supplyAsync(() -> { try { return post(COUNT.formatted(false, 300)); } catch (Exception e) { throw new RuntimeException(e); } });
+        // short: on Metal, Qwen3 0.6B's greedy count can end on its own before 300 (#104), which isn't "length"
+        var other = CompletableFuture.supplyAsync(() -> { try { return post(COUNT.formatted(false, 60)); } catch (Exception e) { throw new RuntimeException(e); } });
         try (Socket s = new Socket(InetAddress.getLoopbackAddress(), server.port())) {
             byte[] body = COUNT.formatted(true, 2000).getBytes(StandardCharsets.UTF_8);
             OutputStream out = s.getOutputStream();
@@ -82,6 +83,6 @@ class ParallelServerIT {
         assertEquals(200, r.statusCode(), r.body());
         Object j = Json.parse(r.body());
         assertEquals("length", Json.get(j, "choices", 0, "finish_reason"), "the other request ran on to its max_tokens");
-        assertEquals(300, ((Number) Json.get(j, "usage", "completion_tokens")).intValue());
+        assertEquals(60, ((Number) Json.get(j, "usage", "completion_tokens")).intValue());
     }
 }

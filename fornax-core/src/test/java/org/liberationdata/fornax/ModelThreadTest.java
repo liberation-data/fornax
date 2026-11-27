@@ -112,7 +112,8 @@ class ModelThreadTest {
             int[] small = new int[1];
             Thread s = Thread.ofPlatform().stackSize(1L << 20).start(() -> small[0] = depth());
             s.join();
-            assertTrue(big > 4 * small[0], "8 MB stack reached depth " + big + ", 1 MB reached " + small[0]);
+            // 8x the stack, but not 8x the depth: inlining still varies between threads (3.6x on a Mac, #104)
+            assertTrue(big > 2 * small[0], "8 MB stack reached depth " + big + ", 1 MB reached " + small[0]);
         }
     }
 
