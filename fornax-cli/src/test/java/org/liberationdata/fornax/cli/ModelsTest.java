@@ -79,6 +79,23 @@ class ModelsTest {
     }
 
     @Test
+    void offlineARepoWithSeveralModelsInTheCacheSaysToNameOne() throws Exception {
+        var hub = hub();
+        var ps = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+        // the cache alone can't pick one, and the Hub can't be asked: name one, rather than "needs the Hub"
+        var several = assertThrows(IllegalArgumentException.class, () -> Models.fetch("some/Multi-GGUF", CHAT, "chat", true, hub, ps, false));
+        assertTrue(several.getMessage().contains("name one") && several.getMessage().contains("some/Multi-GGUF:m-Q8_0.gguf"),
+                several.getMessage());
+        assertFalse(several.getMessage().contains("mmproj"), several.getMessage());
+        // nothing in the cache matches: the Hub would be asked, so offline says so
+        var none = assertThrows(HubException.class, () -> Models.fetch("some/Multi-GGUF:IQ2", CHAT, "chat", true, hub, ps, false));
+        assertEquals(HubException.Reason.OFFLINE, none.reason());
+        // a named revision is fetched as pull fetches it, not taken from main's copy in the cache
+        var revision = assertThrows(HubException.class, () -> Models.fetch("some/Multi-GGUF@dev:Q8_0", CHAT, "chat", true, hub, ps, false));
+        assertEquals(HubException.Reason.OFFLINE, revision.reason());
+    }
+
+    @Test
     void testRunsChatImageAndSongModelsButNotOthers() throws Exception {
         var hub = hub();
         var ps = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);

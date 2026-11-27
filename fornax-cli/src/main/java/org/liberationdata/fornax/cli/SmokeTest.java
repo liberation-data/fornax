@@ -84,8 +84,6 @@ final class SmokeTest {
     }
 
     private static int set(ModelSet m, Map<String, Path> files, Args a, PrintStream out) throws IOException {
-        if (m.kind() != ModelSet.Kind.IMAGE && m.kind() != ModelSet.Kind.SONG)
-            throw new Main.Failure(m.id() + " is a " + m.kind().name().toLowerCase(Locale.ROOT) + " model; fornax test runs chat, image and song models");
         long total = files.values().stream().mapToLong(p -> p.toFile().length()).sum();
         out.printf("Model     %s: %s (%s of weights)%n", m.id(), m.title(), Fmt.bytes(total));
         String ext = m.kind() == ModelSet.Kind.IMAGE ? ".png" : ".wav";

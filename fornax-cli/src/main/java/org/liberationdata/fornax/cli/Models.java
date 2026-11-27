@@ -1,6 +1,8 @@
 package org.liberationdata.fornax.cli;
 
+import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.hub.FornaxHub;
+import org.liberationdata.fornax.hub.HubException;
 import org.liberationdata.fornax.hub.ModelCatalog;
 import org.liberationdata.fornax.hub.ModelRef;
 import org.liberationdata.fornax.hub.ModelSet;
@@ -45,7 +47,7 @@ final class Models {
 
     /**
      * The model {@code spec} names for {@code command}, which runs {@code kind} models: a catalogue alias of that kind,
-     * or, for a command that loads one file ({@code oneFile}: speech, transcription and vision), also a path to that file
+     * or, for a command that loads one file ({@code oneFile}: chat, speech, transcription, vision and test), also a path to that file
      * or an {@code org/name[@REV][:TAG]} reference. An alias or reference not yet in the cache is downloaded first,
      * with {@code fornax pull}'s progress line on {@code err}. An alias of another kind is refused before anything is
      * downloaded.
@@ -68,7 +70,16 @@ final class Models {
         }
         var ref = ModelRef.tryParse(spec);
         if (ref.isPresent() && oneFile) {
-            ModelSet m = hub.resolve(ref.get());   // from the cache when it's there, else the repo's file list
+            ModelSet m;
+            try {
+                m = hub.resolve(ref.get());   // from the cache when it's there, else the repo's file list
+            } catch (IOException noHub) {   // offline or unreachable: several models in the cache is the user's to settle
+                if (ref.get().revision() == null) {
+                    try { ref.get().pick(HfCache.files(hub.cacheRoot(), ref.get().repo()).keySet()); }   // throws "name one" for several
+                    catch (HubException noneCached) { /* nothing to name: the Hub was needed */ }
+                }
+                throw noHub;
+            }
             if (m.part(role).isEmpty()) throw new Main.Failure(spec + " names " + m.parts().get(0).primary().file() + ", not "
                     + (role.equals("model") ? "a whisper.cpp model" : "a GGUF model"));   // checked before the download
             return new Fetched(spec, null, pulled(m, spec, hub, err, terminal));

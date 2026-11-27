@@ -8,7 +8,7 @@ description: Fetch models with fornax pull, see what is on disk, chat with a lan
 ```sh
 fornax pull qwen3-4b                                 # an alias from Fornax's catalogue: every file the model needs
 fornax chat qwen3-4b "Write a haiku about a fornax"
-fornax image flux2-klein "a brick kiln at dusk"      # downloads the model first if it isn't in the cache
+fornax image flux2-klein "a brick kiln at dusk"      # like chat, downloads the model first if it isn't in the cache
 ```
 
 ## Installing it
