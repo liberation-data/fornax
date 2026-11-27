@@ -459,13 +459,21 @@ int run_pooled(fornax_llama * h, const std::vector<std::vector<llama_token>> & i
                const std::function<void(int, const float *)> & out, fornax_llama_token_cb cb, void * user) {
     // Grow the context to fit the call: its longest input, and as much of the whole call as the largest context
     // holds, so a call of many short texts still goes through in few batches. Rebuilding a context (not the weights)
-    // takes well under 0.1 s (#109); it never shrinks, as the model has shown it gets inputs this size.
+    // takes well under 0.1 s (#109); it never shrinks, as the model has shown it gets inputs this size. The inputs are
+    // checked first, so one that can't fit fails without growing the context for nothing.
     size_t longest = 0, total = 0;
-    for (const auto & in : inputs) { longest = std::max(longest, in.size()); total += in.size(); }
+    for (size_t i = 0; i < inputs.size(); i++) {
+        if (inputs[i].empty()) return fail("input " + std::to_string(i) + " has no tokens", 15);
+        if ((int) inputs[i].size() > h->pooled_max)
+            return fail("input " + std::to_string(i) + " has " + std::to_string(inputs[i].size()) +
+                        " tokens, more than the context of " + std::to_string(h->pooled_max) + " (raise the context size or split it)", 2);
+        longest = std::max(longest, inputs[i].size());
+        total += inputs[i].size();
+    }
     const size_t want = std::max(longest, std::min(total, (size_t) h->pooled_max));
-    if (want > llama_n_batch(h->ctx) && (int) llama_n_batch(h->ctx) < h->pooled_max) {
+    if (want > llama_n_batch(h->ctx)) {  // want is at most pooled_max, so n stays under 2^32
         uint32_t n = llama_n_batch(h->ctx);
-        while (n < want && (int) n < h->pooled_max) n *= 2;
+        while (n < want) n *= 2;
         n = std::min(n, (uint32_t) h->pooled_max);
         llama_context * bigger = pooled_context(h->model, n);
         if (!bigger) return fail("failed to grow the context to " + std::to_string(n) + " tokens", 5);
@@ -476,12 +484,6 @@ int run_pooled(fornax_llama * h, const std::vector<std::vector<llama_token>> & i
     }
     const int n_batch = (int) llama_n_batch(h->ctx);
     const int n_seq_max = (int) llama_n_seq_max(h->ctx);
-    for (size_t i = 0; i < inputs.size(); i++) {
-        if (inputs[i].empty()) return fail("input " + std::to_string(i) + " has no tokens", 15);
-        if ((int) inputs[i].size() > n_batch)
-            return fail("input " + std::to_string(i) + " has " + std::to_string(inputs[i].size()) +
-                        " tokens, more than the batch of " + std::to_string(n_batch) + " (raise the context size or split it)", 2);
-    }
     size_t next = 0;
     while (next < inputs.size()) {
         const size_t first = next;

@@ -94,7 +94,8 @@ documents)` runs it on the model's thread, and `cancel()` stops it between batch
 In EMBED and RERANK mode the context caps the longest text a call takes (for `rerank`, the query and one document
 together). It doesn't change the results: a 300-token passage gives the same vector at a context of 2048 as at 8192.
 What it does change is GPU memory, because llama.cpp works through the whole context at once in these modes and
-reserves memory for all of it up front: a 0.6B reranker takes about 2.7 GB at 2048 tokens and 10.8 GB at 8192.
+reserves memory for all of it: a 0.6B reranker takes about 2.7 GB at 2048 tokens and 10.8 GB at 8192. The context
+grows only as far as the calls need, so the context size is the most it can take.
 
 So split documents into passages before you embed them, and size the context to your longest passage:
 

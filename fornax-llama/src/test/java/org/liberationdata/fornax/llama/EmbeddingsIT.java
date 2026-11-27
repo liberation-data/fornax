@@ -183,6 +183,8 @@ class EmbeddingsIT {
             assertEquals(512, m.contextNow());
 
             String longText = "The kiln fires stoneware to cone 10 over a long, slow climb. ".repeat(70);   // ~1330 tokens
+            assertThrows(IllegalStateException.class, () -> m.embed(longText.repeat(2)));
+            assertEquals(512, m.contextNow(), "a text past contextSize fails without growing it for nothing");
             assertEquals(1024, m.embed(longText).length);
             assertEquals(2048, m.contextNow(), "grown to the next size that fits");
             assertTrue(Vectors.cosine(before, m.embed("a celadon glaze")) > 0.999, "the same embedding at either size");

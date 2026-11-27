@@ -370,8 +370,8 @@ public final class LlamaModel implements AutoCloseable {
     /**
      * A model loaded for chat, embeddings or reranking (see {@link Mode}).
      * @param gpuLayers -1 offloads every layer. @param contextSize 0 uses the model's trained context. In EMBED and
-     *        RERANK it is also the batch: the most tokens one text (or query and document) can have, and how many
-     *        go through the model at once.
+     *        RERANK it is also the largest batch: the most tokens one text (or query and document) can have, and the
+     *        most that go through the model at once (the context starts smaller and grows; see {@link #defaultContext}).
      */
     public LlamaModel(String ggufPath, int gpuLayers, int contextSize, Mode mode) {
         this(ggufPath, null, mode, gpuLayers, contextSize, defaultWorker(ggufPath), true);
