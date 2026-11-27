@@ -63,7 +63,8 @@ tool-call format, with llama-server's templates and parsers. A request takes:
 - `messages`, with `system`, `user`, `assistant` and `tool` roles, as OpenAI sends them
 - `tools` and `tool_choice` (`auto`, `none`, `required`, or a function by name); the reply's `tool_calls` and
   `finish_reason: "tool_calls"` come back as OpenAI's, and the tool results go back as `tool` messages
-- `response_format`: `json_schema` (the reply is constrained to the schema) or `json_object`
+- `response_format`: `json_schema` (the reply is constrained to the schema) or `json_object`. An object in a schema,
+  here or in a tool's parameters, can have at most 256 optional properties (a 400 says so), as llama.cpp's grammar can't take more
 - `temperature`, `top_p`, `seed`, `max_tokens` (or `max_completion_tokens`), and `top_k` and `min_p` beyond OpenAI's
 - `stop`: a string or a list; the reply ends before the first one, and the model stops there
 - `stream: true`: server-sent events in OpenAI's chunk format, ending with `data: [DONE]`;

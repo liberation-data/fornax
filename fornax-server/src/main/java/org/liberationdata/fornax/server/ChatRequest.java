@@ -67,10 +67,10 @@ record ChatRequest(String model, String engineJson, boolean stream, boolean incl
             tools = named;
             req.put("tool_choice", "required");
         }
-        if (tools != null && !tools.isEmpty()) req.put("tools", tools);
+        if (tools != null && !tools.isEmpty()) req.put("tools", buildable(tools, "tools"));
         if (body.get("parallel_tool_calls") instanceof Boolean b) req.put("parallel_tool_calls", b);
         Object schema = schema(body.get("response_format"));
-        if (schema != null) req.put("json_schema", schema);
+        if (schema != null) req.put("json_schema", buildable(schema, "response_format"));
         number(body, "temperature", 0, 2, req, "temperature");
         number(body, "top_p", 0, 1, req, "top_p");
         number(body, "min_p", 0, 1, req, "min_p");
@@ -146,6 +146,13 @@ record ChatRequest(String model, String engineJson, boolean stream, boolean incl
 
     private static long refuseImage() {
         throw ApiError.badRequest("an image_url isn't a PNG, JPEG, GIF or BMP image", "messages");
+    }
+
+    /** schemas, refused here with a 400 if the engine's grammar couldn't take them (see Schemas). */
+    private static Object buildable(Object schemas, String param) {
+        try { org.liberationdata.fornax.llama.Schemas.requireBuildable(schemas, param); }
+        catch (IllegalArgumentException e) { throw ApiError.badRequest(e.getMessage(), param); }
+        return schemas;
     }
 
     /** response_format as the engine's json_schema, or null for plain text. */

@@ -30,20 +30,7 @@ final class Json {
     }
 
     /** Whether s nests arrays and objects deeper than {@link #MAX_DEPTH} (brackets in strings aside). */
-    static boolean tooDeep(String s) {
-        int depth = 0;
-        boolean string = false;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (string) {
-                if (c == '\\') i++;
-                else if (c == '"') string = false;
-            } else if (c == '"') string = true;
-            else if (c == '[' || c == '{') { if (++depth > MAX_DEPTH) return true; }
-            else if (c == ']' || c == '}') depth--;
-        }
-        return false;
-    }
+    static boolean tooDeep(String s) { return org.liberationdata.fornax.llama.Schemas.depth(s) > MAX_DEPTH; }
 
     static String write(Object v) {
         var b = new StringBuilder();
