@@ -51,7 +51,9 @@ final class ApiError extends RuntimeException {
     /**
      * Unix (/a/b/file) and Windows (C:\a\file, C:/a/file) paths with a directory, as their last segment. A directory
      * may have spaces in it (C:\Users\John Smith, Application Support), as long as no word of it has a colon, comma
-     * or semicolon, so prose after a file name ("model.gguf: bad tensor a/b") isn't taken for one.
+     * or semicolon, so prose after a file name ("model.gguf: bad tensor a/b") isn't taken for one. The quantifiers are
+     * possessive (nothing needs to backtrack: a directory ends at a slash, a word at a space) so that a long message
+     * doesn't overflow the stack, as a greedy group repeated once per word or directory does.
      */
     static String withoutPaths(String message) {
         return PATH.matcher(message).replaceAll("$1");
@@ -59,8 +61,8 @@ final class ApiError extends RuntimeException {
 
     private static final java.util.regex.Pattern PATH = java.util.regex.Pattern.compile(
             "(?:(?<![\\w.:/])/|\\b[A-Za-z]:[/\\\\])"
-            + "(?:(?:[^\\s/\\\\'\"()]+|[^\\s/\\\\'\"():,;]+(?: [^\\s/\\\\'\"():,;]+)+)[/\\\\])+"
-            + "([^\\s/\\\\'\"()]*)");
+            + "(?:(?:[^\\s/\\\\'\"()]++|[^\\s/\\\\'\"():,;]++(?: [^\\s/\\\\'\"():,;]++)++)[/\\\\])++"
+            + "([^\\s/\\\\'\"()]*+)");
 
     Map<String, Object> body() {
         return Json.obj("error", Json.obj("message", getMessage(), "type", type, "param", param, "code", code));

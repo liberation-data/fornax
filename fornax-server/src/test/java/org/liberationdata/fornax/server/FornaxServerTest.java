@@ -223,6 +223,14 @@ class FornaxServerTest {
         assertEquals("m.gguf in 3 layers, 1/2 done", ApiError.withoutPaths("/a/m.gguf in 3 layers, 1/2 done"));
     }
 
+    /** A long message (an engine echoing a prompt) is cut in one pass, not one stack frame per word or directory. */
+    @Test void withoutPathsTakesALongMessage() {
+        String words = "/a" + " b".repeat(50_000), dirs = "/a/" + "b/".repeat(50_000) + "m.gguf";
+        assertEquals(words, ApiError.withoutPaths(words));
+        assertEquals("m.gguf", ApiError.withoutPaths(dirs));
+        assertEquals("m.gguf" + " b".repeat(50_000), ApiError.withoutPaths("/x/y z/m.gguf" + " b".repeat(50_000)));
+    }
+
     @Test void withoutPathsKeepsWhatIsntALocalPath() {
         assertEquals("model.gguf", ApiError.withoutPaths("/a/b/model.gguf"));
         assertEquals("open model.gguf failed", ApiError.withoutPaths("open C:\\Users\\x\\model.gguf failed"));
