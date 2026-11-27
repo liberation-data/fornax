@@ -28,9 +28,9 @@ fetch() {  # fetch <dir-name>
     url=$(prop "$1.url"); commit=$(prop "$1.commit")
     [ -d "$dir/.git" ] || git clone -q "$url" "$dir"
     # When the pin or any patch changed since the last fetch, drop the old patches (tracked files only: the build
-    # dirs stay) so the new ones apply to a clean checkout.
+    # dirs stay) so the new ones apply to a clean checkout. The submodules too: patches to a vendored ggml land there.
     want="$commit $({ cat "$ROOT/native/patches/$1"/*.patch 2>/dev/null || true; } | git hash-object --stdin)"
-    [ "$(cat "$dir/.git/fornax-patches" 2>/dev/null)" = "$want" ] || git -C "$dir" reset -q --hard
+    [ "$(cat "$dir/.git/fornax-patches" 2>/dev/null)" = "$want" ] || { git -C "$dir" reset -q --hard; git -C "$dir" submodule foreach -q --recursive git reset -q --hard; }
     if [ "$(git -C "$dir" rev-parse HEAD)" != "$commit" ]; then
         git -C "$dir" fetch -q origin "$commit" 2>/dev/null || git -C "$dir" fetch -q origin
         git -C "$dir" checkout -q "$commit"
