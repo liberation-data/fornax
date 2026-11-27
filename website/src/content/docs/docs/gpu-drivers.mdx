@@ -189,7 +189,8 @@ If the error says Fornax **has no Vulkan loader** (`libvulkan.so.1`), install th
 ## HIP (ROCm) and CUDA
 
 Fornax's published natives use Vulkan, which needs only the drivers above. The HIP and CUDA backends are for building
-Fornax's engines yourself, and need ROCm or the CUDA toolkit; see [Choosing a GPU backend](/docs/guides/gpu-backends/).
+Fornax's engines yourself, and need ROCm or the CUDA toolkit; [Set up on your platform](/docs/platforms/) has the steps,
+and [Choosing a GPU backend](/docs/guides/gpu-backends/) the details.
 Fornax checks those for a GPU the same way, and its error tells you how to check: `rocminfo` for ROCm, `nvidia-smi`
 for NVIDIA. For ROCm, your user also needs to be in the `render` and `video` groups.
 

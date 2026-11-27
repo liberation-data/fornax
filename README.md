@@ -146,7 +146,8 @@ Natives jars for different platforms can sit side by side (to ship one build for
 Fornax loads the one for the machine it runs on. If jars for several backends of the same platform are on the
 classpath, `-Dfornax.backend=vulkan` (or `FORNAX_BACKEND`) picks one; otherwise Fornax prefers Metal, then CUDA, HIP and
 Vulkan. For ROCm (HIP), CUDA or anything else, build the libraries yourself (see [Building](#building)) and point
-`-Dfornax.library.path` at them, which always wins over a natives jar.
+`-Dfornax.library.path` at them, which always wins over a natives jar
+([Set up on your platform](https://fornax4j.org/docs/platforms/) has the steps).
 
 ## Quick start (from source)
 

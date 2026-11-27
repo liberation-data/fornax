@@ -77,13 +77,14 @@ FORNAX_ACESTEP_VAE_CHUNK=256 ./gradlew song --args='song.wav'
 **What you see:** a run aborts on the CPU backend, unable to add f32 and bf16.
 
 **Why:** the Radeon 8060S's Vulkan driver reports no bf16 support (`bf16: 0`), so bf16 operations fall back to the
-CPU, which has no f32 + bf16 add. stable-diffusion.cpp never converts `.bias` tensors, so its `tensor_type_rules`
-alone couldn't fix it.
+CPU, which has no f32 + bf16 add. In LTX-2.5 the tensor at fault was `keyframes_abs_pos_embedding`, which
+stable-diffusion.cpp's `tensor_type_rules` skip (they never convert names containing `embedding`), so rules alone
+couldn't fix it.
 
-**Fix:** Fornax patches stable-diffusion.cpp (`native/patches/stable-diffusion.cpp/0001`) so that an explicit
-bf16→f32 rule can widen any tensor. Then widen the bf16 tensors when the model loads, with `tensor_type_rules` in the
-`Config`. The [Video](/docs/guides/video/#a-clip-with-sound) guide has the rules for ComfyUI's int8 LTX-2.5, which
-widen about 0.9 GB and leave the int8 weights alone.
+**Fix:** from 0.3.0 nothing: stable-diffusion.cpp loads that tensor as f32 itself
+(leejet/stable-diffusion.cpp#2432, which Fornax's pin includes). On 0.2.0, `Config.builder().model("ltx-…")` sets
+`DiffusionModel.Config.LTX_BF16_TO_F32`; loading file by file, set it with `.set("tensor_type_rules", …)`. 0.2.0
+carries the patch that lets those rules reach any tensor.
 
 ## A hires refine that ghosts
 
