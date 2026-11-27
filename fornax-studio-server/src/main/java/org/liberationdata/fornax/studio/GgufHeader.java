@@ -24,7 +24,7 @@ final class GgufHeader {
     // A key or string longer than this is a corrupt or hostile header, not metadata.
     private static final long MAX_STRING = 1 << 20;
 
-    /** The file's scalar and string metadata by key, or an empty map if it isn't a readable GGUF. */
+    /** The file's scalar and string metadata by key: none if it isn't a GGUF, what comes before any damage if it is. */
     static Map<String, Object> read(Path file) {
         Map<String, Object> out = new LinkedHashMap<>();
         try (var in = new DataInputStream(new BufferedInputStream(Files.newInputStream(file), 1 << 16))) {
@@ -39,7 +39,7 @@ final class GgufHeader {
                 Object v = readValue(in, type);
                 if (v != null) out.put(key, v);
             }
-        } catch (IOException | IllegalArgumentException e) {
+        } catch (IOException | IllegalArgumentException | ArithmeticException e) {
             // A truncated, corrupt or unreadable file: whatever was read before it.
         }
         return out;
@@ -75,17 +75,19 @@ final class GgufHeader {
 
     private static void skipArray(DataInputStream in) throws IOException {
         int type = Integer.reverseBytes(in.readInt());
-        long n = readU64(in);
-        if (type < 0 || type >= SIZE.length) throw new IllegalArgumentException("unknown GGUF value type " + type);
+        long n = length(in);
+        // llama.cpp rejects nested arrays too; following them would let a hostile file overflow the stack.
+        if (type < 0 || type >= SIZE.length || type == ARRAY) throw new IllegalArgumentException("GGUF array of type " + type);
         if (type == STRING) for (long i = 0; i < n; i++) skip(in, length(in));
-        else if (type == ARRAY) for (long i = 0; i < n; i++) skipArray(in);
         else skip(in, Math.multiplyExact(n, SIZE[type]));
     }
 
     private static String readString(DataInputStream in) throws IOException {
         long n = length(in);
         if (n > MAX_STRING) throw new IllegalArgumentException("GGUF string of " + n + " bytes");
-        return new String(in.readNBytes((int) n), StandardCharsets.UTF_8);
+        byte[] b = new byte[(int) n];
+        in.readFully(b);                    // readNBytes would hand back a string cut short by the end of the file
+        return new String(b, StandardCharsets.UTF_8);
     }
 
     private static long length(DataInputStream in) throws IOException {

@@ -21,7 +21,8 @@ import java.util.stream.Stream;
 /**
  * What in the Hugging Face cache Fornax can run, as the studio offers it:
  * <ul>
- *   <li><b>chat</b>: every GGUF language model in the cache (llama.cpp), found by scanning it;</li>
+ *   <li><b>chat</b>: every GGUF language model in the cache (llama.cpp), found by scanning it, but the speech models
+ *       (whose mmproj takes or makes audio);</li>
  *   <li><b>image</b>, <b>song</b> and <b>video</b>: the presets the Fornax examples use (stable-diffusion.cpp, ACE-Step,
  *       YuE2, LTX-2.5), each a set of files, available when all of them are downloaded;</li>
  *   <li><b>vision</b>: the vision language models Fornax knows by name ({@link LlamaModel.Weights}), each a GGUF and its
