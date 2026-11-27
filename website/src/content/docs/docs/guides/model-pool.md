@@ -12,6 +12,7 @@ and unloads the ones used least recently when it needs room.
 
 ## Borrowing a model
 
+<!-- snippet: ModelPoolGuide#pool -->
 ```java
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.ModelPool;
@@ -41,7 +42,8 @@ Closing the pool unloads everything.
 
 - **A model loads on first `acquire` and stays loaded** after its lease closes.
 - **Room is made least recently used first.** Loading a model that would take the pool over its budget first unloads
-  idle models, the one used longest ago first.
+  idle models, the one used longest ago first. A model counts against the budget from the moment its load starts, so
+  two models loading at once make room for both.
 - **Models in use are never unloaded.** If the models in use alone are over the budget, the load goes ahead anyway:
   the budget is a target, not a hard limit.
 - **Idle models are unloaded in the background** once they have been idle longer than the timeout. Pass `null` for
@@ -57,6 +59,7 @@ The size you pass is your estimate of the memory a model uses. `ModelPool.sizeOf
 weight files, which is a reasonable estimate of what loading them takes. Add a margin for large contexts or large images if you need
 to.
 
+<!-- snippet: ModelPoolGuide#mixed -->
 ```java
 import org.liberationdata.fornax.sd.DiffusionModel;
 
@@ -74,6 +77,7 @@ Any `AutoCloseable` can go in a pool, so the same pool can hold your own resourc
 
 ## Looking inside, and letting go
 
+<!-- snippet: ModelPoolGuide#entries -->
 ```java
 for (ModelPool.Entry e : pool.entries()) {
     System.out.printf("%s: %d MB, loaded=%s, inUse=%s, last used %s%n",

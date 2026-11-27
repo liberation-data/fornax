@@ -1,0 +1,70 @@
+---
+title: Benchmarks
+description: Fornax against each engine's own tool (llama-bench, sd-cli) on the same files and settings, and against ComfyUI for songs, with the command behind every figure.
+---
+
+import BenchTable from '../../../components/docs/BenchTable.astro';
+import data from '../../../data/benchmarks.json';
+
+Fornax runs each engine in-process, through Java's FFM API. These figures measure what that costs:
+- **Against the engine's own tool:** the same engine, at the same pinned commit and backend, run through its own
+  command-line tool on the same model files and settings.
+- **Against ComfyUI, for songs:** what many people run today.
+
+Every figure has the command that produced it under its table. The harness is
+[`fornax-bench`](https://github.com/liberation-data/fornax/tree/main/fornax-bench), and one side runs at a time, so the
+two never share the GPU.
+
+**Machine** ({data.date}): {data.machine.cpu}, with {Math.round(data.machine.memoryBytes / 2 ** 30)} GB of memory
+the OS can use (128 GB unified); {data.machine.os}; {data.machine.vulkanDriver}, Vulkan; Java {data.machine.java}.
+Engines: llama.cpp <code>{data.machine['llama.cpp']}</code>, stable-diffusion.cpp <code>{data.machine['stable-diffusion.cpp']}</code>.
+
+## Chat
+
+<BenchTable id="chat" />
+
+Through Fornax, llama.cpp runs as fast as it does in its own benchmark: the first token arrives at the same time, and
+generation is within 2% of it. Fornax's peak memory is a little higher because the model loads with a 4096-token
+context, where llama-bench sizes its own to the test.
+
+## Images
+
+<BenchTable id="image" />
+
+![The image both sides made: a potter at a brick kiln at dusk](/benchmarks/image-fornax.jpg)
+
+## Songs
+
+<BenchTable id="songs" />
+
+ACE-Step makes a song about 1.6 times as fast in Fornax warm, and 2.6 times cold, with the GGUF Q8_0 weights. YuE2 is
+even when cold and about 14% slower warm. The weights and backends differ between the two sides, so these figures don't
+say which part of the difference comes from where.
+
+| | Fornax | ComfyUI |
+|---|---|---|
+| ACE-Step 1.5 | <audio controls preload="none" src="/benchmarks/acestep-fornax.mp3"></audio> | <audio controls preload="none" src="/benchmarks/acestep-comfyui.mp3"></audio> |
+| YuE2 | <audio controls preload="none" src="/benchmarks/yue2-fornax.mp3"></audio> | <audio controls preload="none" src="/benchmarks/yue2-comfyui.mp3"></audio> |
+
+## Running them yourself
+
+Build the reference tools from the same sources as Fornax, with the same backend. `native/build.sh` checks each engine
+out at its pin in `native/engines.properties` under `engines-src/`, with Fornax's patches in `native/patches` applied,
+and needs the same toolchain (for Vulkan: the Vulkan headers, `glslc` and SPIRV-Headers; see
+[Choosing a GPU backend](/docs/guides/gpu-backends/#vulkan)). Build `llama-bench` and `sd-cli` from those checkouts,
+then run the benchmarks:
+
+```sh
+native/build.sh vulkan llama sd
+cmake -S engines-src/llama.cpp -B engines-src/llama.cpp/build-bench -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON
+cmake --build engines-src/llama.cpp/build-bench --target llama-bench
+cmake -S engines-src/stable-diffusion.cpp -B engines-src/stable-diffusion.cpp/build-cli -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DSD_VULKAN=ON -DSD_BUILD_EXAMPLES=ON
+cmake --build engines-src/stable-diffusion.cpp/build-cli --target sd-cli
+./gradlew :fornax-bench:benchmarks --args='out/benchmarks chat image' \
+    -Pllama.bench=$PWD/engines-src/llama.cpp/build-bench/bin/llama-bench \
+    -Psd.cli=$PWD/engines-src/stable-diffusion.cpp/build-cli/bin/sd-cli
+./gradlew :fornax-bench:bench --args='out/bench acestep yue2'      # with ComfyUI on 127.0.0.1:8188
+```
+
+Each run writes `results.json`, with the machine and the command behind every row, and `results.md`.

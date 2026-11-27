@@ -105,6 +105,9 @@ class ModelThreadTest {
         try (var t = new ModelThread("fake", () -> {})) {
             assertTrue(t.submit(call -> Thread.currentThread().isDaemon()).get(10, TimeUnit.SECONDS),
                     "an unclosed model must not keep the JVM alive");
+            // Warm depth() up first: an interpreted frame is several times a compiled one, so if the JIT compiled it
+            // between the two measurements they'd compare different frame sizes (it flaked on CI that way).
+            for (int i = 0; i < 20; i++) depth();
             int big = t.submit(call -> depth()).get(10, TimeUnit.SECONDS);
             int[] small = new int[1];
             Thread s = Thread.ofPlatform().stackSize(1L << 20).start(() -> small[0] = depth());

@@ -14,16 +14,29 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <!-- Every Fornax module at one version: the dependencies below take theirs from here -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.fornax4j</groupId>
+                <artifactId>fornax-bom</artifactId>
+                <version>${fornax.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <dependency>
             <groupId>org.fornax4j</groupId>
             <artifactId>fornax-llama</artifactId>
-            <version>${fornax.version}</version>
         </dependency>
+        <!-- The natives jar for the machine building this: Maven picks it by OS and arch -->
         <dependency>
             <groupId>org.fornax4j</groupId>
-            <artifactId>fornax-natives-${fornax.natives}</artifactId>
-            <version>${fornax.version}</version>
+            <artifactId>fornax-natives</artifactId>
+            <type>pom</type>
             <scope>runtime</scope>
         </dependency>
     </dependencies>
@@ -46,22 +59,4 @@
         </plugins>
     </build>
 
-    <!-- The natives jar for this OS and arch -->
-    <profiles>
-        <profile>
-            <id>fornax-linux-x86_64</id>
-            <activation><os><name>Linux</name><arch>amd64</arch></os></activation>
-            <properties><fornax.natives>linux-x86_64-vulkan</fornax.natives></properties>
-        </profile>
-        <profile>
-            <id>fornax-macos-aarch64</id>
-            <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
-            <properties><fornax.natives>macos-aarch64-metal</fornax.natives></properties>
-        </profile>
-        <profile>
-            <id>fornax-macos-x86_64</id>
-            <activation><os><family>mac</family><arch>x86_64</arch></os></activation>
-            <properties><fornax.natives>macos-x86_64-metal</fornax.natives></properties>
-        </profile>
-    </profiles>
 </project>

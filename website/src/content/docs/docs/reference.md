@@ -21,7 +21,9 @@ Package `org.liberationdata.fornax`. The engine modules depend on it.
 | Type | |
 |---|---|
 | `HfCache` | finds files in the Hugging Face cache: `root()`, `home()`, `find(repo, path)`, `require(repo, path)`, `requireAny(repo, path, ...)`, and the cache's contents: `repos(root)`, `files(root, repo)` |
-| `hub.FornaxHub` | pulls, finds, reports and evicts model sets: `standard()`, `builder()`, `pull(set, listener)`, `pullAsync`, `plan`, `status`, `find`, `require`, `evict`. See [Downloading models](/docs/guides/models/) |
+| `hub.FornaxHub` | pulls, finds, reports and evicts model sets: `standard()`, `builder()`, `pull(set, listener)`, `pullAsync`, `plan`, `status`, `find`, `require`, `evict`, `fetch(reference, listener)`, `isReference`. See [Downloading models](/docs/guides/models/) |
+| `hub.ModelRef` | a model reference, `owner/repo[@revision][:tag]`: `parse`, `tryParse`, `pick`. See [By reference](/docs/guides/models/#by-reference) |
+| `hub.ModelReferences` | what an engine's constructor does with a path or reference: `locate(model, engine)`, `path(model, engine)` for one file, `set(name, engine, runs)` for a catalogue set, `check(model, engine)` (its refusals, before any request), `isPath`, `file` |
 | `hub.ModelSet` | a model as a set of files by role: `id`, `kind`, `title`, `engine`, `parts`, `license`, `gated`, `aliases`; `Part` (role and sources), `Source` (repo, file, revision) |
 | `hub.ModelCatalog` | the models Fornax's examples, CLI and Studio use: `all()`, `of(kind)`, `byName`, `require` |
 | `hub.ModelFolders` | folders searched after the cache (a ComfyUI `models/`): `configured()`, `find(part)` |
@@ -71,7 +73,7 @@ Package `org.liberationdata.fornax.tts`. See [Speech](/docs/guides/speech/).
 
 | Type | |
 |---|---|
-| `TtsModel` | a TTS model: `new TtsModel(Weights)`, `(model, mmproj)` or `(model, mmproj, gpuLayers, contextSize)` |
+| `TtsModel` | a TTS model: `new TtsModel(Weights)`, `(alias)`, `(model, mmproj)` or `(model, mmproj, gpuLayers, contextSize)`; paths or model references |
 | `speak(text, voice)`, `(text, voice, onChunk)`, `(text, voice, options, onChunk)` | speech as `Audio`, optionally streamed in chunks; a voice of `@clip.wav` speaks like that clip |
 | `voices()`, `sampleRate()`, `cancel()` | the built-in voices (the default first), the output rate, and stopping a streaming call |
 | `speakAsync(text, voice, options[, subscriber])`, `speakStream(text, voice, options)` | `speak` on the model's own thread, optionally streaming chunks to a `Flow.Subscriber`; `streamOn(executor, bufferSize)` |
@@ -90,7 +92,7 @@ Package `org.liberationdata.fornax.sd`. See [Images](/docs/guides/images/) and [
 | `generateAsync(Request)`, `generateVideoAsync(VideoRequest)`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops a run at the next step (it throws `CancellationException`) |
 | `modelVersion()` | the model stable-diffusion.cpp detected |
 | `onProgress(sink)`, `onLog(sink)` | process-wide progress (step, steps, seconds per step) and log callbacks |
-| `DiffusionModel.Config` | `builder()`: `diffusionModel`, `vae`, `llm`, `controlNet`, and `set(key, value)` for any context option |
+| `DiffusionModel.Config` | `builder()`: `model(name)` for a catalogue set, `diffusionModel`, `vae`, `llm`, `controlNet`, and `set(key, value)` for any context option; a `_path` option may be a model reference. `LTX_BF16_TO_F32`: the LTX int8 checkpoints' `tensor_type_rules` |
 | `DiffusionModel.Request` | `prompt`, `width`, `height`, `steps`, `cfg`, `seed`, plus `refImages` and an `extra` options map; `withRefImages`, `withInitImage(image[, strength])` (img2img), `withMaskImage` (inpainting), `withControlImage(image[, strength])` (ControlNet), `withLoras`, `withExtra`. Settings the engine would ignore (a strength or mask without an init image, a control strength without a control image, a typed key in `extra`) throw `IllegalArgumentException` from `generate` |
 | `DiffusionModel.Lora` | `file`, `weight` (default 1): a LoRA for one request |
 | `DiffusionModel.VideoRequest` | the same, plus `frames` and `fps`; `withInitImage`, `withEndImage`, `withRefAudio`, `withExtra` |
@@ -107,7 +109,7 @@ Package `org.liberationdata.fornax.acestep`. See [Songs](/docs/guides/songs/).
 
 | Type | |
 |---|---|
-| `AceStepModel` | ACE-Step 1.5: `new AceStepModel(lm, textEncoder, dit, vae, keepLoaded)`; `lm` may be `null` |
+| `AceStepModel` | ACE-Step 1.5: `new AceStepModel(name)` or `(name, keepLoaded)` for a catalogue set, or `(lm, textEncoder, dit, vae, keepLoaded)` as paths or model references; `lm` may be `null` |
 | `generate(requestJson)` | a song from acestep.cpp's JSON request; returns a `Result` |
 | `generateAsync(requestJson)`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops it between LM tokens, DiT steps and VAE tiles (it throws `CancellationException`) |
 | `AceStepModel.Result` | `audio` (48 kHz stereo) and `resolvedRequestJson` |
@@ -118,7 +120,7 @@ Package `org.liberationdata.fornax.yue2`. See [Songs](/docs/guides/songs/#yue2).
 
 | Type | |
 |---|---|
-| `Yue2Model` | YuE2: `new Yue2Model(model, vae, keepLoaded, maxSeq)`; `maxSeq` 0 is the full context |
+| `Yue2Model` | YuE2: `new Yue2Model(name)` or `(name, keepLoaded, maxSeq)` for a catalogue set, or `(model, vae, keepLoaded, maxSeq)` as paths or model references; `maxSeq` 0 is the full context |
 | `generate(requestJson)` | a song from yue2.cpp's JSON request; returns a `Result` |
 | `generateAsync(requestJson)`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops it between LM tokens, diffusion steps and VAE tiles (it throws `CancellationException`) |
 | `Yue2Model.Result` | `audio` (48 kHz stereo), `resolvedRequestJson` and `abcScore` |
@@ -129,7 +131,7 @@ Package `org.liberationdata.fornax.whisper`. See [Speech to text](/docs/guides/s
 
 | Type | |
 |---|---|
-| `WhisperModel` | a Whisper model: `new WhisperModel(Weights)`, `(path)`, `(path, alignment)` or `(path, alignment, gpu)` |
+| `WhisperModel` | a Whisper model: `new WhisperModel(Weights)`, `(path)`, `(path, alignment)` or `(path, alignment, gpu)`; a path or model reference |
 | `transcribe(audio[, options][, listener])` | a `Transcript` from `Audio` at any rate, or from 16 kHz mono `float[]` |
 | `multilingual()`, `type()`, `cancel()` | English-only or not, the model size, and stopping a call from another thread |
 | `WhisperModel.Weights` | the models Fornax knows by name: `LARGE_V3_TURBO`, `LARGE_V3_TURBO_Q8_0`, `BASE_EN`; `named(...)`, `path()`, `downloaded()`, `alignment` |
@@ -147,7 +149,7 @@ Package `org.liberationdata.fornax.demucs`. See [Stem separation](/docs/guides/s
 
 | Type | |
 |---|---|
-| `DemucsModel` | an HTDemucs model: `new DemucsModel(Weights)`, `(path)` or `(path, gpu, cpuThreads)` |
+| `DemucsModel` | an HTDemucs model: `new DemucsModel(Weights)`, `(path)` or `(path, gpu, cpuThreads)`; a path or model reference |
 | `separate(audio[, options][, progress])` | `Stems` from `Audio` at any rate, at its rate and length |
 | `separateAsync(audio[, options, progress])`, `cancel()` | the same on the model's own thread, as a `CompletableFuture`; `cancel()` stops it between segments (it throws `CancellationException`) |
 | `name()`, `backend()`, `sources()`, `sampleRate()` | the checkpoint, the ggml backend, the stem names in order, and the model's own rate (44100) |

@@ -1,7 +1,8 @@
 # Publishes Fornax to Maven Central as org.fornax4j:*: the Java modules (fornax-core, fornax-llama, fornax-tts, fornax-sd,
-# fornax-acestep, fornax-yue2, fornax-whisper, fornax-demucs) and one natives jar per platform and backend (fornax-natives-<os>-<arch>-<backend>).
+# fornax-acestep, fornax-yue2, fornax-whisper, fornax-demucs, fornax-server) and one natives jar per platform and backend (fornax-natives-<os>-<arch>-<backend>).
 #
-# On a published GitHub Release tagged v<version> (v0.1.0 publishes 0.1.0). Run by hand for a dry run, which builds
+# On a published GitHub Release tagged v<version> (v0.1.0 publishes 0.1.0). The upload waits for a maintainer to
+# approve it in the `release` environment. Run by hand for a dry run, which builds
 # and signs every jar exactly as a release does, and stops before the upload; the signed repository is left as an
 # artifact to look through. A run by hand that isn't a dry run must be on a v* tag.
 # After a release, verify-central waits for repo1.maven.org to serve it and builds samples/hello-fornax from there.
@@ -170,6 +171,9 @@ jobs:
     needs: [version, natives]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    # A real release waits in the `release` environment for a maintainer to approve the upload; it allows main and v* tags.
+    # A dry run uploads nothing, so it skips the environment and needs no approval.
+    environment: ${{ needs.version.outputs.dry_run != 'true' && 'release' || '' }}
     env:
       VERSION: ${{ needs.version.outputs.version }}
       DRY_RUN: ${{ needs.version.outputs.dry_run }}
@@ -217,12 +221,16 @@ jobs:
           set -euo pipefail
           ./gradlew --no-daemon publishToMavenLocal -Pversion="$VERSION" -Pfornax.natives.require=true -Dmaven.repo.local="$RUNNER_TEMP/m2"
           repo="$RUNNER_TEMP/m2/org/fornax4j"
-          for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs \
+          for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs fornax-server \
                    fornax-natives-linux-x86_64-vulkan fornax-natives-macos-aarch64-metal fornax-natives-macos-x86_64-metal; do
             for f in "$a-$VERSION.pom" "$a-$VERSION.jar" "$a-$VERSION-sources.jar" "$a-$VERSION-javadoc.jar"; do
               [ -f "$repo/$a/$VERSION/$f" ] || { echo "::error::$f was not built"; exit 1; }
               [ -f "$repo/$a/$VERSION/$f.asc" ] || { echo "::error::$f was not signed"; exit 1; }
             done
+          done
+          for a in fornax-bom fornax-natives; do   # POMs only
+            [ -f "$repo/$a/$VERSION/$a-$VERSION.pom" ] || { echo "::error::$a-$VERSION.pom was not built"; exit 1; }
+            [ -f "$repo/$a/$VERSION/$a-$VERSION.pom.asc" ] || { echo "::error::$a-$VERSION.pom was not signed"; exit 1; }
           done
           du -ah "$repo" | grep -E '\.jar$' | sort -k2
           # The Central Portal takes deployments of up to 1 GB.
@@ -236,7 +244,10 @@ jobs:
         run: |
           set -euo pipefail
           samples/hello-fornax/gradlew --no-daemon -p samples/hello-fornax installDist -PfornaxLocal=true -PfornaxVersion="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
-          mvn -B -q -f samples/hello-fornax/pom.xml compile $RESOLVE -Dfornax.version="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
+          mvn -B -q -f samples/hello-fornax/pom.xml compile $RESOLVE -DoutputFile="$RUNNER_TEMP/maven-deps.txt" -Dfornax.version="$VERSION" -Dmaven.repo.local="$RUNNER_TEMP/m2"
+          # fornax-natives' OS profiles, not the sample's POM, bring in this machine's natives jar
+          grep -q 'org.fornax4j:fornax-natives-linux-x86_64-vulkan:jar' "$RUNNER_TEMP/maven-deps.txt" \
+            || { echo "::error::Maven took no natives jar from fornax-natives"; cat "$RUNNER_TEMP/maven-deps.txt"; exit 1; }
 
       - name: Keep the signed repository (dry run)
         if: env.DRY_RUN == 'true'
@@ -288,10 +299,11 @@ jobs:
           set -euo pipefail
           base=https://repo1.maven.org/maven2/org/fornax4j
           files=()
-          for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs \
+          for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs fornax-server \
                    fornax-natives-linux-x86_64-vulkan fornax-natives-macos-aarch64-metal fornax-natives-macos-x86_64-metal; do
             files+=("$base/$a/$VERSION/$a-$VERSION.pom" "$base/$a/$VERSION/$a-$VERSION.jar")
           done
+          files+=("$base/fornax-bom/$VERSION/fornax-bom-$VERSION.pom" "$base/fornax-natives/$VERSION/fornax-natives-$VERSION.pom")
           deadline=$(( $(date +%s) + 30 * 60 ))
           while :; do
             missing=0
@@ -306,4 +318,7 @@ jobs:
         run: |
           set -euo pipefail
           samples/hello-fornax/gradlew --no-daemon -p samples/hello-fornax installDist --refresh-dependencies -PfornaxVersion="$VERSION"
-          mvn -B -q -U -f samples/hello-fornax/pom.xml compile $RESOLVE -Dfornax.version="$VERSION"
+          mvn -B -q -U -f samples/hello-fornax/pom.xml compile $RESOLVE -DoutputFile="$RUNNER_TEMP/maven-deps.txt" -Dfornax.version="$VERSION"
+          # fornax-natives' OS profiles, not the sample's POM, bring in this machine's natives jar
+          grep -q 'org.fornax4j:fornax-natives-linux-x86_64-vulkan:jar' "$RUNNER_TEMP/maven-deps.txt" \
+            || { echo "::error::Maven took no natives jar from fornax-natives"; cat "$RUNNER_TEMP/maven-deps.txt"; exit 1; }

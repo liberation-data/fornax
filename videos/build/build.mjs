@@ -3,7 +3,7 @@
  * the video's folder, videos/<name>/, unless they say otherwise. Ported from the Embabel Worlds landing page's video
  * build (worlds-landing/videos/build/build.mjs), without its publishing, review, hero cards and sting.
  *
- *   1. Voices each scene with Deepgram (DEEPGRAM_API_KEY) or Kiln (`voice: kiln:...`), into narration/. A scene whose words have not changed is
+ *   1. Voices each scene with Deepgram (DEEPGRAM_API_KEY) or Fornax (`voice: fornax:...`), into narration/. A scene whose words have not changed is
  *      not sent again: narration/<n>.txt holds what its mp3 says. Committed, so a rebuild needs no key.
  *   2. Renders each card in cards/ (HTML, 1920 × 1080, sharing shared/cards/card.css) to a PNG with Chrome or
  *      Chromium, and gives it a slow push-in.
@@ -20,8 +20,8 @@
  * `--final` renders at 60fps with push-ins drawn from 8K (drafts are 30fps from 4K); `--pace=1.1` overrides the
  * script's pace. Needs ffmpeg, and Chrome or Chromium (CHROME_PATH, else /usr/bin/chromium-browser, else Chrome).
  *
- * A script's header may set `voice:` (a Deepgram voice, or `kiln:<model>`, `kiln:<model>:<voice>` or
- * `kiln:<model>:@<clip>` for one voiced through Kiln's SpeakBatch, with `voice-prompt:` and `voice-seed:`), `pace:`, `tail:` (silence after each scene's last word, 0.7 s), `opening:`
+ * A script's header may set `voice:` (a Deepgram voice, or `fornax:<model>`, `fornax:<model>:<voice>` or
+ * `fornax:<model>:@<clip>` for one voiced through Fornax's SpeakBatch, with `voice-prompt:` and `voice-seed:`), `pace:`, `tail:` (silence after each scene's last word, 0.7 s), `opening:`
  * (silence before the first word, 0.5 s), `duck: on` and `outro: a.mp4 | b.mp4` (the first that exists).
  */
 import { createHash } from 'node:crypto';
@@ -73,7 +73,7 @@ const PAUSE = /\s*\[pause(?:\s+([\d.]+)s?)?\]\s*/g;
 /** The script: its voice, and each scene's cards, narration and clip. */
 function readScript() {
     const voice = /^voice:\s*(\S+)/m.exec(SCRIPT)?.[1] ?? 'aura-2-hyperion-en';
-    // A Kiln voice (`voice: kiln:<model>`) may be designed by a description, `voice-prompt: (A warm narrator)`, at a seed.
+    // A Fornax voice (`voice: fornax:<model>`) may be designed by a description, `voice-prompt: (A warm narrator)`, at a seed.
     const voicePrompt = /^voice-prompt:\s*(.+)$/m.exec(SCRIPT)?.[1]?.trim() ?? '';
     const voiceSeed = Number(/^voice-seed:\s*(\d+)/m.exec(SCRIPT)?.[1] ?? 1);
     const paceArg = process.argv.find((a) => a.startsWith('--pace='))?.slice(7);
@@ -121,13 +121,13 @@ const spellings = JSON.parse(readFileSync(join(SHARED, 'spellings.json'), 'utf8'
 const spoken = (words) => Object.entries(spellings).reduce((t, [from, to]) => t.replaceAll(from, to), words);
 
 async function voiceScenes({ voice, voicePrompt, voiceSeed, scenes }) {
-    const kiln = voice.startsWith('kiln:');
+    const fornax = voice.startsWith('fornax:');
     mkdirSync(join(VIDEO, 'narration'), { recursive: true });
     for (const scene of scenes) {
         const mp3 = join(VIDEO, 'narration', `${scene.n}.mp3`);
         const said = join(VIDEO, 'narration', `${scene.n}.txt`);
         /* A reference clip (`@file`) and its transcript (`file.txt`) are keyed by content, so changing either re-voices. */
-        const clip = kiln ? voice.match(/:@(.+)$/)?.[1] : undefined;
+        const clip = fornax ? voice.match(/:@(.+)$/)?.[1] : undefined;
         const ref = clip ? resolve(VIDEO, clip) : undefined;
         /* voices/ is not committed: without the clip, --no-voice cuts with the narration on disk. */
         if (ref && !existsSync(ref)) {
@@ -135,19 +135,19 @@ async function voiceScenes({ voice, voicePrompt, voiceSeed, scenes }) {
             throw new Error(`scene ${scene.n}: the reference clip ${ref} is missing`);
         }
         const refHash = ref ? ` ref ${createHash('sha256').update(readFileSync(ref)).update(existsSync(`${ref}.txt`) ? readFileSync(`${ref}.txt`) : '').digest('hex').slice(0, 16)}` : '';
-        const want = `${kiln ? `${voice}${refHash} seed ${voiceSeed} ${voicePrompt}`.trim() : voice}\n${spoken(scene.words)}`;
+        const want = `${fornax ? `${voice}${refHash} seed ${voiceSeed} ${voicePrompt}`.trim() : voice}\n${spoken(scene.words)}`;
         if (existsSync(mp3) && existsSync(said) && readFileSync(said, 'utf8') === want) continue;
         if (args.has('--no-voice')) throw new Error(`scene ${scene.n} changed and --no-voice was given`);
         const key = process.env.DEEPGRAM_API_KEY;
-        if (!kiln && !key) throw new Error(`scene ${scene.n} needs voicing: set DEEPGRAM_API_KEY`);
+        if (!fornax && !key) throw new Error(`scene ${scene.n} needs voicing: set DEEPGRAM_API_KEY`);
         /* Each stretch between pauses is voiced on its own, then joined with the silence the pause asks for. */
         const pieces = spoken(scene.words).split(new RegExp(PAUSE.source));
-        // `kiln:<model>` or `kiln:<model>:<voice>` (a named voice the model ships, e.g. kiln:zonos3:Rupert).
+        // `fornax:<model>` or `fornax:<model>:<voice>` (a named voice the model ships, e.g. fornax:zonos3:Rupert).
         // A reference clip's path is the video folder's; SpeakBatch runs in the repository's root, so it gets it absolute.
-        const [kilnModel, named = ''] = voice.slice(5).split(':');
-        const kilnVoice = ref ? `@${ref}` : named;
-        const parts = kiln ? voiceInKiln(scene, pieces, kilnModel, voicePrompt, voiceSeed, kilnVoice) : [];
-        for (let k = 0; !kiln && k < pieces.length; k += 2) {
+        const [fornaxModel, named = ''] = voice.slice(5).split(':');
+        const fornaxVoice = ref ? `@${ref}` : named;
+        const parts = fornax ? voiceInFornax(scene, pieces, fornaxModel, voicePrompt, voiceSeed, fornaxVoice) : [];
+        for (let k = 0; !fornax && k < pieces.length; k += 2) {
             if (k > 0) parts.push(Number(pieces[k - 1] ?? 0.65) || 0.65);
             if (!pieces[k].trim()) continue;
             // Deepgram clips the last sound it is given (the "U" of "GPU"), so each stretch is voiced with a throwaway
@@ -341,11 +341,11 @@ function silencesOf(mp3) {
 }
 
 /*
- * A VOICE IN KILN: every stretch of a scene is spoken by kiln-examples' SpeakBatch, with one loaded model at one seed,
+ * A VOICE IN FORNAX: every stretch of a scene is spoken by fornax-examples' SpeakBatch, with one loaded model at one seed,
  * each stretch led by the voice's description (VoxCPM2's voice design), then trimmed of the silence around it.
  */
-function voiceInKiln(scene, pieces, model, prompt, seed, named = '') {
-    const kilnRoot = resolve(VIDEOS, '..');
+function voiceInFornax(scene, pieces, model, prompt, seed, named = '') {
+    const fornaxRoot = resolve(VIDEOS, '..');
     const parts = [];
     const lines = [];
     for (let k = 0; k < pieces.length; k += 2) {
@@ -357,7 +357,7 @@ function voiceInKiln(scene, pieces, model, prompt, seed, named = '') {
     }
     const tsv = join(OUT, `voice-${scene.n}.tsv`);
     writeFileSync(tsv, `${lines.join('\n')}\n`);
-    run(join(kilnRoot, 'gradlew'), ['-q', '-p', kilnRoot, 'speakBatch', `--args=${tsv} ${named}`.trim(), `-Pmodel=${model}`, `-Pseed=${seed}`]);
+    run(join(fornaxRoot, 'gradlew'), ['-q', '-p', fornaxRoot, 'speakBatch', `--args=${tsv} ${named}`.trim(), `-Pmodel=${model}`, `-Pseed=${seed}`]);
     return parts.map((p) => {
         if (typeof p === 'number') return p;
         const out = p.replace('-raw.wav', '.wav');
@@ -371,7 +371,7 @@ function voiceInKiln(scene, pieces, model, prompt, seed, named = '') {
 const SENTINEL = 'Okay.';
 function withoutSentinel(raw, out, n) {
     const report = spawnSync('ffmpeg', ['-nostdin', '-nostats', '-i', raw, '-af', 'silencedetect=n=-45dB:d=0.18', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 1 << 28 }).stderr;
-    /* Only gaps after some speech: a short line ("Introducing Kiln.") can open with a silence that would otherwise be
+    /* Only gaps after some speech: a short line ("Introducing Fornax.") can open with a silence that would otherwise be
        taken for the gap before the throwaway word, leaving nothing. */
     const gaps = [...report.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1])).filter((t) => t > 0.35);
     const length = duration(raw);

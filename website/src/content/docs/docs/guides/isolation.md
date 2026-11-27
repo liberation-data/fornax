@@ -14,6 +14,7 @@ loads the model again.
 
 ## Turning it on
 
+<!-- snippet: Isolation#isolated -->
 ```java
 import org.liberationdata.fornax.WorkerCrashedException;
 import org.liberationdata.fornax.llama.LlamaModel;
@@ -37,18 +38,22 @@ To isolate every `LlamaModel` without changing code, set `-Dfornax.isolation=pro
 `isolated(gguf, mmproj, gpuLayers, contextSize)`. To put several models in one worker, so they share one JVM's
 overhead (and one crash), pass a `Worker` you own:
 
+<!-- snippet: Isolation#shared-worker -->
 ```java
 try (var worker = new Worker("chat-models", Worker.Options.DEFAULT)) {
     var small = LlamaModel.isolated(worker, smallGguf, null, -1, 8192);
     var large = LlamaModel.isolated(worker, largeGguf, null, -1, 8192);
-    ...
+    // ...
 }
 ```
 
 Isolation covers `LlamaModel` today. The worker itself is generic: other engines need a `WorkerService` each, as
 `fornax-llama`'s `LlamaService` is.
-Within `LlamaModel` it covers chat and vision (`Mode.CHAT`). Embedding and reranking models don't run in a worker
-yet: under `fornax.isolation=process`, loading one fails with an `UnsupportedOperationException`, so load those in-process.
+Within `LlamaModel` it covers every mode: chat and vision (`Mode.CHAT`), embeddings (`Mode.EMBED`) and reranking
+(`Mode.RERANK`). Pass the mode as the constructor takes it: `LlamaModel.isolated(Weights.QWEN3_EMBEDDING_0_6B,
+Mode.EMBED)`, `isolated(gguf, gpuLayers, contextSize, Mode.RERANK)`, or `isolated(worker, gguf, gpuLayers, contextSize,
+mode)` for a shared worker. Embeddings come back through shared memory once a batch is large, so a big `embed` costs
+little more than in-process.
 
 ## When to choose it
 
@@ -126,10 +131,11 @@ an IDE plugin's class loader) passes the jars the worker needs with `withClassPa
 
 `ModelPool` takes any loader, so a pooled model is isolated when its loader says so:
 
+<!-- snippet: Isolation#pool -->
 ```java
 try (var lease = pool.acquire("qwen3-4b", ModelPool.sizeOf(gguf) + (100L << 20),   // weights + the worker JVM
                               () -> LlamaModel.isolated(gguf.toString()))) {
-    lease.model().chat(...);
+    lease.model().chat(messages, Options.DEFAULT);
 }
 ```
 

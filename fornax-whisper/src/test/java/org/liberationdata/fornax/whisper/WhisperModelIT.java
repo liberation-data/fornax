@@ -51,6 +51,19 @@ class WhisperModelIT {
         stt = new WhisperModel(w);
     }
 
+    /** An alias loads the same file, with the alignment its {@link WhisperModel.Weights} entry has. */
+    @Test
+    void loadsByAlias() {
+        assumeTrue(WhisperModel.Weights.BASE_EN.downloaded(), "whisper base.en not downloaded");
+        try (var byAlias = new WhisperModel("whisper-base.en")) {
+            Transcript t = byAlias.transcribe(audio);
+            assertTrue(t.text().toLowerCase(java.util.Locale.ROOT).contains("speech becomes text"), t.text());
+            assertFalse(t.words().isEmpty());
+        }
+        var e = assertThrows(IllegalArgumentException.class, () -> new WhisperModel("kokoro"));
+        assertEquals("kokoro is a speech model (llama.cpp); WhisperModel loads speech-to-text models", e.getMessage());
+    }
+
     /** The first sample of a 10 ms window louder than -40 dBFS. */
     static int onset(float[] x) {
         for (int i = 0; i + 240 <= x.length; i += 240) {

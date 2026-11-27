@@ -1,6 +1,6 @@
 ---
 title: Getting started
-description: Build Fornax's native libraries, fetch model weights with fornax pull (or the Hugging Face CLI), run the all-in-one demo, and use Fornax from your own app.
+description: Build Fornax's native libraries, run the all-in-one demo (it downloads its models, or fetch them first with fornax pull or the Hugging Face CLI), and use Fornax from your own app.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
@@ -58,13 +58,14 @@ Then it shows what your own application needs.
    The Gradle build points the examples and tests at `build/native/<os>-<arch>-vulkan/`. For another backend, add
    `-Pfornax.backend=hip` (or `cuda`, `metal`, `cpu`) to any Gradle command.
 
-3. **Fetch the weights for the demo.**
+3. **Fetch the weights for the demo (optional).** The demo loads its three models by name and downloads them into
+   the Hugging Face cache on its first run, logging each file. To fetch them ahead of time:
 
    ```sh
    ./gradlew :fornax-cli:installDist      # the fornax command
    export PATH="$PWD/fornax-cli/build/install/fornax-cli/bin:$PATH"
    fornax pull qwen3-4b                   # Qwen3 4B Instruct
-   fornax pull ace-step                   # ACE-Step 1.5 turbo and its 4B lyric LM: four files
+   fornax pull ace-step-turbo             # ACE-Step 1.5 turbo, without the lyric LM: three files
    fornax pull flux2-klein                # FLUX.2 [klein]: three files, from three repos
    ```
 
@@ -73,8 +74,7 @@ Then it shows what your own application needs.
 
    ```sh
    hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
-   hf download Serveurperso/ACE-Step-1.5-GGUF acestep-5Hz-lm-4B-Q8_0.gguf Qwen3-Embedding-0.6B-Q8_0.gguf \
-       acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
+   hf download Serveurperso/ACE-Step-1.5-GGUF Qwen3-Embedding-0.6B-Q8_0.gguf acestep-v15-turbo-Q8_0.gguf vae-BF16.gguf
    hf download black-forest-labs/FLUX.2-klein-base-4b-fp8 flux-2-klein-base-4b-fp8.safetensors
    hf download Comfy-Org/flux2-dev split_files/vae/flux2-vae.safetensors
    hf download Comfy-Org/z_image_turbo split_files/text_encoders/qwen_3_4b.safetensors
@@ -117,6 +117,7 @@ argument. Each guide lists the weights its example needs.
 `HF_HUB_CACHE`, then `$HF_HOME/hub`, then `~/.cache/huggingface/hub`. To download from Java as well, or to find a
 whole model set's files at once, use `FornaxHub` (see [Downloading models](/docs/guides/models/)).
 
+{/* snippet: GettingStarted#hfcache */}
 ```java
 import org.liberationdata.fornax.HfCache;
 

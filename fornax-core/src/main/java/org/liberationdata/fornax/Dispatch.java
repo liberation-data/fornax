@@ -64,7 +64,7 @@ public final class Dispatch implements AutoCloseable {
 
     /** How urgent a request is. Higher classes go first; waiting raises a request's class (see {@link Options#aging}). */
     public enum QoS {
-        /** A person is waiting: chat, vision Q&A, tool calls. */
+        /** A person is waiting: chat, vision Q&amp;A, tool calls. */
         INTERACTIVE,
         /** Nobody is waiting on this one: renders, bulk extraction, evals. */
         BATCH

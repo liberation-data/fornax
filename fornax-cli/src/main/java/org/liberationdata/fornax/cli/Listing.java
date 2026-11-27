@@ -1,5 +1,6 @@
 package org.liberationdata.fornax.cli;
 
+import org.liberationdata.fornax.hub.GgufFiles;
 import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.hub.FornaxHub;
 import org.liberationdata.fornax.hub.ModelCatalog;
@@ -38,8 +39,8 @@ final class Listing {
         for (String repo : HfCache.repos(cacheRoot)) {
             if (isEngineRepo(repo)) continue;
             Map<String, Path> files = HfCache.files(cacheRoot, repo);
-            for (var e : Gguf.models(files.keySet()).entrySet()) {
-                if (!files.keySet().containsAll(Gguf.allParts(e.getValue()))) continue;   // an incomplete split model
+            for (var e : GgufFiles.models(files.keySet()).entrySet()) {
+                if (!files.keySet().containsAll(GgufFiles.allParts(e.getValue()))) continue;   // an incomplete split model
                 if (inCatalogue(repo, e.getKey())) continue;
                 long size = e.getValue().stream().mapToLong(p -> size(files.get(p))).sum();
                 out.add(new LlmEntry(repo, e.getKey(), size, e.getValue().size()));
@@ -94,9 +95,11 @@ final class Listing {
     private static String heading(Kind kind) {
         return switch (kind) {
             case CHAT -> "Chat (fornax chat <alias>)";
-            case VISION -> "Vision (fornax chat <alias> for text; images from Java)";
-            case IMAGE -> "Image (fornax test <alias>)";
-            case SONG -> "Song (fornax test <alias>)";
+            case VISION -> "Vision (fornax see <alias> <image>)";
+            case SPEECH -> "Speech (fornax speak --model <alias>)";
+            case TRANSCRIPTION -> "Speech to text (fornax transcribe --model <alias>)";
+            case IMAGE -> "Image (fornax image <alias>)";
+            case SONG -> "Song (fornax song <alias>)";
             default -> kind.name().charAt(0) + kind.name().substring(1).toLowerCase(Locale.ROOT) + " (from Java)";
         };
     }

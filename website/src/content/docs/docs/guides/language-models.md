@@ -9,24 +9,32 @@ Gemma, Mistral and the rest. The class is `LlamaModel`. The same class embeds te
 
 ## Load a model
 
-```sh
-hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf
-```
-
+<!-- snippet: LanguageModels#load -->
 ```java
-import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.llama.LlamaModel;
 
-String gguf = HfCache.require("unsloth/Qwen3-4B-Instruct-2507-GGUF", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf").toString();
-
-try (var llm = new LlamaModel(gguf)) {                       // every layer on the GPU, 8192 tokens of context
+try (var llm = new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M")) {   // all layers on the GPU, 8192 tokens
     // ...
 }
 
-try (var llm = new LlamaModel(gguf, -1, 32768)) {            // gpuLayers (-1 = all), contextSize (0 = the model's own)
+try (var llm = new LlamaModel("unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M", -1, 32768)) {   // gpuLayers (-1 = all), contextSize (0 = the model's own)
     // ...
 }
 ```
+
+The first argument is a path to a `.gguf` file, or a model by name:
+
+- **`owner/repo:TAG`**, a Hugging Face repo and a quant (`Q4_K_M`, `Q8_0`, matched against the repo's GGUF file
+  names, ignoring case) or a file name. `owner/repo` alone takes the repo's only GGUF model. Add `@revision` for a
+  branch, tag or commit other than `main`.
+- **a catalogue alias**, such as `qwen3-4b` or `qwen3-vl-4b`, which brings the model's mmproj too (see
+  [Downloading models](/docs/guides/models/)).
+
+The first time, Fornax downloads the model into the Hugging Face cache, logging its progress (through
+`System.Logger` `org.liberationdata.fornax.hub`). After that, the model loads from the cache with no network, under
+`HF_HUB_OFFLINE` too. A path that names an existing file is always a path, and a URL is refused with the reference to
+use instead. To download ahead of time, run `fornax pull unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M` or
+`hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf`; both use the same cache.
 
 The constructor loads the weights onto the GPU, and they stay there until `close()`. Load once and reuse the model
 for many calls; [ModelPool](/docs/guides/model-pool/) helps when an app has several models to juggle.
@@ -37,6 +45,7 @@ use `chatAsync`, `chatJsonAsync` and `extractAsync`, which return a `Completable
 
 ## Chat
 
+<!-- snippet: LanguageModels#chat -->
 ```java
 import org.liberationdata.fornax.llama.LlamaModel.Message;
 import org.liberationdata.fornax.llama.LlamaModel.Options;
@@ -68,6 +77,7 @@ context: send the whole conversation every time, with earlier replies as `Messag
 | `minP` | 0.05 | min-p sampling |
 | `seed` | -1 | -1 means random |
 
+<!-- snippet: LanguageModels#options -->
 ```java
 Options exact = Options.DEFAULT.withTemperature(0).withMaxTokens(1024);   // greedy, for repeatable answers
 Options again = Options.DEFAULT.withSeed(42);                           // sampled, but the same each run
@@ -79,6 +89,7 @@ Options custom = new Options(256, 0.8f, 0.95f, 0.05f, 7);              // every 
 Pass a `Consumer<String>` and each piece of text arrives as soon as it is generated. The call still returns the whole
 `Result` at the end.
 
+<!-- snippet: LanguageModels#stream -->
 ```java
 llm.chat(List.of(Message.user("Write a haiku about a fornax.")), Options.DEFAULT, System.out::print);
 ```
@@ -90,6 +101,7 @@ thread, with a bounded buffer, use `chatAsync(messages, options, subscriber)` (s
 To stop early, call `cancel()` from any other thread (or from the callback). The generation stops after the current
 token and the call returns what it has so far. It works with or without a callback.
 
+<!-- snippet: LanguageModels#cancel -->
 ```java
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -111,6 +123,7 @@ try {
 (Jinja) chat template and parses its reply with the same code as `llama-server`, so it understands tool calls and
 reasoning in each model's own format.
 
+<!-- snippet: LanguageModels#chat-json -->
 ```java
 String reply = llm.chatJson("""
         {"messages": [{"role": "user", "content": "Say hello in French."}],
@@ -155,6 +168,7 @@ Fornax has no JSON library of its own on `main`; the examples below use Jackson,
 Put a JSON Schema at the top level of the request, under `json_schema`. llama.cpp turns it into a grammar, so the
 model can only produce JSON that fits.
 
+<!-- snippet: LanguageModels#json-schema -->
 ```java
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -185,6 +199,7 @@ Describe your tools in OpenAI's format. When the model wants one, the reply's `f
 `message.tool_calls` says which function to call with which arguments. Run it, add the model's message and your
 result to the conversation, and ask again.
 
+<!-- snippet: LanguageModels#tool-calls -->
 ```java
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -229,6 +244,7 @@ do best with few tools and clear descriptions.
 `complete` skips the chat template and continues the text you give it exactly as written. Use it for base models, or
 when you format the prompt yourself.
 
+<!-- snippet: LanguageModels#complete -->
 ```java
 Result r = llm.complete("The three most common glazes for stoneware are", Options.DEFAULT.withMaxTokens(64), null);
 ```

@@ -17,6 +17,7 @@ Everything on the [Language models](/docs/guides/language-models/) page still ap
 hf download Qwen/Qwen3-VL-4B-Instruct-GGUF Qwen3VL-4B-Instruct-Q4_K_M.gguf mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf
 ```
 
+<!-- snippet: Vision#chat -->
 ```java
 import org.liberationdata.fornax.llama.LlamaModel;
 import org.liberationdata.fornax.llama.LlamaModel.Image;
@@ -43,6 +44,7 @@ a 1000×1300 invoice is about 1,200 Qwen3-VL tokens. With images, `chat` formats
 `Image` is packed RGB, three bytes a pixel; alpha is dropped. There's no need to resize: the model's mmproj scales
 each image to what its encoder takes.
 
+<!-- snippet: Vision#images -->
 ```java
 import java.awt.image.BufferedImage;
 
@@ -67,6 +69,7 @@ which `downloadCommand()` also gives you.
 
 Any other vision GGUF llama.cpp runs works too:
 
+<!-- snippet: Vision#load -->
 ```java
 try (var vlm = new LlamaModel("/models/model.gguf", "/models/mmproj.gguf")) {   // or (gguf, mmproj, gpuLayers, contextSize)
     // ...
@@ -80,6 +83,7 @@ The vision encoder runs on the GPU unless `gpuLayers` is 0.
 `extract` asks for a reply that follows a JSON Schema, and returns the JSON text. llama.cpp turns the schema into a
 grammar, so the reply can only be JSON of that shape. A thinking model's reasoning is left out.
 
+<!-- snippet: Vision#extract -->
 ```java
 String schema = """
         {"type": "object",
@@ -113,6 +117,7 @@ number, date, four line items, subtotal, tax and total, all correct) in about 6 
 In a `chatJson` request, an image part `{"type": "image", "index": i}` stands for the `i`-th image in the list you
 pass. OpenAI's `image_url` parts with a base64 `data:` URI work too.
 
+<!-- snippet: Vision#chat-json -->
 ```java
 String reply = vlm.chatJson("""
         {"messages": [{"role": "user", "content": [

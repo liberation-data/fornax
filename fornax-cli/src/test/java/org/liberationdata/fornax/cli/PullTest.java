@@ -1,5 +1,6 @@
 package org.liberationdata.fornax.cli;
 
+import org.liberationdata.fornax.hub.RepoIndex;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -53,7 +54,7 @@ class PullTest {
         server.createContext("/api/models/", ex -> {
             requests.add("API " + ex.getRequestURI().getPath());
             String path = ex.getRequestURI().getPath();
-            String repo = path.equals("/api/models/" + REPO + "/revision/main") ? REPO
+            String repo = path.equals("/api/models/" + REPO + "/revision/main") || path.equals("/api/models/" + REPO + "/revision/" + COMMIT) ? REPO
                     : path.equals("/api/models/" + GATED + "/revision/main") ? GATED : null;
             if (repo == null) { send(ex, 404, new byte[0]); return; }
             String json = """
@@ -148,6 +149,34 @@ class PullTest {
     }
 
     @Test
+    void theCommandsThatMakeThingsPullAReferenceFirst() throws Exception {
+        out = new ByteArrayOutputStream();
+        var ps = new PrintStream(out, true, StandardCharsets.UTF_8);
+        var m = Models.fetch(REPO + ":Q8_0", org.liberationdata.fornax.hub.ModelSet.Kind.VISION, "see", true, hub(), ps, false);
+        assertEquals(snapshot("tiny-Q8_0.gguf"), m.file("gguf"));
+        assertTrue(out.toString().contains("[fornax] downloading " + REPO + ":Q8_0\n"), out.toString());
+        assertTrue(out.toString().contains("tiny-Q8_0.gguf  100%"), out.toString());   // fornax pull's progress line
+
+        out.reset();   // then from the cache: no Hub, nothing said
+        requests.clear();
+        assertEquals(snapshot("tiny-Q8_0.gguf"), Models.fetch(REPO + ":Q8_0", org.liberationdata.fornax.hub.ModelSet.Kind.VISION, "see",
+                true, hub(), ps, false).file("gguf"));
+        assertEquals("", out.toString());
+        assertEquals(List.of(), requests);
+    }
+
+    @Test
+    void aReferenceToTheWrongKindOfFileIsRefusedBeforeItsDownload() throws Exception {
+        out = new ByteArrayOutputStream();
+        var ps = new PrintStream(out, true, StandardCharsets.UTF_8);
+        var e = assertThrows(Main.Failure.class, () -> Models.fetch(REPO + ":tiny-Q8_0.gguf",
+                org.liberationdata.fornax.hub.ModelSet.Kind.TRANSCRIPTION, "transcribe", true, hub(), ps, false));
+        assertTrue(e.getMessage().contains("not a whisper.cpp model"), e.getMessage());
+        assertEquals(List.of("API /api/models/" + REPO + "/revision/main"), requests);   // the file list only
+        assertEquals("", out.toString());
+    }
+
+    @Test
     void withoutFilesListsTheModelsAndAsksOnATerminal() throws Exception {
         assertEquals(0, pull(null, REPO));
         assertTrue(out.toString().contains("tiny-Q8_0.gguf"), out.toString());
@@ -170,6 +199,23 @@ class PullTest {
         assertTrue(Pull.select(info, null, List.of()).isEmpty());
         assertThrows(Main.Failure.class, () -> Pull.select(info, "tiny", List.of()));        // two models
         assertThrows(Main.Failure.class, () -> Pull.select(info, null, List.of("nope.bin")));
+    }
+
+    @Test
+    void aRevisionInTheReference() throws Exception {
+        assertEquals(0, pull(null, REPO + "@" + COMMIT + ":Q8_0"));
+        assertEquals("API /api/models/" + REPO + "/revision/" + COMMIT, requests.get(0));
+        assertTrue(Files.isRegularFile(snapshot("tiny-Q8_0.gguf")));
+        var twice = assertThrows(Args.UsageException.class, () -> pull(null, REPO + "@" + COMMIT + ":Q8_0", "--revision", "main"));
+        assertTrue(twice.getMessage().contains("give the revision once"), twice.getMessage());
+        var url = assertThrows(Args.UsageException.class, () -> pull(null, "https://huggingface.co/" + REPO + "/blob/main/tiny-Q8_0.gguf"));
+        assertTrue(url.getMessage().contains("use fornax pull " + REPO + ":tiny-Q8_0.gguf"), url.getMessage());
+    }
+
+    @Test
+    void aTagCanNameAFileThatIsntAGguf() throws Exception {
+        var info = new RepoIndex(endpoint(), null).info(REPO, "main");
+        assertEquals(List.of("README.md"), Pull.select(info, "README.md", List.of()).stream().map(RepoIndex.RepoFile::path).toList());
     }
 
     @Test

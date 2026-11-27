@@ -3,6 +3,9 @@ package org.liberationdata.fornax.sd;
 import org.liberationdata.fornax.Audio;
 import org.liberationdata.fornax.Call;
 import org.liberationdata.fornax.ModelThread;
+import org.liberationdata.fornax.hub.FornaxHub;
+import org.liberationdata.fornax.hub.ModelReferences;
+import org.liberationdata.fornax.hub.ModelSet;
 
 import java.awt.image.BufferedImage;
 import java.lang.foreign.Arena;
@@ -16,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 
@@ -34,11 +38,76 @@ import static java.lang.foreign.ValueLayout.*;
  */
 public final class DiffusionModel implements AutoCloseable {
 
-    /** Context-level options: model paths and runtime flags (keys from docs/guides/c_api.md). */
+    /**
+     * Context-level options: model paths and runtime flags (keys from docs/guides/c_api.md). A path option (a key
+     * ending in {@code _path}) may be a model reference instead ({@code city96/FLUX.1-dev-gguf:Q4_K_S}), downloaded when
+     * the model loads; {@link Builder#model} sets every path from a catalogue set.
+     */
     public record Config(Map<String, Object> options) {
+        /**
+         * ComfyUI's int8 LTX checkpoints keep biases, norms and embedders in bf16, which ggml's Vulkan and CPU backends
+         * can't add to f32: these {@code tensor_type_rules} widen them (about 0.9 GB) at load. The int8 linears are
+         * untouched. {@link Builder#model} sets them for the LTX sets.
+         */
+        public static final String LTX_BF16_TO_F32 = ".*\\.bias=f32,.*_norm\\.weight=f32,.*to_gate_logits\\.weight=f32,"
+                + ".*adaln_single.*\\.weight=f32,.*(patchify_proj|proj_out)\\.weight=f32,"
+                + ".*(learnable_registers|keyframes_abs_pos_embedding)=f32";
+
+        static final ModelReferences.Engine SET = new ModelReferences.Engine("DiffusionModel", "image and video models",
+                Set.of(ModelSet.Kind.IMAGE, ModelSet.Kind.VIDEO), Set.of(), "an image or video set");
+        static final ModelReferences.Engine FILE = new ModelReferences.Engine("DiffusionModel",
+                "one file per path option (Config.builder().model(name) takes a whole set)", Set.of(), Set.of("gguf", "model"), "a model file");
+
+        /** Each sd.cpp context option a catalogue role sets. The latent upscaler isn't one: it is a request's {@code hires.model_path}. */
+        static final Map<String, String> ROLE_OPTIONS = Map.of("diffusion_model", "diffusion_model_path", "vae", "vae_path",
+                "llm", "llm_path", "audio_vae", "audio_vae_path");
+
         public static Builder builder() { return new Builder(); }
+
+        /** The options with every path option that is a model reference replaced by its file, downloaded if missing. */
+        Map<String, Object> resolved() { return resolved(null); }
+
+        /** {@link #resolved()} with the given hub, or null for the standard one (built only for a reference). */
+        Map<String, Object> resolved(FornaxHub hub) {
+            List<String> paths = options.entrySet().stream().filter(Config::isPathOption).map(e -> (String) e.getValue()).toList();
+            for (String p : paths) {   // every one refused before any download
+                if (hub == null) ModelReferences.check(p, FILE);
+                else ModelReferences.check(p, FILE, hub);
+            }
+            Map<String, Object> out = new LinkedHashMap<>(options);
+            for (var e : options.entrySet()) {
+                if (!isPathOption(e)) continue;
+                String v = (String) e.getValue();
+                out.put(e.getKey(), hub == null ? ModelReferences.path(v, FILE) : ModelReferences.path(v, FILE, hub));
+            }
+            return out;
+        }
+
+        private static boolean isPathOption(Map.Entry<String, Object> e) {
+            return e.getKey().endsWith("_path") && e.getValue() instanceof String v && !v.isBlank();
+        }
+
         public static final class Builder {
             private final Map<String, Object> o = new LinkedHashMap<>();
+
+            /**
+             * Every model path of the catalogue set with this name ({@code "flux2-klein"}, {@code "qwen-image"},
+             * {@code "ltx-2.5-distilled"}), downloading what's missing now; for an LTX set, also
+             * {@link #LTX_BF16_TO_F32}. Options set after this override it.
+             *
+             * @throws IllegalArgumentException for a name that isn't an image or video set, before any download
+             */
+            public Builder model(String name) { return model(name, null); }
+
+            /** {@link #model(String)} with the given hub, or null for the standard one. */
+            Builder model(String name, FornaxHub hub) {
+                Map<String, Path> files = hub == null ? ModelReferences.set(name, SET, "stable-diffusion.cpp")
+                        : ModelReferences.set(name, SET, "stable-diffusion.cpp", hub);
+                files.forEach((role, file) -> { if (ROLE_OPTIONS.containsKey(role)) o.put(ROLE_OPTIONS.get(role), file.toString()); });
+                if (name.strip().toLowerCase(java.util.Locale.ROOT).replace("video:", "").startsWith("ltx-")) o.put("tensor_type_rules", LTX_BF16_TO_F32);
+                return this;
+            }
+
             public Builder diffusionModel(String p) { o.put("diffusion_model_path", p); return this; }
             public Builder vae(String p) { o.put("vae_path", p); return this; }
             public Builder llm(String p) { o.put("llm_path", p); return this; }
@@ -220,10 +289,11 @@ public final class DiffusionModel implements AutoCloseable {
     private final ModelThread thread;
 
     public DiffusionModel(Config config) {
+        Map<String, Object> options = config.resolved();
         try (Arena tmp = Arena.ofConfined()) {
             MemorySegment opt = (MemorySegment) Sd.ctx_opt_create.invokeExact();
             try {
-                applyAll(opt, config.options(), tmp);
+                applyAll(opt, options, tmp);
                 MemorySegment out = tmp.allocate(ADDRESS);
                 Sd.check((int) Sd.ctx_create.invokeExact(opt, out), "sd_ctx_create");
                 ctx = out.get(ADDRESS, 0);
@@ -231,8 +301,8 @@ public final class DiffusionModel implements AutoCloseable {
                 Sd.opt_free.invokeExact(opt);
             }
         } catch (RuntimeException e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
-        var file = java.nio.file.Path.of(String.valueOf(config.options().getOrDefault("diffusion_model_path",
-                config.options().getOrDefault("model_path", "sd")))).getFileName();
+        var file = java.nio.file.Path.of(String.valueOf(options.getOrDefault("diffusion_model_path",
+                options.getOrDefault("model_path", "sd")))).getFileName();
         MemorySegment c = ctx;
         thread = new ModelThread(file == null ? "sd" : file.toString(), () -> {
             try { Sd.ctx_free.invokeExact(c); } catch (Throwable t) { throw new RuntimeException(t); }

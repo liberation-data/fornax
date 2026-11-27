@@ -90,6 +90,11 @@ public record Audio(float[] left, float[] right, int sampleRate) {
     private static int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }
 
     public void writeWav(File f) throws IOException {
+        try (var out = new FileOutputStream(f)) { out.write(wav()); }
+    }
+
+    /** The audio as a WAV file's bytes: 16-bit PCM, stereo, at its own sample rate (what {@link #writeWav} writes). */
+    public byte[] wav() {
         int n = left.length;
         ByteBuffer b = ByteBuffer.allocate(44 + n * 4).order(ByteOrder.LITTLE_ENDIAN);
         b.put("RIFF".getBytes()).putInt(36 + n * 4).put("WAVE".getBytes())
@@ -97,7 +102,7 @@ public record Audio(float[] left, float[] right, int sampleRate) {
          .putInt(sampleRate).putInt(sampleRate * 4).putShort((short) 4).putShort((short) 16)
          .put("data".getBytes()).putInt(n * 4);
         for (int i = 0; i < n; i++) { b.putShort(pcm16(left[i])); b.putShort(pcm16(right[i])); }
-        try (var out = new FileOutputStream(f)) { out.write(b.array()); }
+        return b.array();
     }
 
     /**
