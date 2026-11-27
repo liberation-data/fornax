@@ -32,10 +32,43 @@ surprises you.
   `GGML_VK_MAX_NODES_PER_SUBMIT=8` (`-Dfornax.vulkan.maxNodesPerSubmit=8`) fixed it. ComfyUI never hit this, because PyTorch on ROCm launches many small
   kernels.
 - **Long video on Vulkan hits the timeout even at 8 nodes per submission.** A 13 s LTX clip (313 frames) refined at
-  1344×896 lost the device on the first refine step: a single attention dispatch over ~47k tokens outlasts the
-  amdgpu compute ring timeout, and no submission size can split one node. Use the HIP backend for long clips: ROCm
-  work goes through KFD user queues, which have no such timeout (that is why ComfyUI never hit it). HIP was also
-  about 2.7× faster per LTX step than Vulkan on the 8060S (44 s against 119 s at 672×448×313, after a slower first step).
+  1344×896 lost the device on the first refine step. At 47,040 video tokens single dispatches outlast amdgpu's 2 s job
+  timeout, and no submission size can split one node: the video self-attention (one `FLASH_ATTN_EXT` node, 3.6e13 FLOP,
+  4.5 to 7.6 s) and each int8 feed-forward matmul (6.3e12 ops: about 2.7 s up, 1.8 s down). The perf logger doesn't
+  time the int8 matmuls, which are sd.cpp extension ops; a measurement-only build timed each extension dispatch on its
+  own (flush, wait idle, dispatch, wait idle). At 4,480 tokens the up-projection (4096→16384) took 258 ms (2.3 TOPS,
+  454 ms at worst), the down 174 ms, q/k/v/out 25 ms; time is linear in tokens.
+  `native/patches/stable-diffusion.cpp/0003-chunk-long-dispatches.patch` splits both:
+  - attention, in `ggml_ext_attention_ext`: past `SD_FA_CHUNK_FLOPS` (default 1e12) Q is cut into row chunks, each its
+    own `ggml_flash_attn_ext` node over the same K and V, and the outputs are concatenated (a mask shared by all heads
+    is sliced with the rows; any other mask keeps one node). LTX's self-attention ran at 5.9 TFLOPS at 1,120 tokens and
+    8.1 at 4,480, so a 1e12 chunk is 0.12 to 0.21 s;
+  - linear layers, in `Linear::forward`, and whole feed-forwards (up, activation, down), in `FeedForward::forward`:
+    past `SD_FF_CHUNK_FLOPS` (default 4e11, per matmul) the token rows are cut into chunks of whole 128-row tiles.
+    At 47,040 tokens that is 16 feed-forward chunks of 2,944 rows, measured at that shape at 188 ms up (271 ms at
+    worst) and 117 ms down, and 4 chunks for each attention projection (~65 ms). Layers reading one input (q, k, v)
+    share its row views, so its int8 quantization still runs once per chunk.
+  A final chunk under 64 rows is merged into the one before, so no chunk is small enough to take another kernel
+  variant (split_k, mul_mat_vec, scalar paths). Both budgets are on by default only when the runner's backend is
+  Vulkan (`sd_backend_is(backend, "Vulkan")`): HIP, CUDA and Metal have no 2 s job limit, and there the split would
+  only change kernel choices (not bit-identical), add up to ~1.5 GB of peak memory on big layers and break Vulkan's
+  int8 fusions for nothing. Setting either variable to a positive value turns that split on for any backend; `0`, a
+  negative or an unparsable value turns it off everywhere. The attention chunk count is capped at its query rows.
+  Rows are independent (the int8 activations are quantized per row), so the output is the same: 512×320×49 and
+  1024×640×49 clips came out bit-identical, frames and audio, with every split forced small (down to 128-row
+  feed-forward chunks) and with the defaults. Only those budgets were checked: much smaller ones also chunk small
+  layers and the flash-attention auto probe, which can then take other kernels or the other attention path, so they
+  aren't guaranteed bit-identical. At 1024×640×49 the defaults (two feed-forward chunks) left steps at
+  39.4 s against 40.2 s whole; forcing 6 feed-forward, 2 projection and 4 attention chunks made them 43.8 s. An
+  `expand_graph` per attention chunk, as MiniMax-H3's head chunks use, cost 2 to 3 s a step, so the patch has none.
+  The patch is to be proposed upstream. HIP has no such timeout (ROCm work goes through KFD user queues, which is why
+  ComfyUI never hit it) and was about 2.7× faster per LTX step than Vulkan on the 8060S (44 s against 119 s at
+  672×448×313, after a slower first step), so it stays the better backend for long clips.
+- **Vulkan's long-clip output is wrong above about 37k refine tokens (#112).** With the chunking above, the two-stage
+  LTX recipe survives at 1344×896×313, but from 257 frames (38,808 refine tokens) on, the Vulkan output is haze and the
+  audio decorrelates; 241 frames (36,456) is clean. HIP with the same chunks forced on is bit-identical to HIP
+  unsplit, and the Vulkan draft stage alone is clean at 257 frames, so the fault is in Vulkan's refine pass at that
+  size (or the latent upscaler), not in the chunking arithmetic. Use HIP for long clips until #112 is fixed.
 - **HIP graphs overflow a JVM thread's stack.** ggml's HIP backend captures the graph as a HIP graph, and ROCm's
   `hip::Graph::ScheduleOneNode` recurses once per node. On a JVM thread (smaller stack than a CLI's 8 MB main
   thread) LTX segfaults in libamdhip64 during text encoding. `GGML_CUDA_DISABLE_GRAPHS=1` fixes it, and Fornax sets it by default (`-Dfornax.gpu.graphs=true` turns graphs back on).
