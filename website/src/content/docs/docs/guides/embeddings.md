@@ -57,8 +57,8 @@ try (var emb = new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)) {
 - Text isn't parsed for special tokens: a document that contains `<|im_end|>` embeds those characters as text.
 
 `embeddingSize()` is the vector length. `embeddings(texts, options)` returns the vectors with the tokens the texts
-took (the prefix and the tokenizer's end-of-text included), for usage accounting. `embedAsync(texts, options)` runs `embed` on the model's own thread, and
-`cancel()` stops a long `embed` between batches with a `CancellationException`.
+took (the prefix and the tokenizer's end-of-text included), for usage accounting. `embedAsync(texts, options)` runs
+`embed` on the model's own thread, and `cancel()` stops a long `embed` between batches with a `CancellationException`.
 
 ## Rerank
 
