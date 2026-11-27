@@ -55,6 +55,7 @@ final class PooledEngines implements Engines {
     private final int contextSize;
     private final PullListener pulls;
     private final Consumer<String> log;
+    private final Map<String, Found> found = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** A model name, found: its key in the pool, its files by role, and its catalogue set (null for a file or reference). */
     record Found(String key, String id, Use use, Map<String, Path> files, ModelSet set) {
@@ -238,6 +239,14 @@ final class PooledEngines implements Engines {
      * checked (no network, nothing loaded), so a stream can still get an error status.
      */
     Found find(String name, Use use, boolean fetch) {
+        Found known = found.get(key(use, name));   // a name found once needs no hub (nor its progress line) again
+        if (known != null) return known;
+        Found f = locate(name, use, fetch);
+        if (fetch) found.put(key(use, name), f);
+        return f;
+    }
+
+    private Found locate(String name, Use use, boolean fetch) {
         String transcriptionRole = "model";
         if (ModelReferences.isPath(name)) {
             if (use == Use.IMAGE || use == Use.SPEECH)
