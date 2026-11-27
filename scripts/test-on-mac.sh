@@ -10,6 +10,7 @@
 # ~/.local/bin. The integration tests skip any model that isn't in its Hugging Face cache; scripts/test-models.sh, run
 # on the Mac, fetches the ones they use, all small enough for a 32 GB Mac.
 #
+# Env: FORNAX_MAC_LOCK_WAIT, how long to wait for the Mac's heavy-lock (seconds; default forever).
 # Env: FORNAX_MAC_DIR, the checkout's folder on the Mac (default ~/fornax-test/src). The engine sources and the native build
 # stay there between runs, so only the first run builds everything.
 set -euo pipefail
@@ -33,7 +34,10 @@ echo "==> copying the working tree to $HOST:$DIR"
 # exit status is kept, so the reports come back even when a test fails.
 status=0
 args=$( (( $# )) && printf '%q ' "$@" || true )  # quoted for the remote shell; none at all when there are none
-ssh "$HOST" "cd $RDIR && bash -s -- $args" <<'REMOTE' || status=$?
+# A shared Mac runs one heavy job at a time: where heavy-lock is installed, the build and the tests queue behind it
+# (FORNAX_MAC_LOCK_WAIT seconds at most, else forever; heavy-lock exits 125 when the wait runs out).
+lock='if [ -x "$HOME/.local/bin/heavy-lock" ]; then exec env HEAVY_LOCK_WAIT="${1:-}" "$HOME/.local/bin/heavy-lock" fornax-mac-test -- "${@:2}"; else exec "${@:2}"; fi'
+ssh "$HOST" "cd $RDIR && bash -c $(printf '%q' "$lock") locked ${FORNAX_MAC_LOCK_WAIT:-''} bash -s -- $args" <<'REMOTE' || status=$?
 set -uo pipefail
 [ -s "$HOME/.sdkman/bin/sdkman-init.sh" ] && { set +u; source "$HOME/.sdkman/bin/sdkman-init.sh"; set -u; }
 export PATH="$HOME/.local/bin:$PATH"
