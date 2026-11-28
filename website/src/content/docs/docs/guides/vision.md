@@ -66,7 +66,7 @@ which `downloadCommand()` also gives you.
 | `MEDGEMMA_4B` | MedGemma 1.5 4B: medical images and text. Using it to diagnose or treat patients may need a health regulator's authorization | Health AI Developer Foundations terms |
 | `OCRIA_1` | OCRia-1 4B: a document page to markdown, tables as HTML; [run it with thinking off](#ocria-1) | OCRia-1 license, not open source: [read it first](#ocria-1) |
 | `QWEN3_4B` | Qwen3 4B Instruct: text only | Apache-2.0 |
-| `QWEN3_EMBEDDING_0_6B`, `EMBEDDINGGEMMA_2`, `QWEN3_RERANKER_0_6B` | embeddings and reranking, loaded with `Mode.EMBED` or `Mode.RERANK`; see [Embeddings and reranking](/docs/guides/embeddings/) | Apache-2.0 |
+| `QWEN3_EMBEDDING_0_6B`, `EMBEDDINGGEMMA_2`, `QWEN3_RERANKER_0_6B`, `QWEN3_RERANKER_4B` | embeddings and reranking, loaded with `Mode.EMBED` or `Mode.RERANK`; see [Embeddings and reranking](/docs/guides/embeddings/) | Apache-2.0 |
 
 Any other vision GGUF llama.cpp runs works too:
 

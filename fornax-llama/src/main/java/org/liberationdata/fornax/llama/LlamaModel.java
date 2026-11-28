@@ -285,7 +285,14 @@ public final class LlamaModel implements AutoCloseable {
          */
         EMBEDDINGGEMMA_2("unsloth/embeddinggemma-2-GGUF", "embeddinggemma-2-Q8_0.gguf", null),
         /** Qwen3-Reranker 0.6B (Q8_0): scores how well a document answers a query; load it in {@link Mode#RERANK}. Apache-2.0. */
-        QWEN3_RERANKER_0_6B("ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF", "qwen3-reranker-0.6b-q8_0.gguf", null);
+        QWEN3_RERANKER_0_6B("ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF", "qwen3-reranker-0.6b-q8_0.gguf", null),
+        /**
+         * Qwen3-Reranker 4B (Q8_0): the 0.6B's bigger sibling, more accurate on Qwen's benchmarks (MTEB-R 69.8 against
+         * 65.8) and about five times slower; load it in {@link Mode#RERANK}. About 5.3 GB of GPU memory at the default
+         * context, for passages of a few hundred tokens (the 0.6B: 1.3 GB). A community conversion with llama.cpp's own
+         * script (Voodisss), as Qwen publishes no GGUF of it. Apache-2.0.
+         */
+        QWEN3_RERANKER_4B("Voodisss/Qwen3-Reranker-4B-GGUF-llama_cpp", "Qwen3-Reranker-4B.Q8_0.gguf", null);
 
         public final String repo, modelFile, mmprojFile;
 

@@ -257,3 +257,7 @@ surprises you.
   `{query}` and `{document}`; the shim fills it in and tokenizes it whole with special tokens parsed, as llama-server's
   `format_prompt_rerank` does. The score is the first class output, which for Qwen3 is the softmax probability of "yes".
   Embedding inputs, unlike llama-embedding's, aren't parsed for special tokens (they're the caller's data).
+- **Qwen3-Reranker 4B is a community GGUF.** Qwen publishes none, and many community conversions lack the classifier
+  head, so they score everything near 0 (llama.cpp #16407). `Voodisss/Qwen3-Reranker-4B-GGUF-llama_cpp` has it
+  (`qwen3.pooling_type = 4`, `cls.output.weight`, labels `yes`/`no`) and the 0.6B's `rerank` template, and its
+  scores match `llama-embedding`'s on the same file (`Reranker4BIT`).
