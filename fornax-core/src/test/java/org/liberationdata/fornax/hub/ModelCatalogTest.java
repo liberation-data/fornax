@@ -23,7 +23,7 @@ class ModelCatalogTest {
     @Test void fornaxStudiosIdsAndTheClisNamesBothFindASet() {
         for (String studio : List.of("image:flux2-klein", "image:qwen-image-2512", "song:acestep-turbo", "song:acestep-turbo-lm4b",
                 "song:acestep-xl-turbo", "song:yue2-3b", "video:ltx-2.5-distilled", "video:ltx-2.5-dev", "vision:qwen3-vl-4b",
-                "vision:paddleocr-vl", "vision:medgemma-4b"))
+                "vision:paddleocr-vl", "vision:medgemma-4b", "vision:ocria-1"))
             assertTrue(ModelCatalog.byName(studio).isPresent(), studio);
         for (String cli : List.of("qwen3-0.6b", "qwen3-4b", "ace-step", "ace-step-xl", "yue2", "flux2-klein", "qwen-image", "qwen-image-edit"))
             assertTrue(ModelCatalog.byName(cli).isPresent(), cli);
