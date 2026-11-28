@@ -106,8 +106,9 @@ public final class LlamaModel implements AutoCloseable {
         static final MethodHandle CREATE_POOLED = LIB.function("fornax_llama_create_pooled",
                 FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_INT));
         static final MethodHandle N_EMBD = LIB.function("fornax_llama_n_embd", FunctionDescriptor.of(JAVA_INT, ADDRESS));
+        static final MethodHandle N_CTX_SLOT = LIB.function("fornax_llama_n_ctx_slot", FunctionDescriptor.of(JAVA_INT, ADDRESS));
         static final MethodHandle EMBED = LIB.function("fornax_llama_embed", FunctionDescriptor.of(JAVA_INT,
-                ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+                ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
         static final MethodHandle RERANK = LIB.function("fornax_llama_rerank", FunctionDescriptor.of(JAVA_INT,
                 ADDRESS, ADDRESS, ADDRESS, JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         static final MethodHandle CREATE_BATCHED = LIB.function("fornax_llama_create_batched",
@@ -319,6 +320,12 @@ public final class LlamaModel implements AutoCloseable {
     }
 
     /**
+     * Embeddings with what they cost: one vector per text, in order, and the tokens the texts took (with the prefix and
+     * the vocab's BOS/EOS), as an OpenAI usage report counts them.
+     */
+    public record Embeddings(float[][] vectors, int tokens) {}
+
+    /**
      * How {@link #embed(List, EmbedOptions)} embeds. prefix (null for none) goes before each text, verbatim; normalize
      * scales each embedding to length 1, so that a dot product is the cosine similarity.
      */
@@ -363,15 +370,28 @@ public final class LlamaModel implements AutoCloseable {
     /**
      * A model loaded for chat, embeddings or reranking (see {@link Mode}).
      * @param gpuLayers -1 offloads every layer. @param contextSize 0 uses the model's trained context. In EMBED and
-     *        RERANK it is also the batch: the most tokens one text (or query and document) can have, and how many
-     *        go through the model at once.
+     *        RERANK it is also the largest batch: the most tokens one text (or query and document) can have, and the
+     *        most that go through the model at once (the context starts smaller and grows; see {@link #defaultContext}).
      */
     public LlamaModel(String ggufPath, int gpuLayers, int contextSize, Mode mode) {
         this(ggufPath, null, mode, gpuLayers, contextSize, defaultWorker(ggufPath), true);
     }
 
-    /** A model loaded for chat, embeddings or reranking, with 8192 tokens of context. */
-    public LlamaModel(String ggufPath, Mode mode) { this(ggufPath, -1, 8192, mode); }
+    /**
+     * A model loaded for chat, embeddings or reranking, with {@link #defaultContext(Mode) the default context}: 8192
+     * tokens for chat, 2048 for embeddings and reranking.
+     */
+    public LlamaModel(String ggufPath, Mode mode) { this(ggufPath, -1, defaultContext(mode), mode); }
+
+    /**
+     * The context a constructor without a contextSize gives a mode: 8192 tokens for chat; 2048 for EMBED and RERANK,
+     * as llama.cpp's llama-embedding does. In those modes the context is also the batch the model works through at once,
+     * and its compute buffer grows with it: a 0.6B reranker takes about 2.7 GB at 2048 and 10.8 GB at 8192 (on Metal,
+     * #104). So there the context starts at 512 tokens and grows, when a call needs it, to fit the call's longest text
+     * and as much of the whole call as contextSize holds; contextSize is how large it can get. Growing rebuilds the
+     * context (not the weights), well under 0.1 s, and it never shrinks. Pass a contextSize for longer texts.
+     */
+    public static int defaultContext(Mode mode) { return mode == Mode.CHAT ? 8192 : 2048; }
 
     /**
      * A chat model that runs up to {@code slots} requests at once, decoding them together (continuous batching, as
@@ -560,11 +580,12 @@ public final class LlamaModel implements AutoCloseable {
     }
 
     /**
-     * {@link #isolated(Weights)} loaded for chat, embeddings or reranking, with 8192 tokens of context; for example
+     * {@link #isolated(Weights)} loaded for chat, embeddings or reranking, with {@link #defaultContext(Mode) the default
+     * context}; for example
      * {@code LlamaModel.isolated(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)}. The mmproj is loaded only for CHAT.
      */
     public static LlamaModel isolated(Weights w, Mode mode) {
-        return new LlamaModel(w.model(), mode == Mode.CHAT ? w.mmproj() : null, mode, -1, 8192, workerFor(w.model()), true);
+        return new LlamaModel(w.model(), mode == Mode.CHAT ? w.mmproj() : null, mode, -1, defaultContext(mode), workerFor(w.model()), true);
     }
 
     /**
@@ -611,10 +632,10 @@ public final class LlamaModel implements AutoCloseable {
     public LlamaModel(Weights w, int gpuLayers, int contextSize) { this(w.model(), w.mmproj(), gpuLayers, contextSize); }
 
     /**
-     * Weights Fornax knows by name, loaded for chat, embeddings or reranking, with 8192 tokens of context; for example
-     * {@code new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)}.
+     * Weights Fornax knows by name, loaded for chat, embeddings or reranking, with {@link #defaultContext(Mode) the
+     * default context}; for example {@code new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)}.
      */
-    public LlamaModel(Weights w, Mode mode) { this(w, -1, 8192, mode); }
+    public LlamaModel(Weights w, Mode mode) { this(w, -1, defaultContext(mode), mode); }
 
     /**
      * Weights Fornax knows by name, loaded for chat, embeddings or reranking. The mmproj (if the weights have one) is
@@ -718,7 +739,7 @@ public final class LlamaModel implements AutoCloseable {
 
     /** {@link #embed(List, EmbedOptions)}, on this model's thread. */
     public CompletableFuture<float[][]> embedAsync(List<String> texts, EmbedOptions o) {
-        return thread.submit(c -> embedOn(c, texts, o));
+        return thread.submit(c -> embedOn(c, texts, o).vectors());
     }
 
     /** {@link #rerank(String, List)}, on this model's thread. */
@@ -780,6 +801,8 @@ public final class LlamaModel implements AutoCloseable {
 
     String chatJsonOn(Call call, String requestJson, List<Image> images, Consumer<String> onContent) {
         requireMode(Mode.CHAT, "chat");
+        // before the engine: a schema past what its grammar takes would cost minutes there, or crash it (Schemas)
+        Schemas.requireBuildableJson(requestJson, "the request");
         if (remote != null)
             return LlamaService.decodeString(remote(call, "chatJson", LlamaService.chatJsonArgs(requestJson, images, onContent != null), onContent));
         if (batcher != null) {
@@ -946,6 +969,17 @@ public final class LlamaModel implements AutoCloseable {
     /** {@link #embed(List, EmbedOptions)} with the defaults: no prefix, normalised. */
     public float[][] embed(List<String> texts) { return embed(texts, EmbedOptions.DEFAULT); }
 
+    /**
+     * The context's size now, in tokens: in EMBED and RERANK it starts small and grows to fit what it's given (up to
+     * the contextSize it was loaded with). In process only; for tests.
+     */
+    int contextNow() {
+        if (remote != null) throw new UnsupportedOperationException("contextNow is in process only");
+        return thread.run(c -> {
+            try { return (int) N.N_CTX_SLOT.invokeExact(handle); } catch (Throwable t) { throw new RuntimeException(t); }
+        });
+    }
+
     /** One text's embedding, normalised. */
     public float[] embed(String text) { return embed(List.of(text))[0]; }
 
@@ -955,24 +989,30 @@ public final class LlamaModel implements AutoCloseable {
      * llama-embedding runs them. Text isn't parsed for special tokens. A text longer than the context fails
      * (split it first). {@link #cancel()} stops it between batches, with a {@link CancellationException}.
      */
-    public float[][] embed(List<String> texts, EmbedOptions o) {
+    public float[][] embed(List<String> texts, EmbedOptions o) { return embeddings(texts, o).vectors(); }
+
+    /** {@link #embed(List, EmbedOptions)}, with the tokens the texts took. */
+    public Embeddings embeddings(List<String> texts, EmbedOptions o) {
         return thread.run(c -> embedOn(c, texts, o));
     }
 
-    float[][] embedOn(Call call, List<String> texts, EmbedOptions o) {
+    Embeddings embedOn(Call call, List<String> texts, EmbedOptions o) {
         requireMode(Mode.EMBED, "embed");
         int n = texts.size(), dim = embeddingSize;
-        if (n == 0) return new float[0][];
+        if (n == 0) return new Embeddings(new float[0][], 0);
         if (remote != null) return LlamaService.decodeEmbeddings(remote(call, "embed", LlamaService.embedArgs(texts, o), null));
         try (Arena a = Arena.ofConfined()) {
             MemorySegment in = strings(a, texts, o.prefix());
             MemorySegment out = a.allocate(JAVA_FLOAT, (long) n * dim);
+            MemorySegment counts = a.allocate(JAVA_INT, n);
             MemorySegment cb = callback(a, call, null);
-            int rc = (int) N.EMBED.invokeExact(handle, in, n, o.normalize() ? 1 : 0, out, cb, MemorySegment.NULL);
+            int rc = (int) N.EMBED.invokeExact(handle, in, n, o.normalize() ? 1 : 0, out, counts, cb, MemorySegment.NULL);
             pooledResult(rc, call, "embed");
             float[][] v = new float[n][];
             for (int i = 0; i < n; i++) v[i] = out.asSlice((long) i * dim * Float.BYTES, (long) dim * Float.BYTES).toArray(JAVA_FLOAT);
-            return v;
+            int tokens = 0;
+            for (int t : counts.toArray(JAVA_INT)) tokens += t;
+            return new Embeddings(v, tokens);
         } catch (RuntimeException | Error e) { throw e; } catch (Throwable t) { throw new RuntimeException(t); }
         finally { SINK.remove(); }
     }

@@ -356,7 +356,8 @@ class FornaxServerTest {
         assertEquals("embedding", get(j, "data", 1, "object"));
         assertEquals(1L, get(j, "data", 1, "index"));
         assertEquals(List.of(0.6, 0.8, 0.0, 1.0), get(j, "data", 1, "embedding"));
-        assertNotNull(get(j, "usage", "prompt_tokens"));
+        assertEquals(4L, get(j, "usage", "prompt_tokens"));   // the stub's: each text's length plus one
+        assertEquals(4L, get(j, "usage", "total_tokens"));
 
         // base64: little-endian float32s, which the openai clients ask for by default
         Object b = json(post("/v1/embeddings", "{\"model\": \"e\", \"input\": \"a\", \"encoding_format\": \"base64\"}"));
@@ -425,7 +426,7 @@ class FornaxServerTest {
                     case "json" -> assertEquals("Hello there.", get(json(r), "text"));
                     case "text" -> assertEquals("Hello there.\n", r.body());
                     case "verbose_json" -> {
-                        assertEquals("en", get(json(r), "language"));
+                        assertEquals("english", get(json(r), "language"));
                         assertEquals("Hello", get(json(r), "words", 0, "word"));
                         assertEquals(0.4, get(json(r), "words", 1, "start"));
                     }
@@ -752,5 +753,21 @@ class FornaxServerTest {
         assertThrows(IllegalArgumentException.class, () -> b.maxBufferedBytes(0));
         assertThrows(IllegalArgumentException.class, () -> b.idleTimeout(java.time.Duration.ZERO));
         b.idleTimeout(null).contextSize(0).budgetBytes(1).maxBodyBytes(1);   // never unload; the model's own context
+    }
+
+    @Test void verboseJsonNamesTheLanguageAsOpenAiDoes() {
+        assertEquals("english", FornaxServer.languageName("en"));
+        assertEquals("german", FornaxServer.languageName("de"));
+        assertEquals("chinese", FornaxServer.languageName("zh"));
+        assertEquals("cantonese", FornaxServer.languageName("yue"));
+        assertEquals("hawaiian", FornaxServer.languageName("haw"));
+        // where Java's name isn't whisper's
+        assertEquals("javanese", FornaxServer.languageName("jw"));   // whisper's own code: Java doesn't know it
+        assertEquals("nynorsk", FornaxServer.languageName("nn"));
+        assertEquals("maori", FornaxServer.languageName("mi"));
+        assertEquals("bengali", FornaxServer.languageName("bn"));
+        assertEquals("myanmar", FornaxServer.languageName("my"));
+        assertEquals("xx", FornaxServer.languageName("xx"));   // unknown: the code itself
+        assertNull(FornaxServer.languageName(null));
     }
 }

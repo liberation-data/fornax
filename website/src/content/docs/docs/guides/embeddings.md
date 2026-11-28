@@ -50,15 +50,18 @@ try (var emb = new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)) {
 - **Batched.** `embed` takes a list, and runs as many texts through the model at once as fit in the context (up to
   256), each as its own sequence. A text embedded with others comes out very slightly different from one embedded
   alone (cosine 0.9999), in `llama-embedding` too: the batch changes the shapes of the GPU kernels.
-- **One text fits in the context.** In EMBED and RERANK mode the context size is also the batch, so the default
-  8192 tokens is the longest text (or query plus document) one call takes. A longer one fails with an error that
-  says so; split long documents into passages first. `new LlamaModel(w, gpuLayers, contextSize, Mode.EMBED)` sets it.
+- **One text fits in the context.** The default context is 2048 tokens, and a longer text fails with an error that
+  says so; see [Chunk size](#chunk-size).
+- **The context grows to fit.** It starts at 512 tokens, and grows when a call needs more (its longest text, or many
+  texts at once) up to the context size, so a model that embeds short queries doesn't hold the GPU memory of long
+  passages. Growing takes well under a tenth of a second and doesn't change the results.
 - **The pooling is the model's.** The GGUF says how to pool the model's outputs into one vector (Qwen3-Embedding
   takes the last token, the end-of-text the tokenizer appends; others take the mean or the first token).
 - Text isn't parsed for special tokens: a document that contains `<|im_end|>` embeds those characters as text.
 
-`embeddingSize()` is the vector length. `embedAsync(texts, options)` runs `embed` on the model's own thread, and
-`cancel()` stops a long `embed` between batches with a `CancellationException`.
+`embeddingSize()` is the vector length. `embeddings(texts, options)` returns the vectors with the tokens the texts
+took (the prefix and the tokenizer's end-of-text included), for usage accounting. `embedAsync(texts, options)` runs
+`embed` on the model's own thread, and `cancel()` stops a long `embed` between batches with a `CancellationException`.
 
 ## Rerank
 
@@ -85,6 +88,29 @@ Qwen3-Reranker a score is the probability, 0 to 1, that the document answers the
 hundredths depending on what else is in the batch). As in `llama-server`, the filled-in prompt is parsed for special
 tokens, so keep chat-template markers such as `<|im_end|>` out of queries and documents. `rerankAsync(query,
 documents)` runs it on the model's thread, and `cancel()` stops it between batches.
+
+## Chunk size
+
+In EMBED and RERANK mode the context caps the longest text a call takes (for `rerank`, the query and one document
+together). It doesn't change the results: a 300-token passage gives the same vector at a context of 2048 as at 8192.
+What it does change is GPU memory, because llama.cpp works through the whole context at once in these modes and
+reserves memory for all of it: a 0.6B reranker takes about 2.7 GB at 2048 tokens and 10.8 GB at 8192. The context
+grows only as far as the calls need, so the context size is the most it can take.
+
+So split documents into passages before you embed them, and size the context to your longest passage:
+
+- **2048 tokens, the default, is about 1,500 English words or 8,000 characters.** That's far longer than a
+  typical retrieval passage, so most applications never change it.
+- **Passages of a few hundred tokens usually retrieve better than whole documents.** One vector stands for the whole
+  text, so a long text that covers several topics matches each of them weakly. The `search` example below splits
+  files into passages of about 800 characters (around 200 tokens), on paragraph boundaries. Overlapping passages a
+  little keeps a sentence that falls across a boundary findable from either side.
+- **For longer passages, set the context yourself:**
+  `new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, -1, 8192, Mode.EMBED)` (`-1` puts every layer on the GPU).
+  Qwen3-Embedding and Qwen3-Reranker take up to 32k tokens. Budget the memory: several pooled models
+  with large contexts, alongside a chat model, can fill a 32 GB machine.
+- **Count tokens, not characters, when it's close.** English runs about four characters to a token; code, non-Latin
+  scripts and numbers run fewer.
 
 ## Search a folder
 

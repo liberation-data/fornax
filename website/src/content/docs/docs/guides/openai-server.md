@@ -63,7 +63,8 @@ tool-call format, with llama-server's templates and parsers. A request takes:
 - `messages`, with `system`, `user`, `assistant` and `tool` roles, as OpenAI sends them
 - `tools` and `tool_choice` (`auto`, `none`, `required`, or a function by name); the reply's `tool_calls` and
   `finish_reason: "tool_calls"` come back as OpenAI's, and the tool results go back as `tool` messages
-- `response_format`: `json_schema` (the reply is constrained to the schema) or `json_object`
+- `response_format`: `json_schema` (the reply is constrained to the schema) or `json_object`. An object in a schema,
+  here or in a tool's parameters, can have at most 256 optional properties (a 400 says so), as llama.cpp's grammar can't take more
 - `temperature`, `top_p`, `seed`, `max_tokens` (or `max_completion_tokens`), and `top_k` and `min_p` beyond OpenAI's
 - `stop`: a string or a list; the reply ends before the first one, and the model stops there
 - `stream: true`: server-sent events in OpenAI's chunk format, ending with `data: [DONE]`;
@@ -91,7 +92,7 @@ non-streaming request runs to the end.
 started with, or any with `--allow-downloads`). `dimensions` keeps
 the first n and normalises them again, which Qwen3-Embedding is trained for. `encoding_format: "base64"`, which the
 OpenAI clients ask for by default, is supported. Vectors are normalised, so a dot product is the cosine similarity.
-`usage` reports 0 tokens.
+`usage` counts the tokens the texts took, as OpenAI's does (`prompt_tokens` and `total_tokens`, the same).
 
 ### Images
 
@@ -117,7 +118,8 @@ The reply is a WAV, so ask for `response_format: "wav"` (an OpenAI client asking
 `/v1/audio/transcriptions` takes a WAV `file` (multipart, as the clients send it; convert other formats first,
 `ffmpeg -i in.mp3 in.wav`) at 8 to 384 kHz, with `whisper-base.en` unless `model` names another (`whisper-large-v3-turbo` for 99
 languages), and `language` and `prompt`. `response_format` is `json` (the default), `text`, `srt`, `vtt` or
-`verbose_json`, which has the segments and each word's start and end.
+`verbose_json`, which has the segments, each word's start and end, and the language spoken by its English name
+(`english`), as OpenAI gives it.
 
 ## Models
 

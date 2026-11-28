@@ -43,7 +43,7 @@ test('a public repository with a release offers each platform its installer', as
     const studio = await studioRelease();
     assert.equal(studio?.version, '0.3.1');
     assert.equal(studio?.mac.appleSilicon?.url, 'https://example.test/fornax-studio-mac-arm64.dmg');
-    assert.equal(studio?.mac.intel?.url, 'https://example.test/fornax-studio-mac-x64.dmg');
+    assert.equal('intel' in (studio?.mac ?? {}), false, 'an x64 dmg is not offered: no Intel Macs (#123)');
     assert.equal(studio?.mac.appleSilicon?.size, '123 MB');
     assert.deepEqual(studio?.linux.map((d) => d.label), ['Debian / Ubuntu', 'Fedora / RHEL']);
 });
@@ -80,6 +80,15 @@ test('a release without an installer for any platform offers nothing', async () 
     assert.equal(await studioRelease(), undefined);
 });
 
+test('a release whose only installer is an Intel dmg offers nothing: no Intel Macs (#123)', async () => {
+    github({
+        'repos/liberation-data/fornax-studio': PUBLIC,
+        'repos/liberation-data/fornax-studio/releases/latest': [200, { tag_name: 'v0.3.1', html_url: 'https://example.test/', assets: [asset('fornax-studio-mac-x64.dmg')] }],
+    });
+    const { studioRelease } = await load();
+    assert.equal(await studioRelease(), undefined);
+});
+
 test('a release GitHub answers without a tag or a page offers nothing', async () => {
     for (const release of [{ html_url: 'https://example.test/' }, { tag_name: 'v0.3.1' }]) {
         github({
@@ -99,7 +108,7 @@ test('a release with only a Linux installer offers no Mac download', async () =>
     const { studioRelease } = await load();
     const studio = await studioRelease();
     assert.equal(studio?.version, '0.3.1');
-    assert.deepEqual(studio?.mac, { appleSilicon: undefined, intel: undefined });
+    assert.deepEqual(studio?.mac, { appleSilicon: undefined });
     assert.deepEqual(studio?.linux.map((d) => d.label), ['Fedora / RHEL']);
 });
 

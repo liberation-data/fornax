@@ -5,16 +5,16 @@ description: Fornax step by step for each platform - Linux with Vulkan or ROCm, 
 
 import { Steps } from '@astrojs/starlight/components';
 
-Find your machine below and follow its steps. On Linux with any GPU, and on any Mac, you add Fornax from Maven Central
+Find your machine below and follow its steps. On Linux with any GPU, and on an Apple silicon Mac, you add Fornax from Maven Central
 and you're done. ROCm and CUDA mean building the engines once for your GPU.
 
 | Platform | GPU | Natives | State |
 |---|---|---|---|
 | [Linux, Vulkan](#linux-amd-intel-or-nvidia-with-vulkan) | AMD, Intel, NVIDIA | published | tested nightly |
 | [Linux, ROCm](#linux-amd-with-rocm) | AMD | build them yourself | tested nightly |
-| [macOS, Metal](#macos-with-metal) | Apple silicon, Intel Macs | published | tested on Apple silicon |
+| [macOS, Metal](#macos-with-metal) | Apple silicon | published | tested |
 | [NVIDIA, CUDA](#nvidia-with-cuda) | NVIDIA | build them yourself | not tested yet |
-| [Windows](#windows) | | | planned |
+| [Windows](#windows) | | build them yourself (experimental) | not tested on a GPU yet |
 
 Just want to try the models, with no code? [Fornax Studio](/docs/getting-started/#fornax-studio) installs on Linux
 and macOS.
@@ -104,18 +104,18 @@ passes the test suite on a Radeon 8060S (one rerank score drifts, [#80](https://
 
 ## macOS, with Metal
 
-macOS 13.3 or newer, on Apple silicon or Intel. Nothing to install: Metal is part of macOS. Fornax passes its test
+macOS 13.3 or newer, on Apple silicon (Intel Macs aren't supported). Nothing to install: Metal is part of macOS. Fornax passes its test
 suite on an Apple M2 Max.
 
 <Steps>
 
-1. **Add Fornax to your build**, with the natives jar for your Mac:
+1. **Add Fornax to your build**, with the macOS natives jar:
 
    ```kotlin
    dependencies {
        implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
        implementation("org.fornax4j:fornax-llama")
-       runtimeOnly("org.fornax4j:fornax-natives-macos-aarch64-metal")   // macos-x86_64-metal on an Intel Mac
+       runtimeOnly("org.fornax4j:fornax-natives-macos-aarch64-metal")
    }
    ```
 
@@ -144,5 +144,15 @@ A CUDA build is possible but hasn't been tested yet; reports are welcome.
 
 ## Windows
 
-Fornax doesn't run on Windows yet. The Java side is ready; the native build and a Windows natives jar are planned in
-[#83](https://github.com/liberation-data/fornax/issues/83), starting with Vulkan.
+There's no Windows natives jar yet, but `native/build.sh` builds the engines as DLLs in [MSYS2](https://www.msys2.org/)'s
+UCRT64 shell (experimental: CI builds the CPU and Vulkan backends, and loads the CPU build from Java). Load them with
+`-Dfornax.library.path=build/native/windows-x86_64-<backend>`. Published natives follow in
+[#83](https://github.com/liberation-data/fornax/issues/83).
+
+Set `git config --global core.autocrlf false` before cloning, in Git for Windows and in MSYS2's git (which clones
+the engines): with Windows line endings, Fornax's patches to the engines don't apply. Then, in the UCRT64 shell:
+
+```sh
+pacman -S git mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,vulkan-devel,shaderc,spirv-headers}
+native/build.sh vulkan
+```

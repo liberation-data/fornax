@@ -75,7 +75,6 @@ jobs:
           - { platform: linux-x86_64-vulkan, runner: ubuntu-24.04, backend: vulkan, dir: linux-x86_64-vulkan }
           # native/build.sh names the directory by `uname -m`, which is arm64 on macOS
           - { platform: macos-aarch64-metal, runner: macos-15, backend: metal, dir: macos-arm64-metal }
-          - { platform: macos-x86_64-metal, runner: macos-15-intel, backend: metal, dir: macos-x86_64-metal }
     env:
       # Libraries for anyone's machine, not the runner's: no -march=native (on x86, ggml's AVX2/FMA baseline instead).
       CMAKE_EXTRA: -DGGML_NATIVE=OFF
@@ -244,10 +243,6 @@ jobs:
         with:
           name: natives-macos-aarch64-metal
           path: build/native/macos-arm64-metal
-      - uses: actions/download-artifact@v8
-        with:
-          name: natives-macos-x86_64-metal
-          path: build/native/macos-x86_64-metal
 
       # The Java modules' unit tests; the engine tests skip themselves without models.
       - name: Build and test
@@ -274,7 +269,7 @@ jobs:
               || { echo "::error::jbang-catalog.json's aliases don't all run org.fornax4j:fornax-cli:$VERSION:" $refs; exit 1; }
           fi
           for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs fornax-server fornax-cli \
-                   fornax-natives-linux-x86_64-vulkan fornax-natives-macos-aarch64-metal fornax-natives-macos-x86_64-metal; do
+                   fornax-natives-linux-x86_64-vulkan fornax-natives-macos-aarch64-metal; do
             for f in "$a-$VERSION.pom" "$a-$VERSION.jar" "$a-$VERSION-sources.jar" "$a-$VERSION-javadoc.jar"; do
               [ -f "$repo/$a/$VERSION/$f" ] || { echo "::error::$f was not built"; exit 1; }
               [ -f "$repo/$a/$VERSION/$f.asc" ] || { echo "::error::$f was not signed"; exit 1; }
@@ -352,7 +347,7 @@ jobs:
           base=https://repo1.maven.org/maven2/org/fornax4j
           files=()
           for a in fornax-core fornax-llama fornax-tts fornax-sd fornax-acestep fornax-yue2 fornax-whisper fornax-demucs fornax-server fornax-cli \
-                   fornax-natives-linux-x86_64-vulkan fornax-natives-macos-aarch64-metal fornax-natives-macos-x86_64-metal; do
+                   fornax-natives-linux-x86_64-vulkan fornax-natives-macos-aarch64-metal; do
             files+=("$base/$a/$VERSION/$a-$VERSION.pom" "$base/$a/$VERSION/$a-$VERSION.jar")
           done
           files+=("$base/fornax-bom/$VERSION/fornax-bom-$VERSION.pom" "$base/fornax-natives/$VERSION/fornax-natives-$VERSION.pom")

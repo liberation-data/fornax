@@ -57,11 +57,46 @@ ComfyUI never hits this, because PyTorch on ROCm launches many small kernels ins
 - Decode in tiles: `vae_tiling.enabled` in a `fornax-sd` request.
 - For ACE-Step, see [below](#ace-step-on-a-power-limited-gpu).
 
-**When that isn't enough:** a 13 s LTX clip (313 frames) refined at 1344×896 still lost the device on Vulkan, on its
-first refine step. One attention dispatch over about 47,000 tokens outlasts the timeout, and no submission size can
-split a single node. Use the HIP backend for long clips: ROCm work goes through the kernel driver's user queues, which
-have no such timeout. HIP was also about 2.7× faster per LTX step than Vulkan on the 8060S (44 s against 119 s at
-672×448×313, after a slower first step).
+**When that isn't enough:** a long LTX video can still lose the device; see the next section.
+
+## Device lost or ring timeout on long video
+
+**What you see:** a long LTX clip on Vulkan (a 313-frame clip refined at 1344×896, for example) loses the device on
+its first refine step, and `journalctl -k` shows `amdgpu ... ring comp_... timeout` followed by a GPU reset. A second
+reset in a row can take the display down with it.
+
+**Why:** at that size the refine works on 47,040 video tokens, and some single GPU dispatches run for seconds: the
+video self-attention (one flash-attention node, about 3.6e13 FLOP, 4.5 to 7.6 s on the Radeon 8060S) and each of
+LTX's int8 feed-forward matmuls (about 2.7 s). amdgpu kills any job that runs longer than its `lockup_timeout` (2 s for
+compute on this kernel). Fewer nodes per submission can't help: one node is already the smallest unit.
+
+**The fix:** Fornax's stable-diffusion.cpp carries a patch (`native/patches/stable-diffusion.cpp/0003`) that splits
+long work into chunks of rows, each its own node: attention by query rows, linear layers and feed-forwards by token
+rows. Rows are independent, so at the defaults the output is the same (test clips came out bit-identical with and
+without it; budgets far below the defaults aren't guaranteed to be). A
+last chunk under 64 rows is merged into the one before. The split is on by default only on Vulkan, the backend with
+the timeout. Two environment variables set the size of one chunk in FLOPs; a positive value also turns the split on
+for other backends, and `0` (or a negative or unparsable value) turns it off:
+
+- `SD_FA_CHUNK_FLOPS` for attention: the default, 1e12, is 0.12 to 0.21 s on the 8060S.
+- `SD_FF_CHUNK_FLOPS` for each matmul of a linear layer: the default, 4e11, is about 0.2 s for LTX's int8
+  feed-forward on the 8060S (0.27 s at worst).
+
+Both leave several times the margin to 2 s; lower them for a slower GPU. Keep `-Dfornax.vulkan.maxNodesPerSubmit` low
+too (1 or 2 for long video), since a submission of several chunks is still one job. HIP has no such timeout and is
+also faster (see [the video guide](/docs/guides/video/#long-clips)).
+
+**Fallback: raise the timeout.** amdgpu takes the timeout as a kernel parameter, in milliseconds, for the graphics,
+compute, SDMA and video queues in that order. On Fedora:
+
+```sh
+sudo grubby --update-kernel=ALL --args="amdgpu.lockup_timeout=10000,60000,10000,10000"
+```
+
+Reboot for it to take effect. This gives compute work 60 s. The cost: the watchdog is how the kernel recovers from a
+GPU that really has hung, so a hung job now freezes the GPU (and, on an APU like the 8060S, the display) for up to a
+minute before the reset, and a desktop on the same GPU can stall while a long dispatch runs. Remove it with
+`sudo grubby --update-kernel=ALL --remove-args="amdgpu.lockup_timeout"`.
 
 ## ACE-Step on a power-limited GPU
 

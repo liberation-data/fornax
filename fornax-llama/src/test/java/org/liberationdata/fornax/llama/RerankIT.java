@@ -15,6 +15,7 @@ import java.util.concurrent.CancellationException;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Runs Qwen3-Reranker 0.6B when it's in the Hugging Face cache and the native library is built; skipped otherwise. */
@@ -71,8 +72,16 @@ class RerankIT {
      */
     @Test
     void oneDocumentAtATimeScoresNearlyTheSame() {
+        // A decided document (p near 0 or 1) scores the same alone as in a batch; a sequence-handling bug would move
+        // it. A borderline one (doc 3, p about 0.5 to 0.6) sits where the sigmoid is steepest, and llama.cpp's own
+        // llama-embedding moves it by more than 0.05 between a batch and a single sequence on HIP (0.589 vs 0.525),
+        // and between backends (CPU 0.634): #80.
         List<Scored> all = model.rerank(QUERY, DOCS);
-        for (Scored s : all) assertEquals(s.score(), model.rerank(QUERY, List.of(DOCS.get(s.index()))).get(0).score(), 0.05);
+        for (Scored s : all) {
+            double alone = model.rerank(QUERY, List.of(DOCS.get(s.index()))).get(0).score();
+            boolean decided = s.score() < 0.1 || s.score() > 0.9;
+            assertEquals(s.score(), alone, decided ? 0.01 : 0.1, "doc " + s.index());
+        }
     }
 
     @Test
@@ -90,6 +99,26 @@ class RerankIT {
     void emptyQueryOrDocumentStillScores() {
         assertEquals(1, model.rerank(QUERY, List.of("")).size());
         assertEquals(1, model.rerank("", List.of(DOCS.get(0))).size());
+    }
+
+    /** The context starts small and grows to fit a long pair, and the scores don't depend on its size (#109). */
+    @Test
+    void theContextStartsSmallAndGrowsToFit() {
+        assumeFalse(model.isIsolated(), "contextNow is in process only");
+        try (var m = new LlamaModel(W, Mode.RERANK)) {
+            float[] before = scores(m.rerank(QUERY, DOCS));
+            assertEquals(512, m.contextNow());
+            String longDoc = "The kiln fires stoneware to cone 10 over a long, slow climb. ".repeat(40);   // ~650 tokens with the template
+            assertEquals(1, m.rerank(QUERY, List.of(longDoc)).size());
+            assertEquals(1024, m.contextNow(), "grown to the next size that fits");
+            assertArrayEquals(before, scores(m.rerank(QUERY, DOCS)), 1e-3f, "the same scores at either size");
+        }
+    }
+
+    static float[] scores(List<Scored> ranked) {
+        float[] s = new float[ranked.size()];
+        for (Scored r : ranked) s[r.index()] = r.score();
+        return s;
     }
 
     @Test

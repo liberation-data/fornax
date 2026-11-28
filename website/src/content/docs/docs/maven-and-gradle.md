@@ -37,7 +37,6 @@ The natives, one jar per platform and GPU backend, each with all seven engines' 
 |---|---|---|
 | `fornax-natives-linux-x86_64-vulkan` | Linux x86-64 (glibc 2.39 or newer: Ubuntu 24.04, Fedora 40 or newer) | Vulkan (AMD, Intel, NVIDIA) |
 | `fornax-natives-macos-aarch64-metal` | macOS 13.3 or newer on Apple silicon | Metal |
-| `fornax-natives-macos-x86_64-metal` | macOS 13.3 or newer on Intel | Metal |
 
 `fornax-natives` is a POM that depends on the one for the building machine (Maven only).
 
@@ -50,11 +49,8 @@ The Java packages keep their names: `org.liberationdata.fornax`, `org.liberation
 In `build.gradle.kts`, pick the natives jar for the machine that builds:
 
 ```kotlin
-val fornaxNatives = when {
-    !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
-    System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
-    else -> "macos-x86_64-metal"
-}
+val fornaxNatives =
+    if (System.getProperty("os.name").startsWith("Mac")) "macos-aarch64-metal" else "linux-x86_64-vulkan"
 
 dependencies {
     implementation(platform("org.fornax4j:fornax-bom:0.2.0"))  // versions for everything below
@@ -119,7 +115,7 @@ matches the jar's.
 
 Each natives jar is one platform and one GPU backend, so **the jar you add is the choice**.
 
-- Natives jars for different platforms can sit side by side. To ship one build for every platform, add all three;
+- Natives jars for different platforms can sit side by side. To ship one build for every platform, add both;
   Fornax loads the one for the machine it runs on.
 - If jars for several backends of the same platform are on the classpath, `-Dfornax.backend=vulkan` (or the
   `FORNAX_BACKEND` environment variable) picks one. Otherwise Fornax prefers Metal, then CUDA, HIP, Vulkan and the CPU,

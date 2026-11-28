@@ -162,4 +162,24 @@ class ChatRequestTest {
             assertEquals("stop", e.param);
         }
     }
+
+    /** An object schema with n optional properties. */
+    static String optional(int n) {
+        var props = new StringBuilder();
+        for (int i = 0; i < n; i++) props.append(i == 0 ? "" : ", ").append("\"p").append(i).append("\": {\"type\": \"string\"}");
+        return "{\"type\": \"object\", \"properties\": {" + props + "}}";
+    }
+
+    @Test void aSchemaTheGrammarCantTakeIsA400NamingItsParameter() {
+        String format = "{" + MSG + ", \"response_format\": {\"type\": \"json_schema\", \"json_schema\": {\"name\": \"x\", \"schema\": %s}}}";
+        assertNotNull(engine(format.formatted(optional(256))));
+        ApiError e = assertThrows(ApiError.class, () -> of(format.formatted(optional(5000))));
+        assertEquals(400, e.status);
+        assertTrue(e.getMessage().contains("5000 optional properties"), e.getMessage());
+        assertEquals("response_format", e.param);
+
+        String tools = "{" + MSG + ", \"tools\": [{\"type\": \"function\", \"function\": {\"name\": \"f\", \"parameters\": %s}}]}";
+        ApiError t = assertThrows(ApiError.class, () -> of(tools.formatted(optional(300))));
+        assertEquals("tools", t.param);
+    }
 }

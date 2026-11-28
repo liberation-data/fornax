@@ -7,7 +7,7 @@ this folder out of the repository and build it anywhere.
 ## Prerequisites
 
 - Java 22 or newer.
-- A GPU driver: Vulkan on Linux x86-64 (glibc 2.39 or newer), or macOS 13.3 or newer (Metal).
+- A GPU driver: Vulkan on Linux x86-64 (glibc 2.39 or newer), or macOS 13.3 or newer on Apple silicon (Metal).
 
 ## Run
 
@@ -30,3 +30,8 @@ yourself, run `./gradlew publishToMavenLocal` in the Fornax repository, then:
 ./gradlew run -PfornaxLocal=true -PfornaxVersion=0.3.0-SNAPSHOT  # -PfornaxLocal adds ~/.m2 to the repositories
 mvn -q compile exec:java -Dfornax.version=0.3.0-SNAPSHOT       # Maven always looks in ~/.m2 first
 ```
+
+## Did it work?
+
+If hello-fornax ran for you, a ⭐ on [Fornax on GitHub](https://github.com/liberation-data/fornax) helps other Java
+developers find it. If it didn't, [open an issue](https://github.com/liberation-data/fornax/issues/new) and tell us what broke.

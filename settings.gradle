@@ -30,7 +30,7 @@ include 'fornax-studio-server' // the local HTTP backend Fornax Studio (the desk
 // native/build.sh), one jar per platform and backend. A platform is included only when its libraries have been built,
 // unless -Pfornax.natives.require=true (the release build), which fails on a missing one. -Pfornax.natives=... lists others.
 def nativePlatforms = providers.gradleProperty('fornax.natives')
-        .getOrElse('linux-x86_64-vulkan,macos-aarch64-metal,macos-x86_64-metal').split(',')*.trim()
+        .getOrElse('linux-x86_64-vulkan,macos-aarch64-metal').split(',')*.trim()
 def requireNatives = providers.gradleProperty('fornax.natives.require').getOrElse('false').toBoolean()
 gradle.ext.nativePlatforms = nativePlatforms  // every platform a release publishes a natives jar for
 gradle.ext.nativesDirs = [:]  // platform -> its build/native/ directory, for the natives jars in build.gradle

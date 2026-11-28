@@ -1,0 +1,121 @@
+# Windows natives (#83), phase 1: builds every engine with native/build.sh in MSYS2's MinGW-w64 (UCRT64) shell, checks
+# each DLL needs nothing from MinGW beside it and exports only Fornax's own functions, and loads each one from Java.
+# GitHub's Windows runners have no GPU, so the CPU build is the one Java loads and binds; the Vulkan build is checked
+# for building and linking. Not part of a release yet: the natives jar for Windows comes once this is green.
+name: Windows natives
+
+on:
+  pull_request:
+    paths:
+      - 'native/**'
+      - '*/native/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'fornax-core/src/main/java/org/liberationdata/fornax/NativeLibrary.java'
+      - 'fornax-core/src/main/java/org/liberationdata/fornax/BundledNatives.java'
+      - '.github/workflows/windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-natives-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  natives:
+    name: Natives (windows-x86_64-${{ matrix.backend }})
+    runs-on: windows-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [cpu, vulkan]
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      # Git for Windows turns LF into CRLF on checkout, and Fornax's patches to the engines (native/patches/) then
+      # don't apply: keep every file as committed, here and in the engines native/build.sh clones.
+      - name: Keep line endings as committed
+        shell: pwsh
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-vulkan-devel
+            mingw-w64-ucrt-x86_64-shaderc
+            mingw-w64-ucrt-x86_64-spirv-headers
+
+      - name: Build the engines
+        run: |
+          git config --global core.autocrlf false   # MSYS2's git, which clones the engines, has its own config
+          native/build.sh ${{ matrix.backend }}
+
+      # When a build fails: the static libraries each engine's CMake build made, and its logs, to see what the link lacked.
+      - name: What the engines built
+        if: failure()
+        run: |
+          find engines-src -path '*/build-${{ matrix.backend }}/*' \( -name '*.a' -o -name '*.lib' \) | sort | head -80
+          for l in engines-src/*/build-${{ matrix.backend }}.build.log; do echo "== $l"; tail -15 "$l"; done
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: build-logs-windows-${{ matrix.backend }}
+          path: engines-src/*/build-${{ matrix.backend }}.*.log
+          retention-days: 7
+
+      # Each DLL stands alone (the GCC runtime and winpthread are linked in), and exports Fornax's C API, not ggml's.
+      - name: Check what each DLL needs and exports
+        run: |
+          set -euo pipefail
+          dir=build/native/windows-x86_64-${{ matrix.backend }}
+          ls -l "$dir"
+          for dll in "$dir"/*.dll; do
+            echo "== $(basename "$dll")"
+            objdump -p "$dll" | sed -n 's/^\s*DLL Name: //p' | sort -u | tr '\n' ' '; echo
+            if objdump -p "$dll" | grep -iE 'DLL Name: (libgcc|libstdc|libwinpthread|libgomp)'; then
+              echo "::error::$(basename "$dll") needs a MinGW runtime DLL"; exit 1
+            fi
+            if objdump -p "$dll" | sed -n '/\[Ordinal\/Name Pointer\] Table/,/^$/p' | grep -E '\bggml_'; then   # not -q: an early exit would fail sed with SIGPIPE, and pipefail would read that as no match
+              echo "::error::$(basename "$dll") exports ggml's symbols, which would clash with another engine's ggml"; exit 1
+            fi
+          done
+
+      - name: Set up Java
+        if: matrix.backend == 'cpu'
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      # Loads every engine's DLL through NativeLibrary, as an app would, and runs the binding tests that need no model, and
+      # NativeLibraryTunablesTest (Windows sets the engines' variables with ucrtbase's _putenv_s, not setenv).
+      - name: Load the DLLs from Java
+        if: matrix.backend == 'cpu'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true   # a failing gradlew or java fails the step
+          ./gradlew --no-daemon :fornax-core:jar :fornax-core:test --tests '*NativeLibraryTunablesTest' :fornax-acestep:test :fornax-yue2:test --tests '*BindingsTest' "-Pfornax.backend=cpu"
+          $core = (Get-ChildItem fornax-core/build/libs/fornax-core-*.jar | Where-Object { $_.Name -notmatch 'sources|javadoc' } | Select-Object -First 1).FullName
+          java --enable-native-access=ALL-UNNAMED "-Dfornax.library.path=$PWD/build/native/windows-x86_64-cpu" -cp $core .github/scripts/LoadEveryEngine.java
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: natives-windows-x86_64-${{ matrix.backend }}
+          path: build/native/windows-x86_64-${{ matrix.backend }}/
+          retention-days: 7

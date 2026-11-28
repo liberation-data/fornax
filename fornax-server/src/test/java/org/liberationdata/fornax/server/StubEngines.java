@@ -1,5 +1,6 @@
 package org.liberationdata.fornax.server;
 
+import org.liberationdata.fornax.llama.LlamaModel;
 import org.liberationdata.fornax.Audio;
 import org.liberationdata.fornax.whisper.Transcript;
 
@@ -62,11 +63,13 @@ class StubEngines implements Engines {
         if (images && !model.equals("vision")) throw ApiError.badRequest(model + " takes no images", "messages");
     }
 
-    @Override public float[][] embed(String model, List<String> texts) {
+    /** Each text takes its length in tokens, plus one. */
+    @Override public LlamaModel.Embeddings embed(String model, List<String> texts) {
         models.add(model);
         float[][] out = new float[texts.size()][];
-        for (int i = 0; i < out.length; i++) out[i] = new float[]{0.6f, 0.8f, 0f, i};
-        return out;
+        int tokens = 0;
+        for (int i = 0; i < out.length; i++) { out[i] = new float[]{0.6f, 0.8f, 0f, i}; tokens += texts.get(i).length() + 1; }
+        return new LlamaModel.Embeddings(out, tokens);
     }
 
     @Override public List<BufferedImage> images(String model, ImageJob job) {

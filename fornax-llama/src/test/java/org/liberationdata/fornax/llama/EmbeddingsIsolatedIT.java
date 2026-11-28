@@ -27,6 +27,13 @@ class EmbeddingsIsolatedIT extends EmbeddingsIT {
     @Test
     void runsInAWorker() { assertTrue(model.isIsolated()); }
 
+    /** The worker's context grows past the 512 it starts at, as in process (#109). */
+    @Test
+    void aTextPastTheStartingContextEmbeds() {
+        String longText = "The kiln fires stoneware to cone 10 over a long, slow climb. ".repeat(70);   // ~1330 tokens
+        assertEquals(1024, model.embed(longText).length);
+    }
+
     @Test
     void aWorkerKilledMidEmbedFailsTheCallAndTheNextCallReloadsInEmbedMode() throws Exception {
         long pid = model.worker().pid();

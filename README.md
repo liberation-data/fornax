@@ -1,6 +1,17 @@
+<a href="https://fornax4j.org/"><img src="https://raw.githubusercontent.com/liberation-data/fornax/main/website/public/images/splash.jpg" alt="fornax4j: open generative models for the JVM"></a>
+
 # Fornax
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![GitHub stars](https://img.shields.io/github/stars/liberation-data/fornax?style=social)](https://github.com/liberation-data/fornax/stargazers)
+
+<p align="center">
+  <a href="https://fornax4j.org/#video" target="_blank">
+    <img src="https://raw.githubusercontent.com/liberation-data/fornax/main/website/public/video/explainer-poster.jpg" alt="Watch: Fornax in two minutes (2:31)" width="700">
+  </a>
+  <br>
+  <a href="https://fornax4j.org/#video" target="_blank">▶ Watch Fornax in two minutes</a> (2:31, with captions)
+</p>
 
 **Call open-weight models (language, vision, speech, images, songs, video) as plain Java methods, running on your GPU, inside your JVM.**
 
@@ -116,7 +127,9 @@ The natives jars:
 |---|---|---|
 | `fornax-natives-linux-x86_64-vulkan` | Linux x86-64 (glibc 2.39+: Ubuntu 24.04, Fedora 40 or newer) | Vulkan (AMD, Intel, NVIDIA) |
 | `fornax-natives-macos-aarch64-metal` | macOS 13.3+ on Apple silicon | Metal |
-| `fornax-natives-macos-x86_64-metal` | macOS 13.3+ on Intel | Metal |
+
+No Windows natives jar yet: `native/build.sh` builds the engines in MSYS2's UCRT64 shell, experimentally
+([#83](https://github.com/liberation-data/fornax/issues/83)).
 
 On Linux, the GPU's Vulkan driver must be installed (it usually is; if not, see
 [Installing GPU drivers](https://fornax4j.org/docs/gpu-drivers/)). With no GPU, Fornax stops rather than run on the CPU,
@@ -155,11 +168,8 @@ that builds (Maven activates its profiles by OS and arch):
 Gradle (`build.gradle.kts`), which doesn't run Maven's profiles, so it names the natives jar for the machine that builds:
 
 ```kotlin
-val fornaxNatives = when {
-    !System.getProperty("os.name").startsWith("Mac") -> "linux-x86_64-vulkan"
-    System.getProperty("os.arch") == "aarch64" -> "macos-aarch64-metal"
-    else -> "macos-x86_64-metal"
-}
+val fornaxNatives =
+    if (System.getProperty("os.name").startsWith("Mac")) "macos-aarch64-metal" else "linux-x86_64-vulkan"
 
 dependencies {
     implementation(platform("org.fornax4j:fornax-bom:0.2.0"))
@@ -173,7 +183,7 @@ natives jar into a per-version cache (`~/.cache/fornax/<version>/` on Linux, `~/
 macOS; move it with `-Dfornax.cache.dir`) and loads it from there.
 
 **Choosing a backend.** Each natives jar is one platform and one GPU backend, so the jar you add is the choice.
-Natives jars for different platforms can sit side by side (to ship one build for every platform, add all three);
+Natives jars for different platforms can sit side by side (to ship one build for every platform, add both);
 Fornax loads the one for the machine it runs on. If jars for several backends of the same platform are on the
 classpath, `-Dfornax.backend=vulkan` (or `FORNAX_BACKEND`) picks one; otherwise Fornax prefers Metal, then CUDA, HIP and
 Vulkan. For ROCm (HIP), CUDA or anything else, build the libraries yourself (see [Building](#building)) and point
@@ -224,7 +234,7 @@ the test suite on the same machine (one rerank score drifts,
 step than Vulkan, and the way to render long clips; see
 [engine notes](docs/engine-notes.md)), and Metal passes the test suite on an Apple M2 Max with 32 GB (macOS 27.2: chat, vision, embeddings and reranking, speech,
 transcription, stem separation, FLUX.2 [klein] images and upscaling, isolated workers and Dispatch; songs and video
-haven't been run on a Mac yet, nor has an Intel Mac). CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
+haven't been run on a Mac yet). Intel Macs aren't supported. CUDA hasn't been tested yet. The Java code is the same for every backend: you pick one when you
 build the native libraries. Reports and fixes welcome.
 
 ## How it works
@@ -307,7 +317,8 @@ native/build.sh vulkan            # or hip | cuda | metal | cpu; optionally list
 
 `native/build.sh` clones the engines at the commits pinned in `native/engines.properties` into `engines-src/`,
 applies Fornax's patches from `native/patches/` (when a pin or a patch changes, it first resets that engine's tracked
-files, so keep no edits of your own there), and writes the libraries to `build/native/<os>-<arch>-<backend>/`.
+files and its submodules', so keep no edits of your own there), and writes the libraries to
+`build/native/<os>-<arch>-<backend>/`.
 The Gradle build points the examples and tests at that folder; pick another backend with `-Pfornax.backend=hip`.
 Without it, `./gradlew build` still compiles every module and runs the tests that need no engine library and no
 model (the rest skip themselves): what CI runs on every pull request (`.github/workflows/ci.yml`), along with a

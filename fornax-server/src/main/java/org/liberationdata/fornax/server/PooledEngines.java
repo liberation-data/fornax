@@ -223,18 +223,18 @@ final class PooledEngines implements Engines {
 
     // ---- embeddings ----
 
-    @Override public float[][] embed(String model, List<String> texts) {
+    @Override public LlamaModel.Embeddings embed(String model, List<String> texts) {
         Found f = find(model, Use.EMBED, true);
         try (ModelPool.Lease<AutoCloseable> lease = lease(f)) {
             if (lease.model() instanceof JitLlmModel j) {
                 // only a text longer than the context is the request's fault; running out of GPU memory isn't
-                try { return j.embed(texts); }
+                try { return new LlamaModel.Embeddings(j.embed(texts), 0); }
                 catch (IllegalStateException e) {
                     if (RC.matcher(String.valueOf(e.getMessage())).find()) throw ApiError.badRequest(withoutCode(e), "input");
                     throw e;
                 }
             }
-            try { return ((LlamaModel) lease.model()).embed(texts); }
+            try { return ((LlamaModel) lease.model()).embeddings(texts, LlamaModel.EmbedOptions.DEFAULT); }
             catch (IllegalStateException e) { throw ApiError.badRequest(e.getMessage(), "input"); }   // a text longer than the context
         }
     }

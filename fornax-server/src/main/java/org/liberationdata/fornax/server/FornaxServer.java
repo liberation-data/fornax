@@ -424,13 +424,15 @@ public final class FornaxServer implements AutoCloseable {
         Object dims = body.get("dimensions");
         int dimensions = dims == null ? 0 : (int) Math.min(Integer.MAX_VALUE, ChatRequest.whole(dims, "dimensions", 1));
 
-        float[][] vectors = engines.embed(model, texts);
+        var embedded = engines.embed(model, texts);
+        float[][] vectors = embedded.vectors();
         List<Object> data = new ArrayList<>();
         for (int i = 0; i < vectors.length; i++) {
             float[] v = dimensions == 0 ? vectors[i] : truncate(vectors[i], dimensions);
             data.add(Json.obj("object", "embedding", "index", i, "embedding", "base64".equals(format) ? base64(v) : v));
         }
-        json(ex, 200, Json.obj("object", "list", "data", data, "model", model, "usage", Json.obj("prompt_tokens", 0, "total_tokens", 0)));
+        json(ex, 200, Json.obj("object", "list", "data", data, "model", model,
+                "usage", Json.obj("prompt_tokens", embedded.tokens(), "total_tokens", embedded.tokens())));
     }
 
     /** The first n dimensions, normalised again (Qwen3-Embedding is trained for this: Matryoshka representation). */
@@ -579,12 +581,28 @@ public final class FornaxServer implements AutoCloseable {
                     segments.add(Json.obj("id", i, "start", s.start(), "end", s.end(), "text", s.text()));
                 }
                 for (var w : t.words()) words.add(Json.obj("word", w.text().strip(), "start", w.start(), "end", w.end()));
-                json(ex, 200, Json.obj("task", "transcribe", "language", t.language(), "duration", audio.seconds(), "text", text,
+                json(ex, 200, Json.obj("task", "transcribe", "language", languageName(t.language()), "duration", audio.seconds(), "text", text,
                         "segments", segments, "words", words));
             }
             default -> json(ex, 200, Json.obj("text", text));
         }
     }
+
+    /**
+     * A language's English name in lower case, as OpenAI's verbose_json has it ("english" for "en"); the code itself
+     * when Java doesn't know it, and null for null. Where Java's name isn't whisper's, whisper's wins.
+     */
+    static String languageName(String code) {
+        if (code == null) return null;
+        String whisper = WHISPER_NAMES.get(code);
+        if (whisper != null) return whisper;
+        String name = Locale.forLanguageTag(code).getDisplayLanguage(Locale.ENGLISH);
+        return name.isEmpty() || name.equalsIgnoreCase(code) ? code : name.toLowerCase(Locale.ROOT);
+    }
+
+    /** Whisper's names where Java's differ ("bangla", "māori", "burmese"), or Java has none (whisper's own "jw"). */
+    private static final Map<String, String> WHISPER_NAMES = Map.of(
+            "bn", "bengali", "jw", "javanese", "mi", "maori", "my", "myanmar", "nn", "nynorsk");
 
     // ---- requests and replies ----
 
