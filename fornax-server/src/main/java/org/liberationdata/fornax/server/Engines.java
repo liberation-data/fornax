@@ -21,8 +21,11 @@ interface Engines extends AutoCloseable {
     /** One served model, for {@code GET /v1/models}. */
     record Listed(String id, String kind, boolean loaded) {}
 
-    /** An image request, checked. */
-    record ImageJob(String prompt, int width, int height, int steps, Double cfg, long seed, int n) {}
+    /**
+     * An image request, checked. steps and cfg are null where the request leaves them to the model
+     * ({@code ModelCatalog.imageSteps}, {@code imageCfg}).
+     */
+    record ImageJob(String prompt, int width, int height, Integer steps, Double cfg, long seed, int n) {}
 
     /**
      * {@code LlamaModel.chatJson}: the engine's response JSON for {@code requestJson}, with the content streamed to

@@ -11,7 +11,7 @@ A diffusion model is usually several files: the **diffusion model** itself, a **
 and a **text encoder** (a language model, for the models on this page). You name each one in a `Config`, and the
 model loads all of them in its constructor and keeps them loaded across calls.
 
-For the models Fornax's catalogue knows (`flux2-klein`, `qwen-image`, `qwen-image-edit`), `Config.builder().model(name)`
+For the models Fornax's catalogue knows (`flux2-klein`, `qwen-image`, `qwen-image-edit`, `z-image-turbo`), `Config.builder().model(name)`
 names every file at once and downloads what's missing. Each file option also takes a
 [model reference](/docs/guides/models/#by-reference) in place of a path, such as a GGUF quant from another repo.
 
@@ -301,10 +301,8 @@ try (var images = new DiffusionModel(config)) {
 }
 ```
 
-:::caution[Not yet in Fornax's examples]
-Fornax's `image` example has no Z-Image preset yet. The settings above (8 steps, CFG 1.0, the FLUX.1 VAE) are
-stable-diffusion.cpp's own for Z-Image Turbo. If you try it, a report of how it went is welcome.
-:::
+The catalogue knows it as `z-image-turbo`, so `fornax image z-image-turbo "..."`, the OpenAI-compatible server and
+Fornax Studio use these settings (8 steps, CFG 1.0) unless told otherwise.
 
 ## Options
 
