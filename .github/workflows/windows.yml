@@ -1,7 +1,8 @@
 # Windows natives (#83), phase 1: builds every engine with native/build.sh in MSYS2's MinGW-w64 (UCRT64) shell, checks
 # each DLL needs nothing from MinGW beside it and exports only Fornax's own functions, and loads each one from Java.
-# GitHub's Windows runners have no GPU, so the CPU build is the one Java loads, binds and runs a small model on (in
-# process and in a worker JVM); the Vulkan build is checked for building and linking. Not part of a release yet: the
+# GitHub's Windows runners have no GPU, so Java loads, binds and runs a small model (in process and in a worker JVM) on
+# the CPU build, and on the Vulkan build through Mesa's software Vulkan driver, lavapipe, as llama.cpp's own CI tests
+# Vulkan without a GPU (#122). Not part of a release yet: the
 # natives jar for Windows comes once this is green.
 name: Windows natives
 
@@ -93,13 +94,52 @@ jobs:
             if objdump -p "$dll" | grep -iE 'DLL Name: (libgcc|libstdc|libwinpthread|libgomp)'; then
               echo "::error::$(basename "$dll") needs a MinGW runtime DLL"; exit 1
             fi
+            # Nor any other DLL of MSYS2's (vulkan-1.dll aside: the GPU driver installs it): the Vulkan leg's Java steps
+            # have ucrt64/bin on PATH, so they would find one there and not fail.
+            for need in $(objdump -p "$dll" | sed -n 's/^\s*DLL Name: //p'); do
+              if [ "${need,,}" != vulkan-1.dll ] && [ -e "/ucrt64/bin/$need" ]; then
+                echo "::error::$(basename "$dll") needs $need from MSYS2"; exit 1
+              fi
+            done
             if objdump -p "$dll" | sed -n '/\[Ordinal\/Name Pointer\] Table/,/^$/p' | grep -E '\bggml_'; then   # not -q: an early exit would fail sed with SIGPIPE, and pipefail would read that as no match
               echo "::error::$(basename "$dll") exports ggml's symbols, which would clash with another engine's ggml"; exit 1
             fi
           done
 
+      # The Vulkan build needs a Vulkan device: MSYS2's Mesa has lavapipe, which runs Vulkan on the CPU. vulkan-1.dll and
+      # lavapipe's own DLLs are in ucrt64/bin.
+      - name: Mesa's software Vulkan driver (lavapipe)
+        if: matrix.backend == 'vulkan'
+        run: |
+          pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-mesa
+          icd=$(ls /ucrt64/share/vulkan/icd.d/lvp_icd*.json | head -1)
+          echo "lavapipe: $icd"
+          # The manifest names the DLL by a path relative to itself; a copy with the absolute path leaves the loader
+          # nothing to resolve.
+          dll=$(cygpath -m /ucrt64/bin/vulkan_lvp.dll)   # D:/a/...: forward slashes, so nothing to escape in JSON
+          sed "s|\"library_path\": *\"[^\"]*\"|\"library_path\": \"$dll\"|" "$icd" > /ucrt64/share/vulkan/icd.d/lvp_icd.fornax.json
+          icd=/ucrt64/share/vulkan/icd.d/lvp_icd.fornax.json
+          grep -qF "\"library_path\": \"$dll\"" "$icd" || { echo "::error::lavapipe's manifest has no library_path to replace"; exit 1; }
+          echo "LAVAPIPE_ICD=$(cygpath -w "$icd")" >> "$GITHUB_ENV"
+          echo "LAVAPIPE_DLL=$dll" >> "$GITHUB_ENV"
+          cygpath -w /ucrt64/bin >> "$GITHUB_PATH"
+          cat "$icd"
+
+      # Registered as an installed driver, since the Windows loader ignores VK_DRIVER_FILES in an elevated process, and the
+      # runner's are (its debug log showed it searching only HKLM\SOFTWARE\Khronos\Vulkan\Drivers).
+      - name: Register lavapipe with the Vulkan loader
+        if: matrix.backend == 'vulkan'
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name $env:LAVAPIPE_ICD -PropertyType DWord -Value 0 -Force | Out-Null
+          Get-ItemProperty -Path $key
+          # Loaded the way the loader will, so a missing dependency shows up here with Windows' own message.
+          [System.Runtime.InteropServices.NativeLibrary]::Load($env:LAVAPIPE_DLL) | Out-Null
+          "loaded $env:LAVAPIPE_DLL"
+
       - name: Set up Java
-        if: matrix.backend == 'cpu'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -108,27 +148,24 @@ jobs:
       # Loads every engine's DLL through NativeLibrary, as an app would, and runs the binding tests that need no model, and
       # NativeLibraryTunablesTest (Windows sets the engines' variables with ucrtbase's _putenv_s, not setenv).
       - name: Load the DLLs from Java
-        if: matrix.backend == 'cpu'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true   # a failing gradlew or java fails the step
-          ./gradlew --no-daemon :fornax-core:jar :fornax-core:test --tests '*NativeLibraryTunablesTest' :fornax-acestep:test :fornax-yue2:test --tests '*BindingsTest' "-Pfornax.backend=cpu"
+          ./gradlew --no-daemon :fornax-core:jar :fornax-core:test --tests '*NativeLibraryTunablesTest' :fornax-acestep:test :fornax-yue2:test --tests '*BindingsTest' "-Pfornax.backend=${{ matrix.backend }}"
           $core = (Get-ChildItem fornax-core/build/libs/fornax-core-*.jar | Where-Object { $_.Name -notmatch 'sources|javadoc' } | Select-Object -First 1).FullName
-          java --enable-native-access=ALL-UNNAMED "-Dfornax.library.path=$PWD/build/native/windows-x86_64-cpu" -cp $core .github/scripts/LoadEveryEngine.java
+          java --enable-native-access=ALL-UNNAMED "-Dfornax.library.path=$PWD/build/native/windows-x86_64-${{ matrix.backend }}" -cp $core .github/scripts/LoadEveryEngine.java
 
-      # A real model, not just a load: ggml-org's tinyllamas stories15M (19 MB), on the CPU, in process and in an
-      # isolated worker JVM (#122). Cached: a pull request's runs share the copy its first run saved (caches saved on
+      # A real model, not just a load: ggml-org's tinyllamas stories15M (19 MB), in process and in an isolated worker JVM
+      # (#122), on the CPU or, for the Vulkan build, every layer on lavapipe. Cached: a pull request's runs share the copy its first run saved (caches saved on
       # one pull request's ref aren't visible to another's; one saved by a run on main would be visible to all).
       - name: Cache the test model
-        if: matrix.backend == 'cpu'
         uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/models
           key: tinyllamas-stories15M-q4_0
 
       - name: Generate text with a model
-        if: matrix.backend == 'cpu'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -141,7 +178,20 @@ jobs:
           ./gradlew --no-daemon :fornax-llama:jar
           $jar = { param($m) (Get-ChildItem "$m/build/libs/$m-*.jar" | Where-Object { $_.Name -notmatch 'sources|javadoc' } | Select-Object -First 1).FullName }
           $cp = (& $jar fornax-core) + ';' + (& $jar fornax-llama)
-          java --enable-native-access=ALL-UNNAMED "-Dfornax.library.path=$PWD/build/native/windows-x86_64-cpu" -cp $cp .github/scripts/GenerateOnce.java $gguf
+          $layers = if ('${{ matrix.backend }}' -eq 'vulkan') { '-1' } else { '0' }
+          $env:FORNAX_VERBOSE = '1'   # the engines' log, which names the Vulkan device
+          # ggml skips a CPU-type Vulkan device, which lavapipe is, unless it's named: device 0, the only one there.
+          if ('${{ matrix.backend }}' -eq 'vulkan') { $env:GGML_VK_VISIBLE_DEVICES = '0' }
+          java --enable-native-access=ALL-UNNAMED "-Dfornax.library.path=$PWD/build/native/windows-x86_64-${{ matrix.backend }}" -cp $cp .github/scripts/GenerateOnce.java $gguf $layers 2>&1 | Tee-Object -FilePath generate.log
+          # Without a Vulkan device ggml would run on the CPU and this would prove nothing about the Vulkan build.
+          if ('${{ matrix.backend }}' -eq 'vulkan' -and -not (Select-String -Path generate.log -Pattern 'llvmpipe' -Quiet)) {
+            throw 'the Vulkan build did not run on lavapipe (no llvmpipe device in the log)'
+          }
+          # And ran the model there, in process and in the worker: llama.cpp logs "offloaded 7/7 layers to GPU" for each
+          # (the device is listed whatever gpuLayers is).
+          if ('${{ matrix.backend }}' -eq 'vulkan' -and @(Select-String -Path generate.log -Pattern 'offloaded (\d+)/\1 layers to GPU').Count -lt 2) {
+            throw 'the Vulkan build did not offload every layer to lavapipe, in process and in the worker'
+          }
 
       - uses: actions/upload-artifact@v7
         with:
