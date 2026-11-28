@@ -198,7 +198,12 @@ final class Catalog {
                         Json.obj("width", 1024L, "height", 1024L, "steps", 8L, "cfg", 1.0),
                         part("diffusion_model", "Comfy-Org/z_image_turbo", "split_files/diffusion_models/z_image_turbo_bf16.safetensors"),
                         part("vae", "Comfy-Org/z_image_turbo", "split_files/vae/ae.safetensors"),
-                        part("llm", "Comfy-Org/z_image_turbo", "split_files/text_encoders/qwen_3_4b.safetensors")));
+                        part("llm", "Comfy-Org/z_image_turbo", "split_files/text_encoders/qwen_3_4b.safetensors")),
+                preset("image:ernie-image-turbo", Kind.image, "ERNIE-Image-Turbo", "stable-diffusion.cpp",
+                        Json.obj("width", 1024L, "height", 1024L, "steps", 8L, "cfg", 1.0),
+                        part("diffusion_model", "unsloth/ERNIE-Image-Turbo-GGUF", "ernie-image-turbo-Q8_0.gguf"),
+                        part("vae", "Comfy-Org/flux2-dev", "split_files/vae/flux2-vae.safetensors"),
+                        part("llm", "unsloth/Ministral-3-3B-Instruct-2512-GGUF", "Ministral-3-3B-Instruct-2512-Q8_0.gguf")));
     }
 
     List<Model> songPresets() {
