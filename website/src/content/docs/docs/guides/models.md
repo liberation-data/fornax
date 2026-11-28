@@ -231,7 +231,7 @@ models with the same files:
 |---|---|
 | `CHAT` | `qwen3-0.6b`, `qwen3-4b` |
 | `VISION` | `qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`, `ocria-1` |
-| `SPEECH` | `kokoro` |
+| `SPEECH` | `kokoro`, `zonos3-mini`, `voxcpm2` |
 | `TRANSCRIPTION` | `whisper-large-v3-turbo`, `whisper-base.en` |
 | `IMAGE` | `flux2-klein`, `qwen-image`, `qwen-image-edit` |
 | `SONG` | `ace-step-turbo`, `ace-step` (turbo with the 4B lyric LM), `ace-step-xl-turbo`, `ace-step-xl`, `yue2` |

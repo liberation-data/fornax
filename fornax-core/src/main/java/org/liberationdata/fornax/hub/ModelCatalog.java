@@ -87,6 +87,14 @@ public final class ModelCatalog {
         l.add(ModelSet.of("kokoro", Kind.SPEECH, "Kokoro 82M", "llama.cpp",
                 Part.of("gguf", "ggml-org/Kokoro-82M-GGUF", "Kokoro-82M-F32.gguf"),
                 Part.of("mmproj", "ggml-org/Kokoro-82M-GGUF", "mmproj-Kokoro-82M-F16.gguf")));
+        // ZONOS3-Mini (TtsModel.Weights.ZONOS3): 27 voices, the British and Irish English ones among them; 44.1 kHz
+        l.add(ModelSet.of("zonos3-mini", Kind.SPEECH, "ZONOS3-Mini", "llama.cpp",
+                Part.of("gguf", "ggml-org/ZONOS3-Mini-GGUF", "ZONOS3-Mini-Q8_0.gguf"),
+                Part.of("mmproj", "ggml-org/ZONOS3-Mini-GGUF", "mmproj-ZONOS3-Mini-F32.gguf")));
+        // VoxCPM2 (TtsModel.Weights.VOXCPM2): no fixed voices; a description in parentheses before the text designs one
+        l.add(ModelSet.of("voxcpm2", Kind.SPEECH, "VoxCPM2 2B", "llama.cpp",
+                Part.of("gguf", "ggml-org/VoxCPM2-GGUF", "VoxCPM2-Q8_0.gguf"),
+                Part.of("mmproj", "ggml-org/VoxCPM2-GGUF", "mmproj-VoxCPM2-BF16.gguf")));
 
         // speech to text (whisper.cpp): WhisperModel.Weights
         l.add(ModelSet.of("whisper-large-v3-turbo", Kind.TRANSCRIPTION, "Whisper large-v3-turbo (5-bit)", "whisper.cpp",

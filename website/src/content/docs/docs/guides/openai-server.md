@@ -113,6 +113,7 @@ server keeps no files, so `response_format: "url"` is refused.
 
 `/v1/audio/speech` speaks `input` (up to 4096 characters, as OpenAI's) with `kokoro` unless `model` names another speech alias. `voice` is one of the
 model's voices (`fornax speak --list-voices`); OpenAI's voice names (`alloy`, `nova`, ...) get the model's default.
+`voxcpm2` has no voices: describe one in parentheses at the start of `input` (`"(A warm Australian woman)G'day."`).
 The reply is a WAV, so ask for `response_format: "wav"` (an OpenAI client asking for MP3 gets an error).
 
 `/v1/audio/transcriptions` takes a WAV `file` (multipart, as the clients send it; convert other formats first,

@@ -164,7 +164,9 @@ chat model and names the image models.
   `ace-step-xl-turbo` make an instrumental. 30 seconds unless `--seconds` says otherwise. YuE2's weights are
   CC BY-NC 4.0: no commercial use of them or of what they make.
 - **speak** uses `kokoro` and its first voice, `af_heart`, unless `--model` and `--voice` say otherwise; without text
-  it reads stdin. A TTS model that isn't in the catalogue loads by reference or path with its `--mmproj`:
+  it reads stdin. `zonos3-mini` has British and Irish English voices among its 27 (`--list-voices`); `voxcpm2` has
+  none, and takes a description of one in parentheses before the text: `fornax speak --model voxcpm2 "(A warm
+  Australian woman)G'day."`. A TTS model that isn't in the catalogue loads by reference or path with its `--mmproj`:
   `fornax speak --model ggml-org/tiny-voca-GGUF:tiny-voca-F32.gguf --mmproj ggml-org/tiny-voca-GGUF:mmproj-tiny-voca-F32.gguf "Hi"`.
 - **transcribe** reads a WAV at any rate (convert other formats first: `ffmpeg -i in.mp3 in.wav`) and prints the
   text, or with `--words` each word's start and end in seconds and the word, tab-separated. `whisper-base.en` hears
