@@ -145,8 +145,8 @@ final class Engine implements AutoCloseable {
         for (int i = 0; i < texts.size(); i++) {
             int n = embeddings.tokens(texts.get(i)).size();
             if (n > room)
-                throw new IllegalStateException("jitllm (rc=2): input " + i + " is " + n + " tokens, more than the context holds ("
-                        + contextLength + " tokens)");
+                throw new IllegalStateException("jitllm (rc=2): input " + i + " is " + n
+                        + " tokens, more than the context holds (" + room + " of its " + contextLength + " tokens)");
             tokens += n + endOfText;
         }
         try { return new LlamaModel.Embeddings(embeddings.embedAll(texts).toArray(float[][]::new), tokens); }
