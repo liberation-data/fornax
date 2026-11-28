@@ -274,6 +274,8 @@ common_chat_templates_inputs chat_inputs(const common_json & req) {
             in.chat_template_kwargs[k] = v.dump();
             if (k == "enable_thinking" && v.is_boolean() && !req.contains("enable_thinking")) in.enable_thinking = v.get<bool>();
         }
+        // the template reads kwargs over in.enable_thinking: drop it, so the prompt and the parser agree on one value
+        in.chat_template_kwargs.erase("enable_thinking");
     }
     if (req.contains("reasoning_effort") && req.at("reasoning_effort").is_string())
         in.chat_template_kwargs["reasoning_effort"] = req.at("reasoning_effort").dump();

@@ -59,6 +59,8 @@ class ThinkingIT {
             Object reasoning = Json.get(off, "message", "reasoning_content");
             assertTrue(reasoning == null || reasoning.toString().isBlank(), off.toString());
             assertTrue(Json.get(off, "message", "content").toString().toLowerCase().contains("fornax"), off.toString());
+            Object on = Json.parse(m.chatJson(ask + ", \"enable_thinking\": true, \"chat_template_kwargs\": {\"enable_thinking\": false}}", null));
+            assertNotNull(Json.get(on, "message", "reasoning_content"), on.toString());   // the request's own key wins
         }
     }
 
