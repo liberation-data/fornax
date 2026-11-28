@@ -79,9 +79,9 @@ HIP_ARCH=gfx1100 native/build.sh hip
 ./gradlew video -Pfornax.backend=hip --args='clip.mp4 "a potter at a wheel"'
 ```
 
-The test suite passes on HIP on the 8060S (ROCm 7, `gfx1151`), with the models downloaded for embeddings,
-reranking and Demucs, except one reranking check: scoring documents one at a time drifts from scoring them together
-by 0.064 against a 0.05 tolerance, though the ranking holds
+The test suite passes on HIP on the 8060S (ROCm 7, `gfx1151`) every night, with the models downloaded for
+embeddings, reranking and Demucs. A borderline rerank score (near 0.5) moves by up to about 0.06 between scoring a
+document alone and in a batch, on HIP as in llama.cpp's own `llama-embedding`; decided scores and the ranking hold
 ([#80](https://github.com/liberation-data/fornax/issues/80)).
 
 What Fornax has learned on HIP so far, with LTX-2.5 video on the 8060S:

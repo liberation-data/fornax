@@ -198,8 +198,7 @@ Early. Everything below runs from Java on Linux with an AMD Radeon 8060S (Ryzen 
 the command behind every figure.
 
 The build script also knows the **ROCm (HIP)**, **CUDA** and **Metal** backends of the underlying engines. HIP passes
-the test suite on the same machine (one rerank score drifts,
-[#80](https://github.com/liberation-data/fornax/issues/80)) and has run LTX-2.5 video there (about 2.7× faster per
+the test suite on the same machine every night and has run LTX-2.5 video there (about 2.7× faster per
 step than Vulkan, and the way to render long clips; see
 [engine notes](docs/engine-notes.md)), and Metal passes the test suite on an Apple M2 Max with 32 GB (macOS 27.2: chat, vision, embeddings and reranking, speech,
 transcription, stem separation, FLUX.2 [klein] images and upscaling, isolated workers and Dispatch; songs and video
