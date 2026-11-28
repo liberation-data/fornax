@@ -96,6 +96,8 @@ class ImageTest {
         assertEquals(LlamaModel.Weights.QWEN3_RERANKER_0_6B, LlamaModel.Weights.named("Qwen3-Reranker-0.6B"));
         assertFalse(LlamaModel.Weights.QWEN3_EMBEDDING_0_6B.vision());
         assertTrue(LlamaModel.Weights.MEDGEMMA_4B.vision());
+        assertEquals(LlamaModel.Weights.OCRIA_1, LlamaModel.Weights.named("ocria-1"));
+        assertTrue(LlamaModel.Weights.OCRIA_1.vision());
         assertFalse(LlamaModel.Weights.QWEN3_4B.vision());
         assertNull(LlamaModel.Weights.QWEN3_4B.mmproj());  // text only: no mmproj, and none in its download command
         assertEquals("hf download unsloth/Qwen3-4B-Instruct-2507-GGUF Qwen3-4B-Instruct-2507-Q4_K_M.gguf",

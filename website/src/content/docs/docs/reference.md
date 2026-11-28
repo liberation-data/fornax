@@ -63,7 +63,7 @@ Package `org.liberationdata.fornax.llama`. See [Language models](/docs/guides/la
 | `LlamaModel.EmbedOptions` | `prefix`, `normalize`; `DEFAULT`, `query(task)` (Qwen3-Embedding's instruction format), `withPrefix`, `withNormalize` |
 | `LlamaModel.Message` | `role`, `content` and `images`; `system(...)`, `user(...)`, `user(text, images...)`, `assistant(...)` |
 | `LlamaModel.Image` | packed RGB: `of(BufferedImage)`, `read(Path)`, `decode(bytes)` |
-| `LlamaModel.Weights` | the models Fornax knows by name: `QWEN3_4B`, `QWEN3_VL_4B`, `PADDLEOCR_VL`, `MEDGEMMA_4B`, `QWEN3_EMBEDDING_0_6B`, `QWEN3_RERANKER_0_6B`; `named(...)`, `vision()`, `model()`, `mmproj()`, `downloaded()`, `downloadCommand()` |
+| `LlamaModel.Weights` | the models Fornax knows by name: `QWEN3_4B`, `QWEN3_VL_4B`, `PADDLEOCR_VL`, `MEDGEMMA_4B`, `OCRIA_1`, `QWEN3_EMBEDDING_0_6B`, `QWEN3_RERANKER_0_6B`; `named(...)`, `vision()`, `model()`, `mmproj()`, `downloaded()`, `downloadCommand()` |
 | `Json` | just enough JSON to read `chatJson` replies: `parse`, `get(doc, path...)`, `quote` |
 | `LlamaModel.Options` | `maxTokens`, `temperature`, `topP`, `minP`, `seed`; `DEFAULT`, `withSeed`, `withMaxTokens`, `withTemperature` |
 | `LlamaModel.Result` | `text`, `promptTokens`, `generatedTokens` |

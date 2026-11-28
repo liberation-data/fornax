@@ -64,6 +64,7 @@ which `downloadCommand()` also gives you.
 | `QWEN3_VL_4B` | questions about images, documents and charts; grounding (boxes on a 0 to 1000 grid) | Apache-2.0 |
 | `PADDLEOCR_VL` | PaddleOCR-VL 1.6 (0.9B): reading documents. It takes task prompts, not questions (below) | Apache-2.0 |
 | `MEDGEMMA_4B` | MedGemma 1.5 4B: medical images and text. Using it to diagnose or treat patients may need a health regulator's authorization | Health AI Developer Foundations terms |
+| `OCRIA_1` | OCRia-1 4B: a document page to markdown, tables as HTML; [run it through `chatJson`](#ocria-1) | OCRia-1 license, not open source: [read it first](#ocria-1) |
 | `QWEN3_4B` | Qwen3 4B Instruct: text only | Apache-2.0 |
 | `QWEN3_EMBEDDING_0_6B`, `QWEN3_RERANKER_0_6B` | embeddings and reranking, loaded with `Mode.EMBED` or `Mode.RERANK`; see [Embeddings and reranking](/docs/guides/embeddings/) | Apache-2.0 |
 
@@ -129,6 +130,46 @@ String reply = vlm.chatJson("""
 ```
 
 Tool definitions work here as they do without images.
+
+## OCRia-1
+
+:::caution[Not open source]
+OCRia-1's weights come under LlamaIndex's OCRia-1 license, a modified OpenRAIL-M. If your organisation had more than
+US$2M revenue last year, or has raised more than US$2M, you may use it only for personal use or research. No one may
+use it in a service that does OCR or document extraction in competition with LlamaParse or LlamaCloud. Read the
+[license](https://huggingface.co/llamaindex/OCRia-1-GGUF/blob/main/LICENSE) before you use the model or what it makes.
+:::
+
+LlamaIndex's OCRia-1 (4B, built on Qwen3.5) reads a document page to markdown, with tables as HTML. Run it as its
+model card says: its own system prompt, the page image with no text, thinking off and greedy. Fetch the prompt with
+the weights:
+
+```sh
+hf download llamaindex/OCRia-1-GGUF OCRia-1-Q8_0.gguf mmproj-OCRia-1-f16.gguf prompt.txt
+```
+
+Turning thinking off takes a `chatJson` request, as `chat`, `fornax see` and Fornax Studio can't ask for it yet. With
+thinking on, the model writes the page inside its think block and then again after it, so the reply takes twice as
+long and can run out of tokens.
+
+<!-- snippet: Vision#ocria -->
+```java
+try (var ocr = new LlamaModel(LlamaModel.Weights.OCRIA_1)) {
+    String reply = ocr.chatJson("""
+            {"messages": [{"role": "system", "content": %s},
+                          {"role": "user", "content": [{"type": "image", "index": 0}]}],
+             "enable_thinking": false, "temperature": 0, "max_tokens": 4096}"""
+                    .formatted(org.liberationdata.fornax.llama.Json.quote(systemPrompt)),   // prompt.txt
+            List.of(Image.read(Path.of("page.png"))), null);
+    Object markdown = org.liberationdata.fornax.llama.Json.get(
+            org.liberationdata.fornax.llama.Json.parse(reply), "message", "content");
+}
+```
+
+On the Radeon 8060S with Vulkan, it read the synthetic 1000×1300 invoice exactly, line items as an HTML table, in
+about 24 s (2,347 prompt tokens with the system prompt and the image, 518 generated). Its model card asks for a
+32k context for large pages. `new LlamaModel(Weights)` gives 8192 tokens, so for those use
+`new LlamaModel(gguf, mmproj, -1, 32768)`.
 
 ## Raw completion with images
 

@@ -54,6 +54,8 @@ class ModelCatalogTest {
     @Test void licensesThatLimitUseAreSaid() {
         assertTrue(ModelCatalog.require("yue2").license().startsWith("CC BY-NC 4.0"));
         assertTrue(ModelCatalog.require("medgemma-4b").license().startsWith("Health AI Developer Foundations"));
+        assertTrue(ModelCatalog.require("ocria-1").license().contains("not open source"));
+        assertTrue(ModelCatalog.require("ocria-1").license().contains("LlamaParse"));
         assertNull(ModelCatalog.require("qwen3-4b").license());
         assertTrue(ModelCatalog.all().stream().filter(ModelSet::gated).allMatch(m -> m.kind() == Kind.VIDEO));
     }

@@ -74,4 +74,19 @@ class Vision {
                 List.of(Image.read(Path.of("invoice.png"))), null);
         // --8<-- [end:chat-json]
     }
+
+    void ocria(String systemPrompt) {
+        // --8<-- [start:ocria]
+        try (var ocr = new LlamaModel(LlamaModel.Weights.OCRIA_1)) {
+            String reply = ocr.chatJson("""
+                    {"messages": [{"role": "system", "content": %s},
+                                  {"role": "user", "content": [{"type": "image", "index": 0}]}],
+                     "enable_thinking": false, "temperature": 0, "max_tokens": 4096}"""
+                            .formatted(org.liberationdata.fornax.llama.Json.quote(systemPrompt)),   // prompt.txt
+                    List.of(Image.read(Path.of("page.png"))), null);
+            Object markdown = org.liberationdata.fornax.llama.Json.get(
+                    org.liberationdata.fornax.llama.Json.parse(reply), "message", "content");
+        }
+        // --8<-- [end:ocria]
+    }
 }

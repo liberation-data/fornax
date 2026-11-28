@@ -169,7 +169,8 @@ chat model and names the image models.
   text, or with `--words` each word's start and end in seconds and the word, tab-separated. `whisper-base.en` hears
   English only; `whisper-large-v3-turbo` hears 99 languages (`--language` names one, else it is detected).
   `--model` also takes `org/name:file.bin` or a path to a whisper.cpp model.
-- **see** takes a vision alias (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`), or a GGUF by reference or path with
+- **see** takes a vision alias (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`; `ocria-1` too, but `see` can't turn its
+  thinking off yet, so [use `chatJson`](/docs/guides/vision/#ocria-1)), or a GGUF by reference or path with
   its `--mmproj`, an image (PNG, JPEG, BMP or GIF) and a question, and streams the answer as `chat` does, with
   `chat`'s options. Without a question it asks "Describe this image.", or for `paddleocr-vl` "OCR:", which reads
   the image's text out.

@@ -323,7 +323,7 @@ fornax list                 # every alias, what is downloaded, and other GGUF mo
 ```
 
 The aliases are Fornax's model catalogue (`ModelCatalog`): `qwen3-0.6b`, `qwen3-4b`, `qwen3-vl-4b`, `paddleocr-vl`,
-`medgemma-4b`, `kokoro`, `whisper-large-v3-turbo`, `whisper-base.en`, `flux2-klein`, `qwen-image`, `qwen-image-edit`,
+`medgemma-4b`, `ocria-1`, `kokoro`, `whisper-large-v3-turbo`, `whisper-base.en`, `flux2-klein`, `qwen-image`, `qwen-image-edit`,
 `ace-step-turbo`, `ace-step`, `ace-step-xl-turbo`, `ace-step-xl`, `yue2`, `ltx-2.5-distilled` and `ltx-2.5-dev`.
 `fornax pull` also takes a repo (`fornax pull unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M`, or file names and globs).
 
@@ -402,7 +402,8 @@ at other native libraries. The launcher, `bin/fornax`, takes its Java, its jars 
 [The fornax command](https://fornax4j.org/docs/guides/cli/).
 
 Check each model's license before you use what it makes. Some are non-commercial: YuE2's weights are
-CC BY-NC 4.0, for example.
+CC BY-NC 4.0, for example. OCRia-1's license isn't open source: past US$2M in revenue or funding, only personal or
+research use.
 
 ## The OpenAI-compatible server
 
