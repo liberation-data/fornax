@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /** {@code fornax chat}: one-shot or interactive streaming chat with a GGUF model. */
 final class Chat {
@@ -100,13 +101,16 @@ final class Chat {
     }
 
     /**
-     * Streams one reply to {@code out}, without its think blocks unless {@code think}, and its token rate to
+     * Streams one reply to {@code out}, without its think blocks unless {@code think} (none to hide when the options
+     * turn thinking off), and its token rate to
      * {@code err}. Returns the filter, which has the reply without think blocks, for the history.
      */
     static ThinkFilter reply(LlamaModel model, List<Message> history, Options o, boolean think,
                                      boolean startsInside, PrintStream out, PrintStream err) {
         long g0 = System.nanoTime();
-        var shown = new ThinkFilter(piece -> { out.print(piece); out.flush(); }, think, startsInside);
+        Consumer<String> print = piece -> { out.print(piece); out.flush(); };
+        // asked for without reasoning, the reply has no think block to hide: it streams as it comes
+        var shown = o.thinking() ? new ThinkFilter(print, think, startsInside) : ThinkFilter.plain(print);
         var r = model.chat(history, o, shown);
         shown.finish();
         double s = (System.nanoTime() - g0) / 1e9;

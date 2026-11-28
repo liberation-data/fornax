@@ -109,4 +109,17 @@ class ThinkFilterTest {
         assertEquals("4", run(false, true, List.of("Two and two.\n</think>\n\n4")));
         assertEquals("<think>Two and two.\n</think>\n\n4", run(true, true, List.of("Two and two.\n</think>\n\n4")));
     }
+
+    @Test
+    void aReplyAskedForWithoutReasoningStreamsAsItComes() {
+        var shown = new StringBuilder();
+        var f = ThinkFilter.plain(shown::append);
+        f.accept("Okay, ");
+        assertEquals("Okay, ", shown.toString());   // not held back for sounding like reasoning
+        f.accept("the tag is </think>, literally.");
+        f.finish();
+        assertEquals("Okay, the tag is </think>, literally.", shown.toString());
+        assertEquals("Okay, the tag is </think>, literally.", f.reply());
+        assertFalse(f.openedInside());
+    }
 }
