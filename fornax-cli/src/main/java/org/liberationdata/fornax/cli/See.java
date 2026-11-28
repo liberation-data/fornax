@@ -51,14 +51,13 @@ final class See {
         if (image == null) throw new UsageException("which image?");
         String question = String.join(" ", a.rest(2)).strip();
         LlamaModel.Image picture = read(Path.of(image));
-        var given = Chat.options(a);
+        var given = Chat.options(a);   // a bad option is refused before a download
         String mmprojSpec = a.option("mmproj", null);
         if (mmprojSpec == null && Models.withoutMmproj(spec))
             throw new UsageException(spec + " needs its mmproj (the vision encoder): --mmproj org/name:mmproj-file.gguf or a path");
         var m = Models.fetch(spec, Kind.VISION, "see", true, hub, err, Main.terminal());
         String alias = m.set() == null ? null : m.set().id();
-        // OCRia-1 writes the page twice with thinking on (in its think block, then again): always off for it
-        var o = isOcria(alias) ? given.withThinking(false) : given;
+        var o = options(given, alias);
         Path mmproj = mmprojSpec != null ? Models.fetch(mmprojSpec, Kind.VISION, "see --mmproj", true, hub, err, Main.terminal()).file("gguf")
                 : m.file("mmproj");
 
@@ -83,6 +82,14 @@ final class See {
     }
 
     static boolean isOcria(String alias) { return "ocria-1".equals(alias); }
+
+    /**
+     * The options given, with thinking always off for OCRia-1, which writes the page twice with it on (in its think
+     * block, then again).
+     */
+    static LlamaModel.Options options(LlamaModel.Options given, String alias) {
+        return isOcria(alias) ? given.withThinking(false) : given;
+    }
 
     private static LlamaModel.Image read(Path file) {
         if (!Files.isRegularFile(file)) throw new Main.Failure("no such image: " + file);

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.liberationdata.fornax.Audio;
 import org.liberationdata.fornax.hub.ModelCatalog;
+import org.liberationdata.fornax.llama.LlamaModel.Options;
 import org.liberationdata.fornax.whisper.WhisperModel.Alignment;
 
 import javax.imageio.ImageIO;
@@ -201,6 +202,8 @@ class CommandsTest {
         assertTrue(Chat.options(Args.parse(List.of(), Chat.OPTIONS, Chat.FLAGS)).thinking());
         assertFalse(Chat.options(Args.parse(List.of("--no-think"), Chat.OPTIONS, Chat.FLAGS)).thinking());
         assertFalse(Chat.options(Args.parse(List.of("--no-think", "--think"), See.OPTIONS, See.FLAGS)).thinking());
+        assertFalse(See.options(Options.DEFAULT, "ocria-1").thinking());   // always off for it
+        assertTrue(See.options(Options.DEFAULT, "qwen3-vl-4b").thinking());
     }
 
     @Test
