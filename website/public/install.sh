@@ -17,8 +17,8 @@
 #   5. looks for Java 22 or newer, which fornax runs on, and if there is none says how to get one. It installs no Java.
 #
 # It needs no root, writes only into those two folders and edits no shell startup file: when ~/.local/bin isn't on
-# PATH, it prints the line to add. Run it again to update fornax. To uninstall, delete ~/.local/share/fornax and
-# ~/.local/bin/fornax.
+# PATH, it prints the line to add. Run it again to update fornax. To uninstall, delete ~/.local/share/fornax (or the
+# FORNAX_HOME below) and ~/.local/bin/fornax.
 #
 #   FORNAX_VERSION   the release to install, such as 0.3.0 (default: the latest)
 #   FORNAX_HOME      the folder the versions go in (default: $XDG_DATA_HOME/fornax, else ~/.local/share/fornax)
@@ -56,10 +56,11 @@ detect_platform() {
     esac
 }
 
-# fetch URL FILE: https:// with curl or wget, or file:// by copying.
+# fetch URL FILE: https:// with curl or wget, or file:// by copying. Fails, rather than dies, on a file that isn't
+# there, so the caller can say what that means.
 fetch() {
     case "$1" in
-        file://*) cp "${1#file://}" "$2" || die "can't read $1" ;;
+        file://*) cp "${1#file://}" "$2" || return 1 ;;
         https://*)
             if has curl; then
                 if [ -t 2 ] && [ "${3:-}" = progress ]; then bar=--progress-bar; else bar=--silent; fi
@@ -91,9 +92,9 @@ unpack() {
     fi
 }
 
-# The major version of the java at $1 ("25", or "1" for 1.8), or nothing if it doesn't run.
+# The major version of the java at $1 ("25", or "8" for 1.8), or nothing if it doesn't run.
 java_major() {
-    "$1" -version 2>&1 | sed -n 's/.* version "\([0-9][0-9]*\).*/\1/p' | head -n 1
+    "$1" -version 2>&1 | sed -n -e 's/.* version "1\.\([0-9][0-9]*\).*/\1/p' -e 's/.* version "\([0-9][0-9]*\).*/\1/p' | head -n 1
 }
 
 # Says whether the Java fornax will find is 22 or newer, and how to get one if it isn't. Never fails the install.
@@ -178,7 +179,7 @@ main() {
 
     say "Fornax:  ${version:-latest} for $platform, from $base"
     fetch "$base/SHA256SUMS" "$work/SHA256SUMS" ||
-        die "no SHA256SUMS at $base. Releases before 0.3.0 have no fornax-cli download; JBang runs any release: https://fornax4j.org/docs/guides/cli/#installing-it"
+        die "no SHA256SUMS at $base. Releases before 0.3.0 have no fornax-cli download; other ways to get fornax: https://fornax4j.org/docs/guides/cli/#installing-it"
 
     # The zip for this platform: "<sha256>  fornax-cli-<version>-<platform>.zip" (or "*fornax-cli-..." in binary mode)
     line=$(awk -v suffix="-$platform.zip" '{ f = $2; sub(/^\*/, "", f) }

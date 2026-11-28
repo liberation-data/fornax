@@ -46,9 +46,10 @@ fornax image flux2-klein "a brick kiln at dusk"      # like chat, downloads the 
   `fornax` runs on Java 22 or newer (`FORNAX_JAVA`, `JAVA_HOME`, or `java` on `PATH`). The script installs no Java:
   it checks for one, and if there is none it says how to get one (`sdk install java` with
   [SDKMAN](https://sdkman.io), `jbang jdk install 25`, or your package manager). On Linux the engines need the Vulkan
-  loader and your GPU's Vulkan driver ([Installing GPU drivers](/docs/gpu-drivers/)). Run it again to update; `FORNAX_VERSION=0.3.0` installs that
-  release, and `FORNAX_HOME` and `FORNAX_BIN_DIR` move the two folders. To uninstall, delete `~/.local/share/fornax`
-  and `~/.local/bin/fornax`.
+  loader and your GPU's Vulkan driver ([Installing GPU drivers](/docs/gpu-drivers/)). Run it again to update;
+  `FORNAX_VERSION=0.3.0` installs that release, and `FORNAX_HOME` and `FORNAX_BIN_DIR` move the two folders
+  (`XDG_DATA_HOME`, if set, moves the first to `$XDG_DATA_HOME/fornax`). To uninstall, delete those two:
+  `~/.local/share/fornax` and `~/.local/bin/fornax`.
 - **With Fornax Studio** (coming in the next Fornax Studio release): choose **Install fornax command** from Studio's menu.
   Studio writes a `fornax` launcher into a folder on your `PATH` (`~/.local/bin` on Linux; `/usr/local/bin`, or
   `~/.local/bin`, on macOS). That `fornax` runs on Studio's own Java and engines, so it needs nothing else installed.

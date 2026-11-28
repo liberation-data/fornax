@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.util.HashMap;
@@ -16,6 +17,8 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -39,15 +42,31 @@ class InstallScriptTest {
     void release() throws Exception {
         home = Files.createDirectories(tmp.resolve("home"));
         dist = Files.createDirectories(tmp.resolve("release"));
-        Path zip = Path.of(System.getProperty("fornax.cli.distZip", "build/distributions/fornax-cli-" + VERSION + ".zip"));
+        publish(Path.of(System.getProperty("fornax.cli.distZip", "build/distributions/fornax-cli-" + VERSION + ".zip")));
+    }
+
+    /** Puts zip in the release under each platform's name, so a test runs on either kind of machine the script supports. */
+    void publish(Path zip) throws Exception {
         StringBuilder sums = new StringBuilder();
-        // The same zip under each platform's name, so the test runs on either kind of machine the script supports
         for (String platform : PLATFORMS) {
             String name = "fornax-cli-" + VERSION + "-" + platform + ".zip";
-            Files.copy(zip, dist.resolve(name));
+            Files.copy(zip, dist.resolve(name), StandardCopyOption.REPLACE_EXISTING);
             sums.append(sha256(zip)).append("  ").append(name).append('\n');
         }
         Files.writeString(dist.resolve("SHA256SUMS"), sums);
+    }
+
+    /** An executable shell script at file, to stand in for a command (java, uname, fornax). */
+    static Path script(Path file, String body) throws Exception {
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "#!/bin/sh\n" + body);
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        return file;
+    }
+
+    /** What is in folder: in the data folder after a refused install, nothing (no version, no work folder). */
+    List<Path> leftIn(Path folder) throws Exception {
+        try (Stream<Path> files = Files.list(folder)) { return files.toList(); }
     }
 
     Run install(Map<String, String> env) throws Exception {
@@ -115,9 +134,52 @@ class InstallScriptTest {
         assertEquals(1, r.code(), r.output());
         assertTrue(r.output().contains("not installing it"), r.output());
         assertFalse(Files.exists(link()) || Files.isSymbolicLink(link()));
-        try (Stream<Path> files = Files.list(data())) {
-            assertEquals(List.of(), files.toList(), "something was left in " + data());
+        assertEquals(List.of(), leftIn(data()), "something was left in " + data());
+    }
+
+    @Test
+    void refusesAReleaseWithNoSha256Sums() throws Exception {
+        Files.delete(dist.resolve("SHA256SUMS"));
+        Run r = install();
+        assertEquals(1, r.code(), r.output());
+        assertTrue(r.output().contains("no SHA256SUMS at file://" + dist), r.output());
+        assertTrue(r.output().contains("Releases before 0.3.0"), r.output());
+        assertEquals(List.of(), leftIn(data()));
+    }
+
+    @Test
+    void refusesAReleaseWithNoZipForThisPlatform() throws Exception {
+        String sums = Files.readString(dist.resolve("SHA256SUMS"));
+        for (String platform : PLATFORMS) sums = sums.replace("-" + platform + ".zip", "-windows-x86_64-cuda.zip");
+        Files.writeString(dist.resolve("SHA256SUMS"), sums);
+        Run r = install();
+        assertEquals(1, r.code(), r.output());
+        assertTrue(r.output().contains("SHA256SUMS lists none"), r.output());
+        assertEquals(List.of(), leftIn(data()));
+    }
+
+    @Test
+    void refusesAZipWithoutTheCommandInIt() throws Exception {
+        Path zip = tmp.resolve("no-bin.zip");
+        try (var out = new ZipOutputStream(Files.newOutputStream(zip))) {
+            out.putNextEntry(new ZipEntry("fornax-cli-" + VERSION + "/lib/fornax-cli-" + VERSION + ".jar"));
+            out.closeEntry();
         }
+        publish(zip);
+        Run r = install();
+        assertEquals(1, r.code(), r.output());
+        assertTrue(r.output().contains("doesn't hold fornax-cli-" + VERSION + "/bin/fornax"), r.output());
+        assertFalse(Files.exists(link()) || Files.isSymbolicLink(link()));
+        assertEquals(List.of(), leftIn(data()));
+    }
+
+    @Test
+    void refusesACurrentThatIsntALink() throws Exception {
+        Files.createDirectories(data().resolve("current"));
+        Run r = install();
+        assertEquals(1, r.code(), r.output());
+        assertTrue(r.output().contains("current is there and isn't a link"), r.output());
+        assertEquals(List.of(data().resolve("current")), leftIn(data()));
     }
 
     @Test
@@ -151,14 +213,58 @@ class InstallScriptTest {
     }
 
     @Test
+    void installsUnderXdgDataHome() throws Exception {
+        Path xdg = tmp.resolve("xdg");
+        Run r = install(Map.of("XDG_DATA_HOME", xdg.toString()));
+        assertEquals(0, r.code(), r.output());
+        assertEquals(xdg.toRealPath().resolve("fornax/current/bin/fornax"), Files.readSymbolicLink(link()));
+        assertFalse(Files.exists(data()));
+    }
+
+    @Test
+    void saysWhenAnotherFornaxComesFirstOnPath() throws Exception {
+        Path other = script(tmp.resolve("other/fornax"), "echo studio\n");
+        Run r = install(Map.of("PATH", other.getParent() + ":" + link().getParent() + ":" + System.getenv("PATH")));
+        assertEquals(0, r.code(), r.output());
+        assertTrue(r.output().contains("Another fornax comes first on PATH: " + other), r.output());
+        assertFalse(r.output().contains("export PATH"), r.output());
+        assertTrue(Files.isSymbolicLink(link()));
+    }
+
+    @Test
+    void picksTheNativesByUname() throws Exception {
+        // uname (and sysctl, which says whether a Mac's shell runs under Rosetta) stood in for, first on PATH
+        Path fake = tmp.resolve("fake");
+        script(fake.resolve("uname"), "case \"$1\" in -s) echo \"$FAKE_OS\" ;; -m) echo \"$FAKE_ARCH\" ;; esac\n");
+        script(fake.resolve("sysctl"), "echo \"$FAKE_ROSETTA\"\n");
+        String path = fake + ":" + System.getenv("PATH");
+
+        Run arm = install(Map.of("PATH", path, "FAKE_OS", "Linux", "FAKE_ARCH", "aarch64"));
+        assertEquals(1, arm.code(), arm.output());
+        assertTrue(arm.output().contains("no natives for Linux aarch64"), arm.output());
+        Run intel = install(Map.of("PATH", path, "FAKE_OS", "Darwin", "FAKE_ARCH", "x86_64", "FAKE_ROSETTA", "0"));
+        assertEquals(1, intel.code(), intel.output());
+        assertTrue(intel.output().contains("no natives for Intel Macs"), intel.output());
+        assertFalse(Files.exists(link()) || Files.isSymbolicLink(link()));
+
+        Run rosetta = install(Map.of("PATH", path, "FAKE_OS", "Darwin", "FAKE_ARCH", "x86_64", "FAKE_ROSETTA", "1"));
+        assertEquals(0, rosetta.code(), rosetta.output());
+        assertTrue(rosetta.output().contains("for macos-aarch64-metal"), rosetta.output());
+    }
+
+    @Test
     void saysHowToGetJavaWhenItsTooOld() throws Exception {
-        Path java = tmp.resolve("java");
-        Files.writeString(java, "#!/bin/sh\necho 'openjdk version \"17.0.2\" 2022-01-18' >&2\n");
-        Files.setPosixFilePermissions(java, PosixFilePermissions.fromString("rwxr-xr-x"));
+        Path java = script(tmp.resolve("java"), "echo 'openjdk version \"17.0.2\" 2022-01-18' >&2\n");
         Run r = install(Map.of("FORNAX_JAVA", java.toString()));
         assertEquals(0, r.code(), r.output());  // fornax is installed all the same
         assertTrue(r.output().contains("is Java 17"), r.output());
         assertTrue(r.output().contains("sdk install java"), r.output());
+
+        // Java 8 says "1.8.0_..."
+        Path java8 = script(tmp.resolve("java8"), "echo 'openjdk version \"1.8.0_292\"' >&2\n");
+        Run eight = install(Map.of("FORNAX_JAVA", java8.toString()));
+        assertEquals(0, eight.code(), eight.output());
+        assertTrue(eight.output().contains("is Java 8 ("), eight.output());
 
         Run none = install(Map.of("FORNAX_JAVA", tmp.resolve("nowhere/java").toString()));
         assertEquals(0, none.code(), none.output());
