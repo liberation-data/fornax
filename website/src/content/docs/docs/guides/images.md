@@ -1,11 +1,11 @@
 ---
 title: Images
-description: Generate and edit images from Java with stable-diffusion.cpp - FLUX.2 [klein], Qwen-Image, Qwen-Image-Edit and Z-Image - and pass any engine option through.
+description: Generate and edit images from Java with stable-diffusion.cpp - FLUX.2 [klein], Qwen-Image, Qwen-Image-Edit, Z-Image and ERNIE-Image - and pass any engine option through.
 ---
 
 `fornax-sd` runs image (and [video](/docs/guides/video/)) diffusion models through
 [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp): FLUX.1 and FLUX.2, Qwen-Image and
-Qwen-Image-Edit, Z-Image, SD 1.x, 2.x, XL and 3, and more. The class is `DiffusionModel`.
+Qwen-Image-Edit, Z-Image, ERNIE-Image, SD 1.x, 2.x, XL and 3, and more. The class is `DiffusionModel`.
 
 A diffusion model is usually several files: the **diffusion model** itself, a **VAE** that turns latents into pixels,
 and a **text encoder** (a language model, for the models on this page). You name each one in a `Config`, and the

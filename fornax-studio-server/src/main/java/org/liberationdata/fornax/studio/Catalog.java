@@ -80,9 +80,9 @@ final class Catalog {
     static final List<LlamaModel.Weights> VISION = List.of(
             LlamaModel.Weights.QWEN3_VL_4B, LlamaModel.Weights.PADDLEOCR_VL, LlamaModel.Weights.MEDGEMMA_4B, LlamaModel.Weights.OCRIA_1);
 
-    // GGUFs in the cache that aren't chat models: the song engines' own weights, embedders, VAEs and vision projectors,
-    // and the vision models, which the Inspect window loads with their projectors.
-    private static final Set<String> NOT_CHAT_REPOS = Set.of("Serveurperso/ACE-Step-1.5-GGUF", YUE2,
+    // GGUFs in the cache that aren't chat models: the song engines' own weights, ERNIE-Image's diffusion model, embedders,
+    // VAEs and vision projectors, and the vision models, which the Inspect window loads with their projectors.
+    private static final Set<String> NOT_CHAT_REPOS = Set.of("Serveurperso/ACE-Step-1.5-GGUF", YUE2, "unsloth/ERNIE-Image-Turbo-GGUF",
             LlamaModel.Weights.QWEN3_VL_4B.repo, LlamaModel.Weights.PADDLEOCR_VL.repo, LlamaModel.Weights.MEDGEMMA_4B.repo,
             LlamaModel.Weights.OCRIA_1.repo);
     private static final Pattern NOT_CHAT_FILE = Pattern.compile("(?i).*(embed|vae|mmproj|reranker).*");
