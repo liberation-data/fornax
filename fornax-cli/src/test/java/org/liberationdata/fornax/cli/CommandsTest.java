@@ -168,6 +168,8 @@ class CommandsTest {
     @Test
     void pullSaysWhichCommandRunsTheModel() {
         assertEquals("Try it: fornax see qwen3-vl-4b picture.png", Pull.tryIt(ModelCatalog.require("qwen3-vl-4b")));
+        assertFalse(Pull.tryIt(ModelCatalog.require("ocria-1")).contains("fornax see"));   // see can't turn its thinking off
+        assertTrue(Pull.tryIt(ModelCatalog.require("ocria-1")).contains("chatJson"));
         assertEquals("Try it: fornax speak --model kokoro \"Hello from Fornax\"", Pull.tryIt(ModelCatalog.require("kokoro")));
         assertEquals("Try it: fornax transcribe --model whisper-base.en speech.wav", Pull.tryIt(ModelCatalog.require("whisper-base.en")));
         assertEquals("Try it: fornax image flux2-klein \"a brick kiln at dusk\"", Pull.tryIt(ModelCatalog.require("flux2-klein")));

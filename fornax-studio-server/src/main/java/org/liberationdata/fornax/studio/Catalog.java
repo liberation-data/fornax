@@ -81,9 +81,11 @@ final class Catalog {
             LlamaModel.Weights.QWEN3_VL_4B, LlamaModel.Weights.PADDLEOCR_VL, LlamaModel.Weights.MEDGEMMA_4B);
 
     // GGUFs in the cache that aren't chat models: the song engines' own weights, embedders, VAEs and vision projectors,
-    // and the vision models, which the Inspect window loads with their projectors.
+    // and the vision models, which the Inspect window loads with their projectors. OCRia-1 too, though Inspect doesn't
+    // offer it yet: it needs thinking off, which Inspect can't ask for.
     private static final Set<String> NOT_CHAT_REPOS = Set.of("Serveurperso/ACE-Step-1.5-GGUF", YUE2,
-            LlamaModel.Weights.QWEN3_VL_4B.repo, LlamaModel.Weights.PADDLEOCR_VL.repo, LlamaModel.Weights.MEDGEMMA_4B.repo);
+            LlamaModel.Weights.QWEN3_VL_4B.repo, LlamaModel.Weights.PADDLEOCR_VL.repo, LlamaModel.Weights.MEDGEMMA_4B.repo,
+            LlamaModel.Weights.OCRIA_1.repo);
     private static final Pattern NOT_CHAT_FILE = Pattern.compile("(?i).*(embed|vae|mmproj|reranker).*");
     // Of a split GGUF, the first shard names the model (llama.cpp loads the rest beside it).
     private static final Pattern SHARD = Pattern.compile("(?i)(.*)-(\\d{5})-of-(\\d{5})\\.gguf");

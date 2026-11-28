@@ -69,7 +69,7 @@ tool-call format, with llama-server's templates and parsers. A request takes:
 - `stop`: a string or a list; the reply ends before the first one, and the model stops there
 - `stream: true`: server-sent events in OpenAI's chunk format, ending with `data: [DONE]`;
   `stream_options: {"include_usage": true}` adds the token counts in a last chunk
-- images, for a vision model (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`): `image_url` content parts with a base64
+- images, for a vision model (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`, `ocria-1`): `image_url` content parts with a base64
   `data:` URI of a PNG, JPEG, GIF or BMP, up to 67 megapixels (8192 x 8192) in all a request; the server doesn't fetch URLs
 - `chat_template_kwargs: {"enable_thinking": false}` turns a reasoning model's thinking off
 

@@ -263,6 +263,15 @@ public final class LlamaModel implements AutoCloseable {
          */
         MEDGEMMA_4B("unsloth/medgemma-1.5-4b-it-GGUF", "medgemma-1.5-4b-it-Q4_K_M.gguf", "mmproj-F16.gguf"),
         /**
+         * LlamaIndex OCRia-1 (4B, Q8_0): reads a document page to markdown, tables as HTML. Not open source: its license,
+         * a modified OpenRAIL-M, allows only personal or research use to anyone whose organisation had more than US$2M
+         * revenue last year or has raised more than US$2M, and bars use in a service that competes with LlamaParse or
+         * LlamaCloud. Run it as its model card does, through {@code chatJson}: its system prompt ({@code prompt.txt} in
+         * the repo), the page with no text, {@code "enable_thinking": false} and temperature 0. With thinking on it
+         * writes the page twice, once inside the think block.
+         */
+        OCRIA_1("llamaindex/OCRia-1-GGUF", "OCRia-1-Q8_0.gguf", "mmproj-OCRia-1-f16.gguf"),
+        /**
          * Qwen3-Embedding 0.6B (Q8_0): 1024-dimension text embeddings, 100+ languages; load it in {@link Mode#EMBED}.
          * Queries take an instruction ({@link EmbedOptions#query}); documents don't. Apache-2.0.
          */
