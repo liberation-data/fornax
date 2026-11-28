@@ -104,23 +104,13 @@ jobs:
       - name: Mesa's software Vulkan driver (lavapipe)
         if: matrix.backend == 'vulkan'
         run: |
-          pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-mesa mingw-w64-ucrt-x86_64-vulkan-tools
+          pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-mesa
           icd=$(ls /ucrt64/share/vulkan/icd.d/lvp_icd*.json | head -1)
           echo "lavapipe: $icd"
           echo "VK_DRIVER_FILES=$(cygpath -w "$icd")" >> "$GITHUB_ENV"
           echo "VK_ICD_FILENAMES=$(cygpath -w "$icd")" >> "$GITHUB_ENV"
           cygpath -w /ucrt64/bin >> "$GITHUB_PATH"
           cat "$icd"
-          VK_DRIVER_FILES="$(cygpath -w "$icd")" VK_LOADER_DEBUG=error,warn,driver vulkaninfo --summary 2>&1 | tail -40 || true
-
-      # The same, from the pwsh steps' environment, which is where Java runs.
-      - name: Vulkan devices seen from pwsh
-        if: matrix.backend == 'vulkan'
-        shell: pwsh
-        run: |
-          $env:VK_LOADER_DEBUG = 'error,warn,driver'
-          Get-Command vulkan-1.dll -ErrorAction SilentlyContinue | Format-List Source
-          vulkaninfo --summary 2>&1 | Select-Object -Last 40
 
       - name: Set up Java
         uses: actions/setup-java@v6
@@ -163,6 +153,10 @@ jobs:
           $cp = (& $jar fornax-core) + ';' + (& $jar fornax-llama)
           $layers = if ('${{ matrix.backend }}' -eq 'vulkan') { '-1' } else { '0' }
           $env:FORNAX_VERBOSE = '1'   # the engines' log, which names the Vulkan device
+          if ('${{ matrix.backend }}' -eq 'vulkan') {
+            $env:VK_LOADER_DEBUG = 'error,warn,driver'   # the Vulkan loader's account of the drivers it tried
+            Get-Command vulkan-1.dll -ErrorAction SilentlyContinue | Format-List Source
+          }
           java --enable-native-access=ALL-UNNAMED "-Dfornax.library.path=$PWD/build/native/windows-x86_64-${{ matrix.backend }}" -cp $cp .github/scripts/GenerateOnce.java $gguf $layers 2>&1 | Tee-Object -FilePath generate.log
           # Without a Vulkan device ggml would run on the CPU and this would prove nothing about the Vulkan build.
           if ('${{ matrix.backend }}' -eq 'vulkan' -and -not (Select-String -Path generate.log -Pattern 'llvmpipe' -Quiet)) {
