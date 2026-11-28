@@ -12,6 +12,8 @@ npm test          # src/lib's tests (node:test)
 ```
 
 - `src/pages/index.astro` is the whole landing page: content, styles and the little script for tabs and copy buttons.
+  Its footer ends with the elements strip, Liberation Data's projects as the four elements of Embabel Worlds
+  (Fire: Fornax, lit here); drivine.org's landing page has the same strip, so a change to one goes to both.
 - The docs are Markdown in `src/content/docs/docs/`, served at `/docs/`; the sidebar is in `astro.config.mjs`.
   `src/styles/docs.css` gives Starlight the landing page's palette, and `src/components/docs/` holds its overrides:
   the fornax4j wordmark in the header, Share beside each page's title, and the share card as each page's `og:image`.
