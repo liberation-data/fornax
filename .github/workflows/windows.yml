@@ -1,7 +1,8 @@
 # Windows natives (#83), phase 1: builds every engine with native/build.sh in MSYS2's MinGW-w64 (UCRT64) shell, checks
 # each DLL needs nothing from MinGW beside it and exports only Fornax's own functions, and loads each one from Java.
-# GitHub's Windows runners have no GPU, so the CPU build is the one Java loads and binds; the Vulkan build is checked
-# for building and linking. Not part of a release yet: the natives jar for Windows comes once this is green.
+# GitHub's Windows runners have no GPU, so the CPU build is the one Java loads, binds and runs a small model on (in
+# process and in a worker JVM); the Vulkan build is checked for building and linking. Not part of a release yet: the
+# natives jar for Windows comes once this is green.
 name: Windows natives
 
 on:
@@ -11,8 +12,10 @@ on:
       - '*/native/**'
       - 'build.gradle'
       - 'settings.gradle'
-      - 'fornax-core/src/main/java/org/liberationdata/fornax/NativeLibrary.java'
-      - 'fornax-core/src/main/java/org/liberationdata/fornax/BundledNatives.java'
+      # The Java that loads the natives and runs the model below (worker JVMs included), and the scripts that drive it.
+      - 'fornax-core/src/main/**'
+      - 'fornax-llama/src/main/**'
+      - '.github/scripts/**'
       - '.github/workflows/windows.yml'
   workflow_dispatch:
 
@@ -113,6 +116,32 @@ jobs:
           ./gradlew --no-daemon :fornax-core:jar :fornax-core:test --tests '*NativeLibraryTunablesTest' :fornax-acestep:test :fornax-yue2:test --tests '*BindingsTest' "-Pfornax.backend=cpu"
           $core = (Get-ChildItem fornax-core/build/libs/fornax-core-*.jar | Where-Object { $_.Name -notmatch 'sources|javadoc' } | Select-Object -First 1).FullName
           java --enable-native-access=ALL-UNNAMED "-Dfornax.library.path=$PWD/build/native/windows-x86_64-cpu" -cp $core .github/scripts/LoadEveryEngine.java
+
+      # A real model, not just a load: ggml-org's tinyllamas stories15M (19 MB), on the CPU, in process and in an
+      # isolated worker JVM (#122). Cached: a pull request's runs share the copy its first run saved (caches saved on
+      # one pull request's ref aren't visible to another's; one saved by a run on main would be visible to all).
+      - name: Cache the test model
+        if: matrix.backend == 'cpu'
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/models
+          key: tinyllamas-stories15M-q4_0
+
+      - name: Generate text with a model
+        if: matrix.backend == 'cpu'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $gguf = "$env:RUNNER_TEMP/models/stories15M-q4_0.gguf"
+          if (-not (Test-Path $gguf)) {
+            New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/models" | Out-Null
+            curl.exe -fsSL --retry 3 -o $gguf https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories15M-q4_0.gguf
+          }
+          ./gradlew --no-daemon :fornax-llama:jar
+          $jar = { param($m) (Get-ChildItem "$m/build/libs/$m-*.jar" | Where-Object { $_.Name -notmatch 'sources|javadoc' } | Select-Object -First 1).FullName }
+          $cp = (& $jar fornax-core) + ';' + (& $jar fornax-llama)
+          java --enable-native-access=ALL-UNNAMED "-Dfornax.library.path=$PWD/build/native/windows-x86_64-cpu" -cp $cp .github/scripts/GenerateOnce.java $gguf
 
       - uses: actions/upload-artifact@v7
         with:
