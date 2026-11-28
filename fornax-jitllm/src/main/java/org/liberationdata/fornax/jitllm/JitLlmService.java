@@ -4,6 +4,7 @@ import org.liberationdata.fornax.Call;
 import org.liberationdata.fornax.Wire;
 import org.liberationdata.fornax.WorkerService;
 import org.liberationdata.fornax.jitllm.JitLlmModel.Mode;
+import org.liberationdata.fornax.llama.LlamaModel.Embeddings;
 import org.liberationdata.fornax.llama.LlamaModel.Message;
 import org.liberationdata.fornax.llama.LlamaModel.Options;
 import org.liberationdata.fornax.llama.LlamaModel.Result;
@@ -77,20 +78,21 @@ public final class JitLlmService implements WorkerService {
         return out.toBytes();
     }
 
-    static byte[] embeddings(float[][] v) {
+    static byte[] embeddings(Embeddings e) {
+        float[][] v = e.vectors();
         int dim = v.length == 0 ? 0 : v[0].length;
         ByteBuffer floats = ByteBuffer.allocate(Math.multiplyExact(v.length, dim) * Float.BYTES);
-        for (float[] e : v) for (float x : e) floats.putFloat(x);
-        return new Wire.Out().integer(v.length).integer(dim).bytes(floats.array()).toBytes();
+        for (float[] x : v) for (float f : x) floats.putFloat(f);
+        return new Wire.Out().integer(v.length).integer(dim).bytes(floats.array()).integer(e.tokens()).toBytes();
     }
 
-    static float[][] decodeEmbeddings(byte[] b) {
+    static Embeddings decodeEmbeddings(byte[] b) {
         Wire.In in = new Wire.In(b);
         int n = in.integer(), dim = in.integer();
         ByteBuffer floats = ByteBuffer.wrap(in.bytes());
         float[][] v = new float[n][dim];
         for (float[] e : v) for (int i = 0; i < dim; i++) e[i] = floats.getFloat();
-        return v;
+        return new Embeddings(v, in.integer());
     }
 
     static byte[] result(Result r) {

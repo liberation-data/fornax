@@ -56,6 +56,10 @@ class JitLlmModelGpuTest {
     @Test void anEmbeddingInputLongerThanTheContextIsABadRequest() {
         try (var llm = new JitLlmModel(MODEL, 64, JitLlmModel.Mode.EMBED)) {
             assertEquals(llm.embeddingSize(), llm.embed("a kiln").length);
+            // the tokens the model ran: each text's, the end-of-text token included, so two of one are twice one
+            int one = llm.embeddings(List.of("a kiln")).tokens();
+            assertTrue(one >= 2, "tokens: " + one);
+            assertEquals(2 * one, llm.embeddings(List.of("a kiln", "a kiln")).tokens());
             IllegalStateException e = assertThrows(IllegalStateException.class, () -> llm.embed("kiln ".repeat(200)));
             assertTrue(e.getMessage().contains("more than the context holds"), e.getMessage());
         }

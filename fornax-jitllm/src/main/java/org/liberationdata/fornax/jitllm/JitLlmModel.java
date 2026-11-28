@@ -6,6 +6,7 @@ import org.liberationdata.fornax.ModelThread;
 import org.liberationdata.fornax.Worker;
 import org.liberationdata.fornax.hub.ModelReferences;
 import org.liberationdata.fornax.hub.ModelSet;
+import org.liberationdata.fornax.llama.LlamaModel.Embeddings;
 import org.liberationdata.fornax.llama.LlamaModel.Message;
 import org.liberationdata.fornax.llama.LlamaModel.Options;
 import org.liberationdata.fornax.llama.LlamaModel.Result;
@@ -23,9 +24,9 @@ import java.util.function.Consumer;
  * A GGUF language model running on the GPU through <a href="https://github.com/beehive-lab/jitllm">jitllm</a>, a
  * pure-Java inference engine whose kernels TornadoVM compiles at run time for CUDA, OpenCL or Metal. It takes the same
  * {@link Message}s and {@link Options} as {@code LlamaModel} and gives the same {@link Result}, so code written for
- * one runs on the other: {@code chat}, {@code chatJson} (what fornax-server serves), {@code embed}, streaming, the
- * async methods and {@code cancel}. jitllm samples with temperature and top-p only: {@link Options#minP()} is
- * ignored. Images, tools, JSON-schema constrained output and reranking stay with {@code LlamaModel}.
+ * one runs on the other: {@code chat}, {@code chatJson} (what fornax-server serves), {@code embed} and
+ * {@code embeddings}, streaming, the async methods and {@code cancel}. jitllm samples with temperature and top-p
+ * only: {@link Options#minP()} is ignored. Images, tools, JSON-schema constrained output and reranking stay with {@code LlamaModel}.
  *
  * <p>jitllm needs a TornadoVM SDK ({@code TORNADOVM_HOME}) and the JVM options it lists. When this JVM was started
  * with them, {@code --add-modules jdk.incubator.vector}, {@code -Duse.tornadovm=true} and
@@ -215,17 +216,23 @@ public final class JitLlmModel implements AutoCloseable {
     // ---- embeddings ----
 
     /** One embedding per text, L2-normalised. */
-    public float[][] embed(List<String> texts) {
-        return thread.run(c -> embedOn(c, texts));
-    }
+    public float[][] embed(List<String> texts) { return embeddings(texts).vectors(); }
 
     public float[] embed(String text) { return embed(List.of(text))[0]; }
 
-    public CompletableFuture<float[][]> embedAsync(List<String> texts) {
-        return thread.submit(c -> embedOn(c, texts));
+    /**
+     * {@link #embed(List)}, with the tokens the model ran for the texts (each text's, and the end-of-text token jitllm
+     * appends), as {@code LlamaModel.embeddings} counts them for an OpenAI usage report.
+     */
+    public Embeddings embeddings(List<String> texts) {
+        return thread.run(c -> embedOn(c, texts));
     }
 
-    float[][] embedOn(Call call, List<String> texts) {
+    public CompletableFuture<float[][]> embedAsync(List<String> texts) {
+        return thread.submit(c -> embedOn(c, texts).vectors());
+    }
+
+    Embeddings embedOn(Call call, List<String> texts) {
         requireMode(Mode.EMBED, "embed");
         if (remote != null) return JitLlmService.decodeEmbeddings(remote.invoke("embed", JitLlmService.embedArgs(texts), call, null));
         return local.embed(texts);

@@ -15,8 +15,8 @@ import org.beehive.jitllm.api.ModelOptions;
 import org.beehive.jitllm.api.SessionOptions;
 import org.beehive.jitllm.api.TextGenerationModel;
 import org.beehive.jitllm.api.ThinkingMode;
-import java.nio.charset.StandardCharsets;
 import org.liberationdata.fornax.Call;
+import org.liberationdata.fornax.llama.LlamaModel;
 import org.liberationdata.fornax.llama.LlamaModel.Message;
 
 import java.io.IOException;
@@ -36,6 +36,7 @@ final class Engine implements AutoCloseable {
     private final LocalModel model;
     private final TextGenerationModel text;
     private final EmbeddingSession embeddings;    // embed, or null
+    private final int endOfText;                 // the tokens EmbeddingSession appends to a text: 1, or 0 without one
     private final int contextLength;             // tokens: the one asked for, else the model's own
     private final boolean opensInside;           // the prompt opens a think block, so replies start inside it
     private final boolean thinkingControl;       // the model's template can turn thinking on and off
@@ -58,6 +59,8 @@ final class Engine implements AutoCloseable {
             opensInside = model.info().architecture().toLowerCase(Locale.ROOT).startsWith("deepseek_r1");
             thinkingControl = model.info().capabilities().thinkingControl();
             embeddings = embed ? EmbeddingSession.open(t) : null;
+            // EmbeddingSession appends <|endoftext|> when the vocab has it (its private endOfText), and runs it too
+            endOfText = embed && embeddings.model().tokenizer().getSpecialTokens().containsKey("<|endoftext|>") ? 1 : 0;
             session = embed ? null : open(true);
         } catch (RuntimeException e) {
             model.close();
@@ -130,20 +133,22 @@ final class Engine implements AutoCloseable {
     }
 
     /**
-     * One embedding per text; a text longer than the context is a bad request ({@code rc=2}), as it is for llama.cpp.
-     * A text is tokenized for the check only when it could be too long: a token is at least one byte of it.
+     * One embedding per text, and the tokens the model ran for them; a text longer than the context is a bad request
+     * ({@code rc=2}), as it is for llama.cpp. Each text is tokenized here as EmbeddingSession tokenizes it, which
+     * it does again to embed it: its API takes text, not tokens. A text that fits isn't cut, so its tokens are what
+     * the model ran, with the end-of-text token EmbeddingSession appends.
      */
-    float[][] embed(List<String> texts) {
+    LlamaModel.Embeddings embed(List<String> texts) {
         int room = Math.max(1, contextLength - 5);   // EmbeddingSession's own room: the end-of-text token and a margin
+        int tokens = 0;
         for (int i = 0; i < texts.size(); i++) {
-            String t = texts.get(i);
-            if (t.length() <= room && t.getBytes(StandardCharsets.UTF_8).length <= room) continue;
-            int n = embeddings.tokens(t).size();
+            int n = embeddings.tokens(texts.get(i)).size();
             if (n > room)
                 throw new IllegalStateException("jitllm (rc=2): input " + i + " is " + n + " tokens, more than the context holds ("
                         + contextLength + " tokens)");
+            tokens += n + endOfText;
         }
-        try { return embeddings.embedAll(texts).toArray(float[][]::new); }
+        try { return new LlamaModel.Embeddings(embeddings.embedAll(texts).toArray(float[][]::new), tokens); }
         catch (RuntimeException e) { throw outOfMemory(e); }
     }
 

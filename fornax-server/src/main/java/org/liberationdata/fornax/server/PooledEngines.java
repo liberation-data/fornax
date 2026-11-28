@@ -228,7 +228,7 @@ final class PooledEngines implements Engines {
         try (ModelPool.Lease<AutoCloseable> lease = lease(f)) {
             if (lease.model() instanceof JitLlmModel j) {
                 // only a text longer than the context is the request's fault; running out of GPU memory isn't
-                try { return new LlamaModel.Embeddings(j.embed(texts), 0); }
+                try { return j.embeddings(texts); }
                 catch (IllegalStateException e) {
                     if (RC.matcher(String.valueOf(e.getMessage())).find()) throw ApiError.badRequest(withoutCode(e), "input");
                     throw e;
