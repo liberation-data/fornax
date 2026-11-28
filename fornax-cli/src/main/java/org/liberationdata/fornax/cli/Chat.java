@@ -58,13 +58,14 @@ final class Chat {
         Engine engine = engine(a);
         if (engine == Engine.JITLLM && a.option("gpu-layers", null) != null)
             throw new UsageException("--gpu-layers is for llama.cpp; jitllm runs every layer on the GPU");
+        // jitllm runs language models only: a vision model is refused first, then a missing SDK, both before any download
+        var kinds = engine == Engine.JITLLM ? java.util.EnumSet.of(Kind.CHAT) : java.util.EnumSet.of(Kind.CHAT, Kind.VISION);
         if (engine == Engine.JITLLM) {
-            try { JitLlmModel.checkRuntime(); }   // before the model is downloaded
+            Models.checkKind(spec, kinds, "chat", true);
+            try { JitLlmModel.checkRuntime(); }
             catch (IllegalStateException e) { throw new Main.Failure(e.getMessage()); }
         }
         // downloaded first when it isn't in the cache; a model of another kind is refused before that
-        // jitllm runs language models only: a vision model is refused before it is downloaded
-        var kinds = engine == Engine.JITLLM ? java.util.EnumSet.of(Kind.CHAT) : java.util.EnumSet.of(Kind.CHAT, Kind.VISION);
         Path gguf = Models.fetch(spec, kinds, "chat", true, hub, err, Main.terminal()).file("gguf");
         String prompt = String.join(" ", a.rest(1));
         boolean interactive = prompt.isBlank() && Main.terminal();

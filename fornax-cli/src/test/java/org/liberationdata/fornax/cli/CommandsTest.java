@@ -273,6 +273,9 @@ class CommandsTest {
         String before = System.getProperty("fornax.tornadovm.home");
         System.setProperty("fornax.tornadovm.home", tmp.resolve("no-sdk").toString());
         try {
+            // a vision model is refused for what it is, not for the SDK, which it wouldn't need on llama.cpp either
+            assertEquals(1, run("chat", "qwen3-vl-4b", "hi", "--engine", "jitllm"));
+            assertTrue(err.toString().contains("qwen3-vl-4b is a vision model"), err.toString());
             // a model by reference would be downloaded first: the missing SDK is said before that
             assertEquals(1, run("chat", "someone/model-GGUF:Q4_K_M", "hi", "--engine", "jitllm"));
             assertTrue(err.toString().contains("has no tornado-argfile"), err.toString());

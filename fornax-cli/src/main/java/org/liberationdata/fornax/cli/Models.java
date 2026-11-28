@@ -62,10 +62,10 @@ final class Models {
                          boolean terminal) throws IOException {
         String role = kinds.equals(java.util.EnumSet.of(Kind.TRANSCRIPTION)) ? "model" : "gguf";
         if (oneFile && isFile(spec)) return new Fetched(spec, null, Map.of(role, Path.of(spec)));
+        checkKind(spec, kinds, command, oneFile);
         var alias = ModelCatalog.byName(spec);
         if (alias.isPresent()) {
             ModelSet m = alias.get();
-            if (!kinds.contains(m.kind())) throw new Main.Failure(m.id() + " is " + aKind(m.kind()) + "; " + command + " takes " + kinds(kinds));
             return new Fetched(spec, m, pulled(m, m.id() + ": " + m.title() + " (" + m.engine() + ")", hub, err, terminal));
         }
         var ref = ModelRef.tryParse(spec);
@@ -88,6 +88,18 @@ final class Models {
                 + "come from several repos), not a reference; " + command + " takes " + kinds(kinds));
         throw new Main.Failure("No such " + (oneFile ? "file or " : "") + "model: " + spec + "\n  " + command + " takes " + kinds(kinds)
                 + (oneFile ? ", org/name[:TAG] or a path" : ""));
+    }
+
+    /**
+     * Refuses an alias of a kind {@code command} doesn't run, as {@link #fetch} does (a file of that name, for a
+     * {@code oneFile} command, is a file): for a command that has more to check before it fetches, and whose model's
+     * kind is the mistake to say first (jitllm's chat, before its SDK).
+     */
+    static void checkKind(String spec, java.util.Set<Kind> kinds, String command, boolean oneFile) {
+        if (oneFile && isFile(spec)) return;
+        var alias = ModelCatalog.byName(spec);
+        if (alias.isPresent() && !kinds.contains(alias.get().kind()))
+            throw new Main.Failure(alias.get().id() + " is " + aKind(alias.get().kind()) + "; " + command + " takes " + kinds(kinds));
     }
 
     /**
