@@ -5,8 +5,9 @@ the variant chosen for GGML_PREC_F32 (that flag only widened the scores and row 
 long KV the sum reaches about n_kv * |mean(V)| and overflows 65504 to inf; the result is clamped to +-65504. LTX-2.5's
 video-to-audio cross-attention (268 audio queries over 38,808 video tokens at 257 frames, 1344x896) hit it and the refine
 pass came out as mush (fornax#112). O_TYPE now follows ACC_TYPE (f16 only when f16 accumulation is allowed), on the
-scalar and coopmat1 paths; the shared-memory estimates count the wider accumulator. Upstream ggml-org/llama.cpp master
-(2026-11-28) still has the f16 accumulator; not yet reported there. Drop this once the pinned engines have a fix.
+scalar, coopmat1 and coopmat2 paths; the shared-memory estimates count the wider accumulator. Upstream
+ggml-org/llama.cpp master (2026-11-28) still has the f16 accumulator; not yet reported there. Drop this once the pinned
+engines have a fix.
 
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 index 47318cd2..a219b787 100644
