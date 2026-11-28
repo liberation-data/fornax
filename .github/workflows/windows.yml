@@ -187,9 +187,10 @@ jobs:
           if ('${{ matrix.backend }}' -eq 'vulkan' -and -not (Select-String -Path generate.log -Pattern 'llvmpipe' -Quiet)) {
             throw 'the Vulkan build did not run on lavapipe (no llvmpipe device in the log)'
           }
-          # And ran the model there: llama.cpp logs "offloaded 7/7 layers to GPU" (the device is listed whatever gpuLayers is).
-          if ('${{ matrix.backend }}' -eq 'vulkan' -and -not (Select-String -Path generate.log -Pattern 'offloaded (\d+)/\1 layers to GPU' -Quiet)) {
-            throw 'the Vulkan build did not offload every layer to lavapipe'
+          # And ran the model there, in process and in the worker: llama.cpp logs "offloaded 7/7 layers to GPU" for each
+          # (the device is listed whatever gpuLayers is).
+          if ('${{ matrix.backend }}' -eq 'vulkan' -and @(Select-String -Path generate.log -Pattern 'offloaded (\d+)/\1 layers to GPU').Count -lt 2) {
+            throw 'the Vulkan build did not offload every layer to lavapipe, in process and in the worker'
           }
 
       - uses: actions/upload-artifact@v7
