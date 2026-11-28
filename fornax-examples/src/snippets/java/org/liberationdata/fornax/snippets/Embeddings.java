@@ -32,6 +32,19 @@ class Embeddings {
         // --8<-- [end:embed]
     }
 
+    void gemma() {
+        // --8<-- [start:gemma]
+        try (var emb = new LlamaModel(Weights.EMBEDDINGGEMMA_2, Mode.EMBED)) {
+            List<String> docs = List.of(
+                    "A pottery fornax fires stoneware at around 1200 to 1300 degrees Celsius.",
+                    "Nashville is the capital of Tennessee and the home of country music.");
+            float[][] d = emb.embed(docs, EmbedOptions.gemmaDocument());      // 768 floats each, length 1
+            float[] q = emb.embed(List.of("How hot does a fornax get?"), EmbedOptions.gemmaQuery("search result"))[0];
+            var best = Vectors.topK(q, d, 1).get(0);
+        }
+        // --8<-- [end:gemma]
+    }
+
     void rerank() {
         // --8<-- [start:rerank]
         try (var rr = new LlamaModel(Weights.QWEN3_RERANKER_0_6B, Mode.RERANK)) {
