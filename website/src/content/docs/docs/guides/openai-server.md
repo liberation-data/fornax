@@ -167,9 +167,13 @@ fornax server [-m MODEL]... [options]
   --cors ORIGIN        let web pages from ORIGIN call it (repeat for more; * for any)
   --budget-gb N        memory for loaded models, by their files' size (default 24)
   --idle-minutes N     unload a model unused this long (default 15; 0 = never)
-  --ctx N              context size for language and embedding models (default 8192; 0 = the model's own)
+  --ctx N              context size for language and embedding models (default 8192; 0 = the model's own;
+                       jitllm's embedding models: at most 2048)
   --parallel N         chat requests each language model answers at once, decoded together in one batch
                        (default 1); each gets its own --ctx, which --budget-gb counts. Vision models: 1
+  --engine E           what runs language and embedding models: llama.cpp (default) or jitllm, a Java
+                       engine on the GPU through TornadoVM (needs TORNADOVM_HOME; no tools, JSON
+                       schemas, images or --parallel)
   --allow-downloads    let a request name any model, downloading it on first use (default: only the -m
                        models and catalogue models already downloaded)
 ```

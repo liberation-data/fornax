@@ -63,6 +63,7 @@ export default defineConfig({
                         { slug: 'docs/guides/language-models' },
                         'docs/guides/vision',
                         'docs/guides/embeddings',
+                        { slug: 'docs/guides/jitllm', badge: { text: 'Next', variant: 'default' } },
                         { slug: 'docs/guides/speech' },
                         { slug: 'docs/guides/speech-to-text' },
                         { slug: 'docs/guides/stem-separation' },
