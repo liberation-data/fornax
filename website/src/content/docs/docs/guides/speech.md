@@ -53,8 +53,8 @@ its files are there.
 | `QWEN3_TTS` | none: give it a reference clip (see below) | Apache-2.0 | Qwen3-TTS 1.7B Base |
 
 Any other TTS GGUF that llama.cpp runs works too: pass both paths. Either can be a
-[model reference](/docs/guides/models/#by-reference) instead, downloaded on first use, and the catalogue alias
-`kokoro` brings both files:
+[model reference](/docs/guides/models/#by-reference) instead, downloaded on first use, and the catalogue aliases
+`kokoro`, `zonos3-mini` and `voxcpm2` bring both files:
 
 <!-- snippet: Speech#files -->
 ```java
