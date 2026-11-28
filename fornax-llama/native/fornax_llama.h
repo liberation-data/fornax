@@ -31,7 +31,7 @@ int fornax_llama_complete(fornax_llama * h, const char * prompt, int max_tokens,
 // OpenAI-style chat with tool calling, through llama.cpp's chat templates and parsers (as llama-server does).
 // request_json: {"messages": [...], "tools": [...], "tool_choice": "auto|required|none", "parallel_tool_calls": bool,
 //                "max_tokens": n, "temperature": t, "top_p": p, "min_p": p, "top_k": k, "seed": s, "enable_thinking": bool,
-//                "json_schema": {...}}
+//                "json_schema": {...}, "chat_template_kwargs": {...}, "reasoning_effort": "low|medium|high"}
 // messages and tools use OpenAI's chat completions format.
 // *out_response_json: {"message": {"role", "content", "reasoning_content", "tool_calls": [...]},
 //                      "finish_reason": "stop|length|tool_calls", "usage": {"prompt_tokens", "completion_tokens"}}
