@@ -125,7 +125,8 @@ trained with the `<think>` in the prompt and only close the block. `fornax chat`
 characters of a reply until it can tell, or longer while the reply opens the way reasoning does ("Okay, the user…").
 If the reasoning runs past that, you see it, but the `</think>` is still hidden. Once a reply opens inside, an
 interactive chat takes the model's later replies as starting inside too, until `/reset`. Other options: `--system`, `--max-tokens`,
-`--temperature`, `--seed`, `--ctx` and `--gpu-layers` (`fornax chat --help`).
+`--temperature`, `--seed`, `--ctx`, `--gpu-layers` and `--engine jitllm`, which runs the model on
+[jitllm](/docs/guides/jitllm/) instead of llama.cpp (`fornax chat --help`).
 
 ## Making things
 

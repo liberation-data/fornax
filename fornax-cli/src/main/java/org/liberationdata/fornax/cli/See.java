@@ -68,7 +68,7 @@ final class See {
             List<Message> history = new ArrayList<>();
             if (a.option("system", null) != null) history.add(Message.system(a.option("system", null)));
             history.add(Message.user(question.isEmpty() ? question(alias) : question, picture));
-            Chat.reply(model, history, o, a.has("think"), false, out, err);
+            Chat.reply(Chat.Model.of(model), history, o, a.has("think"), false, out, err);
         }
         return 0;
     }
