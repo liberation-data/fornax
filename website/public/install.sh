@@ -65,10 +65,12 @@ fetch() {
             if has curl; then
                 if [ -t 2 ] && [ "${3:-}" = progress ]; then bar=--progress-bar; else bar=--silent; fi
                 curl --fail --location --show-error $bar --proto '=https' --tlsv1.2 --output "$2" "$1" || return 1
-            elif has wget; then
+            # --https-only keeps a redirect off plain http. BusyBox's wget has no such option and would fail here, which
+            # the caller would report as a missing file.
+            elif has wget && wget --help 2>&1 | grep -q -e --https-only; then
                 wget --quiet --https-only --output-document="$2" "$1" || return 1
             else
-                die "needs curl or wget to download $1"
+                die "needs curl, or a wget with --https-only (BusyBox's has none), to download $1"
             fi
             ;;
         *) die "not an https:// or file:// URL: $1" ;;

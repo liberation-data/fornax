@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -31,6 +32,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class InstallScriptTest {
     static final String VERSION = System.getProperty("fornax.cli.version", "dev");
     static final List<String> PLATFORMS = List.of("linux-x86_64-vulkan", "macos-aarch64-metal");
+    static final Path ZIP =
+            Path.of(System.getProperty("fornax.cli.distZip", "build/distributions/fornax-cli-" + VERSION + ".zip"));
 
     @TempDir Path tmp;
     Path home;
@@ -42,7 +45,7 @@ class InstallScriptTest {
     void release() throws Exception {
         home = Files.createDirectories(tmp.resolve("home"));
         dist = Files.createDirectories(tmp.resolve("release"));
-        publish(Path.of(System.getProperty("fornax.cli.distZip", "build/distributions/fornax-cli-" + VERSION + ".zip")));
+        publish(ZIP);
     }
 
     /** Puts zip in the release under each platform's name, so a test runs on either kind of machine the script supports. */
@@ -269,6 +272,84 @@ class InstallScriptTest {
         Run none = install(Map.of("FORNAX_JAVA", tmp.resolve("nowhere/java").toString()));
         assertEquals(0, none.code(), none.output());
         assertTrue(none.output().contains("doesn't run"), none.output());
+    }
+
+    @Test
+    void refusesAZipSha256SumsListsButTheReleaseHasnt() throws Exception {
+        Files.delete(dist.resolve("fornax-cli-" + VERSION + "-linux-x86_64-vulkan.zip"));
+        Files.delete(dist.resolve("fornax-cli-" + VERSION + "-macos-aarch64-metal.zip"));
+        Run r = install();
+        assertEquals(1, r.code(), r.output());
+        assertTrue(r.output().contains("couldn't download file://" + dist + "/fornax-cli-" + VERSION + "-"), r.output());
+        assertEquals(List.of(), leftIn(data()));
+    }
+
+    @Test
+    void refusesANameOrChecksumInSha256SumsThatIsntOne() throws Exception {
+        // The version in the zip's name becomes a folder name, so a name like this one must go no further
+        String sums = Files.readString(dist.resolve("SHA256SUMS"))
+                .replace("fornax-cli-" + VERSION + "-", "fornax-cli-../x-");
+        Files.writeString(dist.resolve("SHA256SUMS"), sums);
+        Run name = install();
+        assertEquals(1, name.code(), name.output());
+        assertTrue(name.output().contains("not a version: ../x"), name.output());
+
+        publish(ZIP);
+        sums = Files.readString(dist.resolve("SHA256SUMS")).replaceAll("(?m)^[0-9a-f]{64}", "abc");
+        Files.writeString(dist.resolve("SHA256SUMS"), sums);
+        Run sum = install();
+        assertEquals(1, sum.code(), sum.output());
+        assertTrue(sum.output().contains("not a SHA-256 for fornax-cli-" + VERSION), sum.output());
+        assertEquals(List.of(), leftIn(data()));
+    }
+
+    @Test
+    void downloadsFromTheReleaseAskedForOrTheLatest() throws Exception {
+        // curl stood in for: it says what it was asked for, and fails as it does on a 404
+        Path log = tmp.resolve("curl.log");
+        Path fake = script(tmp.resolve("fake/curl"), "printf '%s\\n' \"$@\" >> \"$FAKE_LOG\"; exit 22\n").getParent();
+        Map<String, String> env = new HashMap<>(Map.of("FORNAX_DIST_URL", "", "FAKE_LOG", log.toString()));
+        env.put("PATH", fake + ":" + System.getenv("PATH"));
+
+        Run latest = install(env);
+        assertEquals(1, latest.code(), latest.output());
+        String repo = "https://github.com/liberation-data/fornax/releases/";
+        assertTrue(Files.readAllLines(log).contains(repo + "latest/download/SHA256SUMS"), Files.readString(log));
+        assertTrue(latest.output().contains("Releases before 0.3.0"), latest.output());
+
+        Files.delete(log);
+        env.put("FORNAX_VERSION", "v0.3.0");
+        Run asked = install(env);
+        assertEquals(1, asked.code(), asked.output());
+        List<String> args = Files.readAllLines(log);
+        assertTrue(args.contains(repo + "download/v0.3.0/SHA256SUMS"), args.toString());
+        assertTrue(args.contains("=https"), "curl may leave https: " + args);
+    }
+
+    @Test
+    void refusesAWgetThatCantKeepToHttps() throws Exception {
+        // A PATH with every command this one has but curl, and BusyBox's wget, whose options have no --https-only
+        Path bin = Files.createDirectories(tmp.resolve("no-curl"));
+        for (String dir : System.getenv("PATH").split(":")) {
+            if (!Files.isDirectory(Path.of(dir))) continue;
+            try (Stream<Path> commands = Files.list(Path.of(dir))) {
+                for (Path c : (Iterable<Path>) commands::iterator) {
+                    String name = c.getFileName().toString();
+                    Path link = bin.resolve(name);
+                    boolean taken = Files.exists(link, LinkOption.NOFOLLOW_LINKS);
+                    if (!name.equals("curl") && !name.equals("wget") && !taken) {
+                        Files.createSymbolicLink(link, c);
+                    }
+                }
+            }
+        }
+        script(bin.resolve("wget"),
+                "echo 'BusyBox v1.36.1 multi-call binary.'; echo 'Usage: wget [-cqS] [--spider] [-O FILE] URL...'; exit 1\n");
+        Run r = install(Map.of("PATH", bin.toString(), "FORNAX_DIST_URL", "https://fornax4j.invalid"));
+        assertEquals(1, r.code(), r.output());
+        assertTrue(r.output().contains("needs curl, or a wget with --https-only"), r.output());
+        assertFalse(r.output().contains("no SHA256SUMS"), r.output());
+        assertEquals(List.of(), leftIn(data()));
     }
 
     static String sha256(Path file) throws Exception {
