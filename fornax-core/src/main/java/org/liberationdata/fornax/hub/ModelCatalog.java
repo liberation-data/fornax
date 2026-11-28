@@ -32,7 +32,7 @@ public final class ModelCatalog {
             + "if your organisation had more than US$2M revenue last year or has raised more than US$2M, and no use in a service "
             + "that competes with LlamaParse or LlamaCloud";
 
-    private static final String ACE ="Serveurperso/ACE-Step-1.5-GGUF", YUE2 = "Serveurperso/YuE2-GGUF", LTX = "Lightricks/LTX-2.5";
+    private static final String ACE = "Serveurperso/ACE-Step-1.5-GGUF", YUE2 = "Serveurperso/YuE2-GGUF", LTX = "Lightricks/LTX-2.5";
     private static final String QWEN_VL_FILE = "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors";
     private static final Part QWEN_VL = Part.anyOf("llm",
             new Source("Comfy-Org/Qwen-Image_ComfyUI", QWEN_VL_FILE),

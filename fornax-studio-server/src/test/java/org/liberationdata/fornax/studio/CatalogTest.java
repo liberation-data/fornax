@@ -2,6 +2,7 @@ package org.liberationdata.fornax.studio;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.liberationdata.fornax.llama.LlamaModel;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -89,6 +90,15 @@ class CatalogTest {
         assertEquals("yue2.cpp", yue2.engine());
         assertTrue(yue2.license().startsWith("CC BY-NC 4.0"));
         assertTrue(catalog.chatModels().isEmpty());
+    }
+
+    @Test void ocria1IsNeitherAChatModelNorOfferedInInspect() throws Exception {
+        // It needs thinking off, which neither Chat nor Inspect can ask for yet (#145).
+        file(LlamaModel.Weights.OCRIA_1.repo, "a", LlamaModel.Weights.OCRIA_1.modelFile, 4);
+        file(LlamaModel.Weights.OCRIA_1.repo, "a", LlamaModel.Weights.OCRIA_1.mmprojFile, 1);
+        var catalog = new Catalog(root);
+        assertTrue(catalog.chatModels().isEmpty());
+        assertTrue(catalog.visionPresets().stream().noneMatch(m -> m.id().contains("ocria")));
     }
 
     @Test void ltxWithoutItsAudioVaeIsAnotherModel() throws Exception {

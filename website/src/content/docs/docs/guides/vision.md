@@ -148,7 +148,8 @@ the weights:
 hf download llamaindex/OCRia-1-GGUF OCRia-1-Q8_0.gguf mmproj-OCRia-1-f16.gguf prompt.txt
 ```
 
-Turning thinking off takes a `chatJson` request, as `chat`, `fornax see` and Fornax Studio can't ask for it yet. With
+Turning thinking off takes a `chatJson` request, or `chat_template_kwargs: {"enable_thinking": false}` on the
+[OpenAI-compatible server](/docs/guides/openai-server/): `chat`, `fornax see` and Fornax Studio can't ask for it yet. With
 thinking on, the model writes the page inside its think block and then again after it, so the reply takes twice as
 long and can run out of tokens.
 
