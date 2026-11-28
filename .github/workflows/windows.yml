@@ -107,7 +107,14 @@ jobs:
           pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-mesa
           icd=$(ls /ucrt64/share/vulkan/icd.d/lvp_icd*.json | head -1)
           echo "lavapipe: $icd"
+          # The manifest names the DLL by a path relative to itself; a copy with the absolute path leaves the loader
+          # nothing to resolve.
+          dll=$(cygpath -m /ucrt64/bin/vulkan_lvp.dll)   # D:/a/...: forward slashes, so nothing to escape in JSON
+          sed "s|\"library_path\": *\"[^\"]*\"|\"library_path\": \"$dll\"|" "$icd" > /ucrt64/share/vulkan/icd.d/lvp_icd.fornax.json
+          icd=/ucrt64/share/vulkan/icd.d/lvp_icd.fornax.json
           echo "LAVAPIPE_ICD=$(cygpath -w "$icd")" >> "$GITHUB_ENV"
+          echo "LAVAPIPE_DLL=$dll" >> "$GITHUB_ENV"
+          ldd /ucrt64/bin/vulkan_lvp.dll | grep -v -i '/c/windows' || true
           cygpath -w /ucrt64/bin >> "$GITHUB_PATH"
           cat "$icd"
 
@@ -121,6 +128,9 @@ jobs:
           New-Item -Path $key -Force | Out-Null
           New-ItemProperty -Path $key -Name $env:LAVAPIPE_ICD -PropertyType DWord -Value 0 -Force | Out-Null
           Get-ItemProperty -Path $key
+          # Loaded the way the loader will, so a missing dependency shows up here with Windows' own message.
+          [System.Runtime.InteropServices.NativeLibrary]::Load($env:LAVAPIPE_DLL) | Out-Null
+          "loaded $env:LAVAPIPE_DLL"
 
       - name: Set up Java
         uses: actions/setup-java@v6
@@ -164,7 +174,7 @@ jobs:
           $layers = if ('${{ matrix.backend }}' -eq 'vulkan') { '-1' } else { '0' }
           $env:FORNAX_VERBOSE = '1'   # the engines' log, which names the Vulkan device
           if ('${{ matrix.backend }}' -eq 'vulkan') {
-            $env:VK_LOADER_DEBUG = 'error,warn,driver'   # the Vulkan loader's account of the drivers it tried
+            $env:VK_LOADER_DEBUG = 'all'   # the Vulkan loader's account of the drivers it tried
             Get-Command vulkan-1.dll -ErrorAction SilentlyContinue | Format-List Source
           }
           java --enable-native-access=ALL-UNNAMED "-Dfornax.library.path=$PWD/build/native/windows-x86_64-${{ matrix.backend }}" -cp $cp .github/scripts/GenerateOnce.java $gguf $layers 2>&1 | Tee-Object -FilePath generate.log
