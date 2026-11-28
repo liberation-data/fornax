@@ -186,7 +186,7 @@ final class Engines {
         return new Chat() {
             @Override public LlamaModel.Result chat(List<LlamaModel.Message> messages, LlamaModel.Options o, Consumer<String> onPiece) {
                 String last = messages.isEmpty() ? "" : messages.getLast().content();
-                String text = "(stub) You said: " + last;
+                String text = "(stub) You said: " + last + (o.thinking() ? "" : " (thinking off)");
                 int n = 0;
                 for (String w : text.split("(?<= )")) {
                     pause(20);
@@ -217,7 +217,8 @@ final class Engines {
                 Map<String, Object> req = Json.object(requestJson);
                 String text = req.get("json_schema") instanceof Map<?, ?> schema
                         ? Json.write(placeholder(schema))
-                        : "(stub) An image of " + images.stream().map(i -> i.width() + "×" + i.height()).toList() + " was shown.";
+                        : "(stub) An image of " + images.stream().map(i -> i.width() + "×" + i.height()).toList() + " was shown"
+                          + (Boolean.FALSE.equals(req.get("enable_thinking")) ? ", thinking off." : ".");
                 int n = 0;
                 for (String w : text.split("(?<=[ ,])")) {
                     pause(15);

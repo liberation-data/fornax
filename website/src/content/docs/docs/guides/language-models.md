@@ -77,13 +77,18 @@ context: send the whole conversation every time, with earlier replies as `Messag
 | `topP` | 0.9 | nucleus sampling |
 | `minP` | 0.05 | min-p sampling |
 | `seed` | -1 | -1 means random |
+| `thinking` | `true` | `false` asks a thinking model to answer without reasoning, where its chat template can turn it off (Qwen3.5, Qwen3's hybrids); other models ignore it |
 
 <!-- snippet: LanguageModels#options -->
 ```java
 Options exact = Options.DEFAULT.withTemperature(0).withMaxTokens(1024);   // greedy, for repeatable answers
 Options again = Options.DEFAULT.withSeed(42);                           // sampled, but the same each run
 Options custom = new Options(256, 0.8f, 0.95f, 0.05f, 7);              // every field at once
+Options direct = Options.DEFAULT.withThinking(false);                   // no reasoning first
 ```
+
+With `thinking` false, `chat` formats the messages with the model's own Jinja template, as `chatJson` does with
+`"enable_thinking": false`, and the text it returns is the answer alone.
 
 ## Streaming
 

@@ -308,12 +308,25 @@ public final class LlamaModel implements AutoCloseable {
         }
     }
 
-    /** temperature <= 0 means greedy. seed -1 means random. maxTokens <= 0 means until end-of-turn or context full. */
-    public record Options(int maxTokens, float temperature, float topP, float minP, int seed) {
-        public static final Options DEFAULT = new Options(512, 0.7f, 0.9f, 0.05f, -1);
-        public Options withSeed(int s) { return new Options(maxTokens, temperature, topP, minP, s); }
-        public Options withMaxTokens(int n) { return new Options(n, temperature, topP, minP, seed); }
-        public Options withTemperature(float t) { return new Options(maxTokens, t, topP, minP, seed); }
+    /**
+     * temperature <= 0 means greedy. seed -1 means random. maxTokens <= 0 means until end-of-turn or context full.
+     *
+     * <p>{@code thinking} false asks a model whose chat template can turn its reasoning off (Qwen3.5, Qwen3's hybrids,
+     * OCRia-1) to answer without it, as {@code "enable_thinking": false} does in a {@link #chatJson} request. Such a chat
+     * is formatted with the model's own (Jinja) template, as {@code chatJson} formats it, and its text is the reply
+     * alone. A model with no such switch ignores it. true, the default, leaves the template as it is.
+     */
+    public record Options(int maxTokens, float temperature, float topP, float minP, int seed, boolean thinking) {
+        public static final Options DEFAULT = new Options(512, 0.7f, 0.9f, 0.05f, -1, true);
+        /** Thinking left to the template, as {@link #DEFAULT} has it. */
+        public Options(int maxTokens, float temperature, float topP, float minP, int seed) {
+            this(maxTokens, temperature, topP, minP, seed, true);
+        }
+        public Options withSeed(int s) { return new Options(maxTokens, temperature, topP, minP, s, thinking); }
+        public Options withMaxTokens(int n) { return new Options(n, temperature, topP, minP, seed, thinking); }
+        public Options withTemperature(float t) { return new Options(maxTokens, t, topP, minP, seed, thinking); }
+        /** false: answer without reasoning, where the model's template can turn it off. */
+        public Options withThinking(boolean on) { return new Options(maxTokens, temperature, topP, minP, seed, on); }
     }
 
     public record Result(String text, int promptTokens, int generatedTokens) {}
@@ -771,6 +784,12 @@ public final class LlamaModel implements AutoCloseable {
 
     Result chatOn(Call call, List<Message> messages, Options o, Consumer<String> onPiece) {
         requireMode(Mode.CHAT, "chat");
+        if (!o.thinking()) {
+            // only a Jinja template takes enable_thinking: chatJson's path, in process, batched or in a worker alike
+            List<Image> images = new ArrayList<>();
+            String request = ChatRequests.chat(messages, o, images);
+            return ChatRequests.result(chatJsonOn(call, request, images, onPiece));
+        }
         if (remote != null)
             return LlamaService.decodeResult(remote(call, "chat", LlamaService.chatArgs(messages, o, onPiece != null), onPiece));
         if (batcher != null) {

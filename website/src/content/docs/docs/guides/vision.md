@@ -148,22 +148,16 @@ the weights:
 hf download llamaindex/OCRia-1-GGUF OCRia-1-Q8_0.gguf mmproj-OCRia-1-f16.gguf prompt.txt
 ```
 
-Turning thinking off takes a `chatJson` request, or `chat_template_kwargs: {"enable_thinking": false}` on the
-[OpenAI-compatible server](/docs/guides/openai-server/): `chat`, `fornax see` and Fornax Studio can't ask for it yet. With
-thinking on, the model writes the page inside its think block and then again after it, so the reply takes twice as
-long and can run out of tokens.
+Turn thinking off with `Options.withThinking(false)`: with it on, the model writes the page inside its think block
+and then again after it, so the reply takes twice as long and can run out of tokens. `fornax see ocria-1` and Fornax
+Studio's Inspect window turn it off for you.
 
 <!-- snippet: Vision#ocria -->
 ```java
 try (var ocr = new LlamaModel(LlamaModel.Weights.OCRIA_1)) {
-    String reply = ocr.chatJson("""
-            {"messages": [{"role": "system", "content": %s},
-                          {"role": "user", "content": [{"type": "image", "index": 0}]}],
-             "enable_thinking": false, "temperature": 0, "max_tokens": 4096}"""
-                    .formatted(org.liberationdata.fornax.llama.Json.quote(systemPrompt)),   // prompt.txt
-            List.of(Image.read(Path.of("page.png"))), null);
-    Object markdown = org.liberationdata.fornax.llama.Json.get(
-            org.liberationdata.fornax.llama.Json.parse(reply), "message", "content");
+    var page = List.of(Message.system(java.nio.file.Files.readString(Path.of("prompt.txt"))),   // from the model's repo
+                       Message.user("", Image.read(Path.of("page.png"))));                     // the page, no text
+    String markdown = ocr.chat(page, Options.DEFAULT.withTemperature(0).withMaxTokens(4096).withThinking(false)).text();
 }
 ```
 

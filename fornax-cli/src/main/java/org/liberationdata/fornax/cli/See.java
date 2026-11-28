@@ -22,12 +22,15 @@ final class See {
     static final Set<String> OPTIONS = Set.copyOf(Stream.concat(Chat.OPTIONS.stream(), Stream.of("mmproj")).toList());
     static final Set<String> FLAGS = Chat.FLAGS;
     static final String QUESTION = "Describe this image.";
+    /** OCRia-1's question when none is given: its model card's prompt's opening instruction. */
+    static final String TRANSCRIBE = "Transcribe this page in markdown.";
 
     static final String USAGE = """
             usage: fornax see <model> <image> ["question"] [options]
 
             Asks a vision language model about an image (PNG, JPEG, BMP or GIF) and streams its answer.
-            The question defaults to "%s" ("OCR:" for paddleocr-vl).
+            The question defaults to "%s" ("OCR:" for paddleocr-vl; for ocria-1, "%s",
+            and thinking is always off for ocria-1, which needs it so).
             <model> is a vision alias (%s), or a GGUF by org/name:TAG or path
             with its --mmproj. A model that isn't downloaded yet is pulled first.
 
@@ -38,7 +41,9 @@ final class See {
               --seed N             default random
               --ctx N              context size in tokens, the image's included (default 8192; 0 = the model's own)
               --gpu-layers N       layers to offload (default -1 = all)
-              --think              show the model's reasoning (<think> blocks)""".formatted(QUESTION, Models.ids(Kind.VISION));
+              --think              show the model's reasoning (<think> blocks)
+              --no-think           answer without reasoning (Qwen3.5, Qwen3's hybrids; others ignore it)""".formatted(QUESTION, TRANSCRIBE,
+            Models.ids(Kind.VISION));
 
     static int run(Args a, FornaxHub hub, PrintStream out, PrintStream err) throws IOException {
         String spec = a.positional(0), image = a.positional(1);
@@ -46,11 +51,14 @@ final class See {
         if (image == null) throw new UsageException("which image?");
         String question = String.join(" ", a.rest(2)).strip();
         LlamaModel.Image picture = read(Path.of(image));
-        var o = Chat.options(a);
+        var given = Chat.options(a);
         String mmprojSpec = a.option("mmproj", null);
         if (mmprojSpec == null && Models.withoutMmproj(spec))
             throw new UsageException(spec + " needs its mmproj (the vision encoder): --mmproj org/name:mmproj-file.gguf or a path");
         var m = Models.fetch(spec, Kind.VISION, "see", true, hub, err, Main.terminal());
+        String alias = m.set() == null ? null : m.set().id();
+        // OCRia-1 writes the page twice with thinking on (in its think block, then again): always off for it
+        var o = isOcria(alias) ? given.withThinking(false) : given;
         Path mmproj = mmprojSpec != null ? Models.fetch(mmprojSpec, Kind.VISION, "see --mmproj", true, hub, err, Main.terminal()).file("gguf")
                 : m.file("mmproj");
 
@@ -60,14 +68,21 @@ final class See {
             err.printf(Locale.ROOT, "[fornax] loaded in %s%n", Fmt.seconds((System.nanoTime() - t0) / 1e9));
             List<Message> history = new ArrayList<>();
             if (a.option("system", null) != null) history.add(Message.system(a.option("system", null)));
-            history.add(Message.user(question.isEmpty() ? question(m.set() == null ? null : m.set().id()) : question, picture));
+            history.add(Message.user(question.isEmpty() ? question(alias) : question, picture));
             Chat.reply(model, history, o, a.has("think"), false, out, err);
         }
         return 0;
     }
 
-    /** The question when none is given: PaddleOCR-VL is trained to read text out ("OCR:"), the others to describe. */
-    static String question(String alias) { return alias != null && alias.startsWith("paddleocr") ? "OCR:" : QUESTION; }
+    /**
+     * The question when none is given: PaddleOCR-VL is trained to read text out ("OCR:"), OCRia-1 to transcribe the
+     * page, the others to describe.
+     */
+    static String question(String alias) {
+        return alias != null && alias.startsWith("paddleocr") ? "OCR:" : isOcria(alias) ? TRANSCRIBE : QUESTION;
+    }
+
+    static boolean isOcria(String alias) { return "ocria-1".equals(alias); }
 
     private static LlamaModel.Image read(Path file) {
         if (!Files.isRegularFile(file)) throw new Main.Failure("no such image: " + file);

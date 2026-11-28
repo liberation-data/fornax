@@ -119,7 +119,8 @@ path to a `.gguf` file. `chat` and `test` download a model that isn't in the cac
 progress line as `fornax pull`, and refuse one of another kind before downloading anything.
 
 A reasoning model, such as Qwen3, thinks aloud in `<think>…</think>` before it answers. `fornax chat` hides that, and
-shows only the answer; `--think` shows the reasoning too. Some models (Qwen3 Thinking, DeepSeek-R1 distills) are
+shows only the answer; `--think` shows the reasoning too, and `--no-think` asks the model not to reason at all,
+where its chat template can turn that off (Qwen3.5, Qwen3's hybrids). Some models (Qwen3 Thinking, DeepSeek-R1 distills) are
 trained with the `<think>` in the prompt and only close the block. `fornax chat` holds the first couple of hundred
 characters of a reply until it can tell, or longer while the reply opens the way reasoning does ("Okay, the user…").
 If the reasoning runs past that, you see it, but the `</think>` is still hidden. Once a reply opens inside, an
@@ -169,11 +170,11 @@ chat model and names the image models.
   text, or with `--words` each word's start and end in seconds and the word, tab-separated. `whisper-base.en` hears
   English only; `whisper-large-v3-turbo` hears 99 languages (`--language` names one, else it is detected).
   `--model` also takes `org/name:file.bin` or a path to a whisper.cpp model.
-- **see** takes a vision alias (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`; `ocria-1` too, but `see` can't turn its
-  thinking off yet, so [use `chatJson`](/docs/guides/vision/#ocria-1)), or a GGUF by reference or path with
+- **see** takes a vision alias (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`, `ocria-1`), or a GGUF by reference or path with
   its `--mmproj`, an image (PNG, JPEG, BMP or GIF) and a question, and streams the answer as `chat` does, with
   `chat`'s options. Without a question it asks "Describe this image.", or for `paddleocr-vl` "OCR:", which reads
-  the image's text out.
+  the image's text out. For `ocria-1` it asks "Transcribe this page in markdown.", and turns its thinking off, which
+  OCRia-1 needs.
 
 `image`, `song` and `speak` write to `--out`: a file, which is written over, or a folder (an existing one, or a
 name ending in `/`). Otherwise they write `image.png`, `song.wav` or `speech.wav` in the current folder, numbered

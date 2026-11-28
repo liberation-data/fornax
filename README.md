@@ -378,7 +378,8 @@ fornax info                                       # Java, native libraries, cach
 
 Every command that runs a model downloads it first if it isn't in the cache yet, as `fornax pull` would. `image`, `song`
 and `speak` write to `--out` (else `image.png`, `song.wav` or `speech.wav` here, numbered rather than overwrite one).
-A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--think` shows them. A gated repo
+A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--think` shows them, `--no-think` skips
+the reasoning where the model's template allows. A gated repo
 (LTX-2.5) needs its terms accepted on huggingface.co and `HF_TOKEN` (or `hf auth login`); the error says so.
 
 **Installing it.** Fornax Studio installs `fornax` onto your `PATH` from its menu, **Install fornax command**, using

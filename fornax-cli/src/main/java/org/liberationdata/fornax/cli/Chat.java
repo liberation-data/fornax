@@ -20,7 +20,7 @@ import java.util.Set;
 /** {@code fornax chat}: one-shot or interactive streaming chat with a GGUF model. */
 final class Chat {
     static final Set<String> OPTIONS = Set.of("system", "max-tokens", "temperature", "seed", "ctx", "gpu-layers");
-    static final Set<String> FLAGS = Set.of("think");
+    static final Set<String> FLAGS = Set.of("think", "no-think");
 
     static final String USAGE = """
             usage: fornax chat <model> ["prompt"] [options]
@@ -32,7 +32,8 @@ final class Chat {
             Q4_K_M), org/name:file.gguf or org/name. One that isn't in the Hugging Face cache yet is downloaded first,
             with fornax pull's progress line.
 
-            A reasoning model's <think>...</think> blocks (Qwen3's, for one) are hidden; --think shows them.
+            A reasoning model's <think>...</think> blocks (Qwen3's, for one) are hidden; --think shows them, and
+            --no-think asks the model not to reason at all, where its chat template can turn that off.
 
               --system TEXT        system prompt
               --max-tokens N       per reply (default 1024; 0 = until the model stops or the context fills)
@@ -40,11 +41,12 @@ final class Chat {
               --seed N             default random
               --ctx N              context size in tokens (default 8192; 0 = the model's own)
               --gpu-layers N       layers to offload (default -1 = all)
-              --think              show the model's reasoning (<think> blocks)""";
+              --think              show the model's reasoning (<think> blocks)
+              --no-think           answer without reasoning (Qwen3.5, Qwen3's hybrids; others ignore it)""";
 
     static Options options(Args a) {
         return new Options(a.intOption("max-tokens", 1024), a.floatOption("temperature", 0.7f),
-                Options.DEFAULT.topP(), Options.DEFAULT.minP(), a.intOption("seed", -1));
+                Options.DEFAULT.topP(), Options.DEFAULT.minP(), a.intOption("seed", -1), !a.has("no-think"));
     }
 
     static int run(Args a, FornaxHub hub, BufferedReader in, PrintStream out, PrintStream err) throws IOException {

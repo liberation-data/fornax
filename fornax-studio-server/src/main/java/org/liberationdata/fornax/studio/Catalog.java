@@ -78,11 +78,10 @@ final class Catalog {
 
     /** The vision language models the Inspect window offers, as Fornax names them; the first is its default. */
     static final List<LlamaModel.Weights> VISION = List.of(
-            LlamaModel.Weights.QWEN3_VL_4B, LlamaModel.Weights.PADDLEOCR_VL, LlamaModel.Weights.MEDGEMMA_4B);
+            LlamaModel.Weights.QWEN3_VL_4B, LlamaModel.Weights.PADDLEOCR_VL, LlamaModel.Weights.MEDGEMMA_4B, LlamaModel.Weights.OCRIA_1);
 
     // GGUFs in the cache that aren't chat models: the song engines' own weights, embedders, VAEs and vision projectors,
-    // and the vision models, which the Inspect window loads with their projectors. OCRia-1 too, though Inspect doesn't
-    // offer it yet: it needs thinking off, which Inspect can't ask for.
+    // and the vision models, which the Inspect window loads with their projectors.
     private static final Set<String> NOT_CHAT_REPOS = Set.of("Serveurperso/ACE-Step-1.5-GGUF", YUE2,
             LlamaModel.Weights.QWEN3_VL_4B.repo, LlamaModel.Weights.PADDLEOCR_VL.repo, LlamaModel.Weights.MEDGEMMA_4B.repo,
             LlamaModel.Weights.OCRIA_1.repo);
@@ -251,13 +250,22 @@ final class Catalog {
             boolean ocr = w == LlamaModel.Weights.PADDLEOCR_VL;
             var defaults = Json.obj("maxTokens", 1024L, "temperature", 0.0, "contextSize", 8192L);
             if (ocr) defaults.put("ocr", true);
+            // OCRia-1 writes the page twice with thinking on (inside its think block, then again); a page takes more context
+            if (w == LlamaModel.Weights.OCRIA_1) {
+                defaults.put("thinking", false);
+                defaults.put("prompt", "Transcribe this page in markdown.");
+                defaults.put("maxTokens", 4096L);
+                defaults.put("contextSize", 16384L);
+            }
             var m = preset(visionId(w), Kind.vision, switch (w) {
                         case QWEN3_VL_4B -> "Qwen3-VL 4B";
                         case PADDLEOCR_VL -> "PaddleOCR-VL 1.6";
                         case MEDGEMMA_4B -> "MedGemma 1.5 4B";
+                        case OCRIA_1 -> "OCRia-1 4B";
                         default -> w.name();
                     }, "llama.cpp", defaults, part("gguf", w.repo, w.modelFile), part("mmproj", w.repo, w.mmprojFile));
-            out.add(w == LlamaModel.Weights.MEDGEMMA_4B ? m.licensed(MEDGEMMA_LICENSE) : m);
+            out.add(w == LlamaModel.Weights.MEDGEMMA_4B ? m.licensed(MEDGEMMA_LICENSE)
+                    : w == LlamaModel.Weights.OCRIA_1 ? m.licensed(org.liberationdata.fornax.hub.ModelCatalog.OCRIA_LICENSE) : m);
         }
         return out;
     }

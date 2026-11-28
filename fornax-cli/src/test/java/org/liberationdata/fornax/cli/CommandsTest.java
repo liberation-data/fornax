@@ -168,8 +168,7 @@ class CommandsTest {
     @Test
     void pullSaysWhichCommandRunsTheModel() {
         assertEquals("Try it: fornax see qwen3-vl-4b picture.png", Pull.tryIt(ModelCatalog.require("qwen3-vl-4b")));
-        assertFalse(Pull.tryIt(ModelCatalog.require("ocria-1")).contains("fornax see"));   // see can't turn its thinking off
-        assertTrue(Pull.tryIt(ModelCatalog.require("ocria-1")).contains("chatJson"));
+        assertEquals("Try it: fornax see ocria-1 page.png", Pull.tryIt(ModelCatalog.require("ocria-1")));   // see turns its thinking off
         assertEquals("Try it: fornax speak --model kokoro \"Hello from Fornax\"", Pull.tryIt(ModelCatalog.require("kokoro")));
         assertEquals("Try it: fornax transcribe --model whisper-base.en speech.wav", Pull.tryIt(ModelCatalog.require("whisper-base.en")));
         assertEquals("Try it: fornax image flux2-klein \"a brick kiln at dusk\"", Pull.tryIt(ModelCatalog.require("flux2-klein")));
@@ -192,6 +191,16 @@ class CommandsTest {
         assertEquals("Describe this image.", See.question("qwen3-vl-4b"));
         assertEquals("Describe this image.", See.question(null));   // a reference or path
         assertEquals("OCR:", See.question("paddleocr-vl"));
+        assertEquals("Transcribe this page in markdown.", See.question("ocria-1"));
+        assertTrue(See.isOcria("ocria-1"));
+        assertFalse(See.isOcria(null));
+    }
+
+    @Test
+    void noThinkTurnsThinkingOffAndItIsOnOtherwise() {
+        assertTrue(Chat.options(Args.parse(List.of(), Chat.OPTIONS, Chat.FLAGS)).thinking());
+        assertFalse(Chat.options(Args.parse(List.of("--no-think"), Chat.OPTIONS, Chat.FLAGS)).thinking());
+        assertFalse(Chat.options(Args.parse(List.of("--no-think", "--think"), See.OPTIONS, See.FLAGS)).thinking());
     }
 
     @Test
