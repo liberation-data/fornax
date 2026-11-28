@@ -56,8 +56,8 @@ detect_platform() {
     esac
 }
 
-# fetch URL FILE: https:// with curl or wget, or file:// by copying. Fails, rather than dies, on a file that isn't
-# there, so the caller can say what that means.
+# fetch URL FILE [progress]: https:// with curl or wget, or file:// by copying; "progress" shows curl's progress bar on
+# a terminal. Fails, rather than dies, on a file that isn't there, so the caller can say what that means.
 fetch() {
     case "$1" in
         file://*) cp "${1#file://}" "$2" || return 1 ;;
@@ -153,8 +153,10 @@ main() {
     data=${XDG_DATA_HOME:-$HOME/.local/share}
     home=${FORNAX_HOME:-$data/fornax}
     bin=${FORNAX_BIN_DIR:-$HOME/.local/bin}
+    bin=${bin%/}
     version=${FORNAX_VERSION:-}
     version=${version#v}
+    [ "$version" != latest ] || version=
     if [ -n "${FORNAX_DIST_URL:-}" ]; then base=${FORNAX_DIST_URL%/}
     elif [ -n "$version" ]; then base=$REPO/releases/download/v$version
     else base=$REPO/releases/latest/download

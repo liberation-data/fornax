@@ -326,10 +326,9 @@ class InstallScriptTest {
         assertTrue(args.contains("=https"), "curl may leave https: " + args);
     }
 
-    @Test
-    void refusesAWgetThatCantKeepToHttps() throws Exception {
-        // A PATH with every command this one has but curl, and BusyBox's wget, whose options have no --https-only
-        Path bin = Files.createDirectories(tmp.resolve("no-curl"));
+    /** A folder of links to every command on this PATH but those named, to be the whole PATH of a run. */
+    Path pathWithout(String folder, String... missing) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve(folder));
         for (String dir : System.getenv("PATH").split(":")) {
             if (!Files.isDirectory(Path.of(dir))) continue;
             try (Stream<Path> commands = Files.list(Path.of(dir))) {
@@ -337,12 +336,19 @@ class InstallScriptTest {
                     String name = c.getFileName().toString();
                     Path link = bin.resolve(name);
                     boolean taken = Files.exists(link, LinkOption.NOFOLLOW_LINKS);
-                    if (!name.equals("curl") && !name.equals("wget") && !taken) {
+                    if (!List.of(missing).contains(name) && !taken) {
                         Files.createSymbolicLink(link, c);
                     }
                 }
             }
         }
+        return bin;
+    }
+
+    @Test
+    void refusesAWgetThatCantKeepToHttps() throws Exception {
+        // A PATH with every command this one has but curl, and BusyBox's wget, whose options have no --https-only
+        Path bin = pathWithout("no-curl", "curl", "wget");
         script(bin.resolve("wget"),
                 "echo 'BusyBox v1.36.1 multi-call binary.'; echo 'Usage: wget [-cqS] [--spider] [-O FILE] URL...'; exit 1\n");
         Run r = install(Map.of("PATH", bin.toString(), "FORNAX_DIST_URL", "https://fornax4j.invalid"));
@@ -350,6 +356,56 @@ class InstallScriptTest {
         assertTrue(r.output().contains("needs curl, or a wget with --https-only"), r.output());
         assertFalse(r.output().contains("no SHA256SUMS"), r.output());
         assertEquals(List.of(), leftIn(data()));
+
+        // GNU wget has --https-only, and is asked for it; this one says what it was asked for and fails as on a 404
+        Path log = tmp.resolve("wget.log");
+        script(bin.resolve("wget"), "case \"$1\" in --help) echo '       --https-only'; exit 0 ;; esac\n"
+                + "printf '%s\\n' \"$@\" >> \"$FAKE_LOG\"; exit 8\n");
+        Run gnu = install(Map.of("PATH", bin.toString(), "FORNAX_DIST_URL", "https://fornax4j.invalid", "FAKE_LOG", log.toString()));
+        assertEquals(1, gnu.code(), gnu.output());
+        assertTrue(gnu.output().contains("no SHA256SUMS at https://fornax4j.invalid"), gnu.output());
+        List<String> args = Files.readAllLines(log);
+        assertTrue(args.contains("--https-only") && args.contains("https://fornax4j.invalid/SHA256SUMS"), args.toString());
+        assertEquals(List.of(), leftIn(data()));
+    }
+
+    @Test
+    void refusesAUrlThatIsntHttpsOrFile() throws Exception {
+        Run r = install(Map.of("FORNAX_DIST_URL", "http://fornax4j.invalid"));
+        assertEquals(1, r.code(), r.output());
+        assertTrue(r.output().contains("not an https:// or file:// URL: http://fornax4j.invalid/SHA256SUMS"), r.output());
+        assertEquals(List.of(), leftIn(data()));
+    }
+
+    @Test
+    void saysHowToGetJavaWhenThereIsNone() throws Exception {
+        Path bin = pathWithout("no-java", "java");
+        Run none = install(Map.of("PATH", bin.toString(), "JAVA_HOME", ""));
+        assertEquals(0, none.code(), none.output());
+        assertTrue(none.output().contains("found none (no FORNAX_JAVA or JAVA_HOME"), none.output());
+
+        // With no FORNAX_JAVA or JAVA_HOME, the java on PATH
+        Path java = script(bin.resolve("java"), "echo 'openjdk version \"25\" 2025-09-16' >&2\n");
+        Run path = install(Map.of("PATH", bin.toString(), "JAVA_HOME", ""));
+        assertEquals(0, path.code(), path.output());
+        assertTrue(path.output().contains("Java:    25, at " + java + " (from PATH)"), path.output());
+    }
+
+    @Test
+    void saysWhenTheresNoVulkanLoader() throws Exception {
+        // On Linux (uname stood in for, so a Mac runs it too), with an ldconfig that lists no libvulkan.so.1, then one
+        Path fake = tmp.resolve("fake");
+        script(fake.resolve("uname"), "case \"$1\" in -s) echo Linux ;; -m) echo x86_64 ;; esac\n");
+        script(fake.resolve("ldconfig"), "echo '\tlibc.so.6 (libc6,x86-64) => /lib64/libc.so.6'\n");
+        String path = fake + ":" + System.getenv("PATH");
+        Run none = install(Map.of("PATH", path));
+        assertEquals(0, none.code(), none.output());
+        assertTrue(none.output().contains("No Vulkan loader (libvulkan.so.1) found"), none.output());
+
+        script(fake.resolve("ldconfig"), "echo '\tlibvulkan.so.1 (libc6,x86-64) => /lib64/libvulkan.so.1'\n");
+        Run there = install(Map.of("PATH", path));
+        assertEquals(0, there.code(), there.output());
+        assertFalse(there.output().contains("No Vulkan loader"), there.output());
     }
 
     static String sha256(Path file) throws Exception {
