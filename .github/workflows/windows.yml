@@ -99,18 +99,28 @@ jobs:
             fi
           done
 
-      # The Vulkan build needs a Vulkan device: MSYS2's Mesa has lavapipe, which runs Vulkan on the CPU. The loader finds it
-      # by VK_DRIVER_FILES (VK_ICD_FILENAMES for older loaders); vulkan-1.dll and lavapipe's own DLLs are in ucrt64/bin.
+      # The Vulkan build needs a Vulkan device: MSYS2's Mesa has lavapipe, which runs Vulkan on the CPU. vulkan-1.dll and
+      # lavapipe's own DLLs are in ucrt64/bin.
       - name: Mesa's software Vulkan driver (lavapipe)
         if: matrix.backend == 'vulkan'
         run: |
           pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-mesa
           icd=$(ls /ucrt64/share/vulkan/icd.d/lvp_icd*.json | head -1)
           echo "lavapipe: $icd"
-          echo "VK_DRIVER_FILES=$(cygpath -w "$icd")" >> "$GITHUB_ENV"
-          echo "VK_ICD_FILENAMES=$(cygpath -w "$icd")" >> "$GITHUB_ENV"
+          echo "LAVAPIPE_ICD=$(cygpath -w "$icd")" >> "$GITHUB_ENV"
           cygpath -w /ucrt64/bin >> "$GITHUB_PATH"
           cat "$icd"
+
+      # Registered as an installed driver is: the Windows loader ignores VK_DRIVER_FILES in an elevated process, and the
+      # runner's are (its debug log showed it searching only HKLM\SOFTWARE\Khronos\Vulkan\Drivers).
+      - name: Register lavapipe with the Vulkan loader
+        if: matrix.backend == 'vulkan'
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name $env:LAVAPIPE_ICD -PropertyType DWord -Value 0 -Force | Out-Null
+          Get-ItemProperty -Path $key
 
       - name: Set up Java
         uses: actions/setup-java@v6
