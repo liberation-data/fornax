@@ -139,7 +139,8 @@ final class Engine implements AutoCloseable {
      * the model ran, with the end-of-text token EmbeddingSession appends.
      */
     LlamaModel.Embeddings embed(List<String> texts) {
-        int room = Math.max(1, contextLength - 5);   // EmbeddingSession's own room: the end-of-text token and a margin
+        // EmbeddingSession's own room: its end-of-text token and a margin; a text over it would be cut
+        int room = Math.max(1, contextLength - endOfText - 4);
         int tokens = 0;
         for (int i = 0; i < texts.size(); i++) {
             int n = embeddings.tokens(texts.get(i)).size();
