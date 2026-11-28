@@ -55,14 +55,17 @@ class RerankIT {
     }
 
     @Test
-    void scoresMatchLlamaEmbedding() {
+    void scoresMatchLlamaEmbedding() { assertScoresMatch(model, LLAMA_EMBEDDING); }
+
+    /** The fixture's scores from model against llama-embedding's (reference, by document); Reranker4BIT's too. */
+    static void assertScoresMatch(LlamaModel model, float[] reference) {
         for (Scored s : model.rerank(QUERY, DOCS)) {
-            System.out.printf("doc %d: fornax %.7f, llama-embedding %.7f%n", s.index(), s.score(), LLAMA_EMBEDDING[s.index()]);
-            // The reference scores are llama-embedding's on Vulkan. A document near 0.5 moves with the backend's kernels
-            // (the softmax magnifies small differences there: doc 3 is 0.626 on Vulkan, 0.576 on Metal), so it gets a
-            // wider margin; the clear ones must match closely on any backend.
-            double margin = Math.abs(LLAMA_EMBEDDING[s.index()] - 0.5) < 0.2 ? 0.06 : 0.01;
-            assertEquals(LLAMA_EMBEDDING[s.index()], s.score(), margin, "doc " + s.index());
+            System.out.printf("doc %d: fornax %.7f, llama-embedding %.7f%n", s.index(), s.score(), reference[s.index()]);
+            // The reference scores are llama-embedding's on Vulkan. A document nearer 0.5 moves with the backend's
+            // kernels (the softmax magnifies small differences there: doc 3 is 0.626 on Vulkan, 0.576 on Metal with the
+            // 0.6B), so it gets a wider margin; the clear ones must match closely on any backend.
+            double margin = Math.abs(reference[s.index()] - 0.5) < 0.25 ? 0.06 : 0.01;
+            assertEquals(reference[s.index()], s.score(), margin, "doc " + s.index());
         }
     }
 

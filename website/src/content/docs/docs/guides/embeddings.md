@@ -130,6 +130,26 @@ hundredths depending on what else is in the batch). As in `llama-server`, the fi
 tokens, so keep chat-template markers such as `<|im_end|>` out of queries and documents. `rerankAsync(query,
 documents)` runs it on the model's thread, and `cancel()` stops it between batches.
 
+### Qwen3-Reranker 4B
+
+A bigger reranker, for a machine with the memory: `Weights.QWEN3_RERANKER_4B`, loaded the same way. On Qwen's own
+benchmarks it is clearly more accurate than the 0.6B (MTEB-R 69.8 against 65.8, multilingual 72.7 against 66.4, code
+81.2 against 73.4), and it costs about five times the time and four times the memory: reranking 20 passages of about 800
+characters on a Radeon 8060S (Vulkan) at the default context took 5.3 GB of GPU memory, against the 0.6B's 1.3 GB (the
+peak `scripts/gpu-memory.sh` reports around the `RetrievalEval rerank` run below, given one reranker at a time). Either
+fits a 32 GB machine alongside a chat model.
+
+```sh
+hf download Voodisss/Qwen3-Reranker-4B-GGUF-llama_cpp Qwen3-Reranker-4B.Q8_0.gguf
+```
+
+Qwen publishes no GGUF of it, so this is a community conversion with llama.cpp's own script; it has the classifier
+head and the `rerank` template the 0.6B has, and its scores match `llama-embedding`'s on the same file. On Fornax's
+own docs it didn't beat the 0.6B: reranking Qwen3-Embedding's nearest 20 for 16 questions, the 0.6B put the answering
+page first for 12 (mean reciprocal rank 0.87) and the 4B for 11 (0.83), in 9.7 and 49.8 seconds on a Radeon 8060S.
+Questions that easy leave little to gain; try both on your own documents (`scripts/RetrievalEval.java rerank`, with
+`-Ddocs=` and your own questions in its `Q`).
+
 ## Chunk size
 
 In EMBED and RERANK mode the context caps the longest text a call takes (for `rerank`, the query and one document
