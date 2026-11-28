@@ -173,7 +173,7 @@ class PooledEnginesTest {
                 2048, 4, PullListener.NONE, s -> {}, false, FornaxServer.LanguageEngine.JITLLM));
     }
 
-    /** jitllm reserves an embedding model's whole context when it loads: llama.cpp's embedding default, not --ctx's 8192. */
+    /** jitllm reserves an embedding model's whole context when it loads: llama.cpp's embedding default, not 8192. */
     @Test void aJitllmEmbeddingModelHasLlamaCppsEmbeddingContextAtMost() {
         assertEquals(2048, PooledEngines.jitllmEmbeddingContext(8192));
         assertEquals(2048, PooledEngines.jitllmEmbeddingContext(0));   // the model's own would reserve the most

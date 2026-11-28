@@ -26,7 +26,8 @@ import java.util.function.Consumer;
  * {@link Message}s and {@link Options} as {@code LlamaModel} and gives the same {@link Result}, so code written for
  * one runs on the other: {@code chat}, {@code chatJson} (what fornax-server serves), {@code embed} and
  * {@code embeddings}, streaming, the async methods and {@code cancel}. jitllm samples with temperature and top-p
- * only: {@link Options#minP()} is ignored. Images, tools, JSON-schema constrained output and reranking stay with {@code LlamaModel}.
+ * only: {@link Options#minP()} is ignored. Images, tools, JSON-schema constrained output and reranking stay with
+ * {@code LlamaModel}.
  *
  * <p>jitllm needs a TornadoVM SDK ({@code TORNADOVM_HOME}) and the JVM options it lists. When this JVM was started
  * with them, {@code --add-modules jdk.incubator.vector}, {@code -Duse.tornadovm=true} and

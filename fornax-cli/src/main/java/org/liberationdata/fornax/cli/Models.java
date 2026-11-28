@@ -99,7 +99,8 @@ final class Models {
         if (oneFile && isFile(spec)) return;
         var alias = ModelCatalog.byName(spec);
         if (alias.isPresent() && !kinds.contains(alias.get().kind()))
-            throw new Main.Failure(alias.get().id() + " is " + aKind(alias.get().kind()) + "; " + command + " takes " + kinds(kinds));
+            throw new Main.Failure(alias.get().id() + " is " + aKind(alias.get().kind()) + "; " + command + " takes "
+                    + kinds(kinds));
     }
 
     /**

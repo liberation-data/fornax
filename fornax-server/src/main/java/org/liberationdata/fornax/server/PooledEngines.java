@@ -445,7 +445,8 @@ final class PooledEngines implements Engines {
         if (jitllm && (f.use() == Use.CHAT || f.use() == Use.EMBED)) {
             try {
                 return f.use() == Use.EMBED
-                        ? new JitLlmModel(f.file("gguf").toString(), jitllmEmbeddingContext(contextSize), JitLlmModel.Mode.EMBED)
+                        ? new JitLlmModel(f.file("gguf").toString(), jitllmEmbeddingContext(contextSize),
+                                JitLlmModel.Mode.EMBED)
                         : new JitLlmModel(f.file("gguf").toString(), contextSize, JitLlmModel.Mode.CHAT);
             } catch (IllegalStateException e) {
                 // a file jitllm has no model for (a vision GGUF named by path or reference): the request's to fix

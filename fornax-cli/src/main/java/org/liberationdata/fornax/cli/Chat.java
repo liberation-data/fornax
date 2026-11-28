@@ -58,7 +58,8 @@ final class Chat {
         Engine engine = engine(a);
         if (engine == Engine.JITLLM && a.option("gpu-layers", null) != null)
             throw new UsageException("--gpu-layers is for llama.cpp; jitllm runs every layer on the GPU");
-        // jitllm runs language models only: a vision model is refused first, then a missing SDK, both before any download
+        // jitllm runs language models only: a vision model is refused first, then a missing SDK, both before any
+        // download
         var kinds = engine == Engine.JITLLM ? java.util.EnumSet.of(Kind.CHAT) : java.util.EnumSet.of(Kind.CHAT, Kind.VISION);
         if (engine == Engine.JITLLM) {
             Models.checkKind(spec, kinds, "chat", true);
