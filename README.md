@@ -312,7 +312,8 @@ compute timeout and lose the device. Fornax decodes ACE-Step audio in 512-frame 
 ## Models
 
 Fetch a model with `fornax pull <alias>`. To get the `fornax` command, install Fornax Studio and choose
-**Install fornax command** from its menu (coming in the next Fornax Studio release), or build it from source (see
+**Install fornax command** from its menu (coming in the next Fornax Studio release), run
+`jbang fornax@fornax4j` or [install.sh](https://fornax4j.org/install.sh) (from 0.3.0), or build it from source (see
 [The fornax command](#the-fornax-command)).
 
 ```sh
@@ -382,7 +383,10 @@ A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--t
 
 **Installing it.** Fornax Studio installs `fornax` onto your `PATH` from its menu, **Install fornax command**, using
 Studio's own Java and engines (coming in the next Fornax Studio release). On a machine without a desktop, such as a
-server, build it from source: it needs JDK 25 to build and Java 22 or newer to run (`JAVA_HOME`, or `java` on
+server, `curl -fsSL https://fornax4j.org/install.sh | sh` (from 0.3.0; read it first with `curl -fsSLO` and `less`)
+installs the release's `fornax-cli` zip for Linux x86_64 or an Apple-silicon Mac into `~/.local`, checked against its
+`SHA256SUMS`, on a Java 22 or newer you already have; see [The fornax command](https://fornax4j.org/docs/guides/cli/).
+Or build it from source: it needs JDK 25 to build and Java 22 or newer to run (`JAVA_HOME`, or `java` on
 `PATH`).
 
 ```sh

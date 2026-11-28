@@ -50,6 +50,10 @@ jobs:
       # "not found", HTTP 429).
       - uses: gradle/actions/setup-gradle@v6
 
+      # fornax4j.org/install.sh, which people read before they run it (InstallScriptTest runs it). The runner has shellcheck.
+      - name: Check install.sh
+        run: shellcheck website/public/install.sh
+
       # Compiles every module, builds the jars, javadoc and the CLI's distributions, and runs the tests that need no
       # engine library and no model.
       - name: Build and test
