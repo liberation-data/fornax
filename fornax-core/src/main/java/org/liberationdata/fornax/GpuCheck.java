@@ -11,6 +11,7 @@ import java.lang.invoke.MethodHandle;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
@@ -20,7 +21,8 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /**
- * Makes sure an engine built for a GPU has one, on Linux, so it never drops to the CPU without anyone noticing.
+ * Makes sure an engine built for a GPU has one, so it never drops to the CPU without anyone noticing: on Linux for
+ * Vulkan, HIP and CUDA builds, and on Windows for Vulkan builds (#134).
  *
  * <p>An engine built for Vulkan, HIP or CUDA still loads on a machine with no usable GPU (no driver, or no access to
  * the device), and ggml then runs everything on the CPU: many times slower, with no error. So after such a library
@@ -29,8 +31,10 @@ import java.util.function.Predicate;
  * runs on the CPU anyway, with a loud warning. When Fornax can't tell (an unexpected error from the runtime, or a
  * device list chosen with {@code GGML_VK_VISIBLE_DEVICES}), it lets the engine decide.
  *
- * <p>A Vulkan build also can't load at all without the Vulkan loader ({@code libvulkan.so.1}); that failure gets the
- * same advice. macOS always has Metal, so none of this runs there.
+ * <p>A Vulkan build also can't load at all without the Vulkan loader ({@code libvulkan.so.1}, or {@code vulkan-1.dll}
+ * on Windows); that failure gets the same advice. On Windows the GPU driver installs the loader, and with the loader
+ * but no driver Vulkan reports no device, so both come down to the same missing driver. macOS always has Metal, so
+ * none of this runs there.
  */
 final class GpuCheck {
     static final String DOCS = "https://fornax4j.org/docs/gpu-drivers/";
@@ -38,14 +42,23 @@ final class GpuCheck {
 
     /** The GPU runtime a library links, found by the runtime's library name in the library's file. */
     enum Gpu {
-        VULKAN("Vulkan", "libvulkan.so.1"), HIP("HIP (ROCm)", "libamdhip64.so"), CUDA("CUDA", "libcuda"), NONE("", null);
+        VULKAN("Vulkan", "libvulkan.so.1", "vulkan-1.dll"), HIP("HIP (ROCm)", "libamdhip64.so", null),
+        CUDA("CUDA", "libcuda", null), NONE("", null, null);
 
         final String label;
         final String soname;
+        /** The runtime's DLL, for the runtimes checked on Windows (only Vulkan so far); null for the rest. */
+        final String dll;
 
-        Gpu(String label, String soname) {
+        Gpu(String label, String soname, String dll) {
             this.label = label;
             this.soname = soname;
+            this.dll = dll;
+        }
+
+        /** The runtime's library, as this system names it. */
+        String library(boolean windows) {
+            return windows ? dll : soname;
         }
     }
 
@@ -53,10 +66,24 @@ final class GpuCheck {
 
     private GpuCheck() {}
 
-    /** The GPU runtime the library at {@code lib} links, or NONE (a CPU build, or a file Fornax can't read). */
+    /**
+     * The GPU runtime the library at {@code lib} links, or NONE (a CPU build, or a file Fornax can't read): an ELF
+     * library names its runtime's soname, and a Windows DLL its runtime's DLL, in either case.
+     */
     static Gpu linksTo(Path lib) {
-        List<Gpu> gpus = List.of(Gpu.VULKAN, Gpu.HIP, Gpu.CUDA);
-        byte[][] needles = gpus.stream().map(g -> g.soname.getBytes(StandardCharsets.US_ASCII)).toArray(byte[][]::new);
+        List<Gpu> gpus = new ArrayList<>();
+        List<byte[]> names = new ArrayList<>();
+        for (Gpu g : List.of(Gpu.VULKAN, Gpu.HIP, Gpu.CUDA)) {
+            gpus.add(g);
+            names.add(g.soname.getBytes(StandardCharsets.US_ASCII));
+            if (g.dll != null) {
+                for (String dll : List.of(g.dll, g.dll.toUpperCase(Locale.ROOT))) {
+                    gpus.add(g);
+                    names.add(dll.getBytes(StandardCharsets.US_ASCII));
+                }
+            }
+        }
+        byte[][] needles = names.toArray(byte[][]::new);
         int longest = 0;
         for (byte[] n : needles) longest = Math.max(longest, n.length);
         byte[] buf = new byte[1 << 20];
@@ -87,23 +114,30 @@ final class GpuCheck {
      * Throws an error that names the missing Vulkan loader when that's why the library at {@code lib} failed to open
      * ({@code failure}); returns otherwise, for the caller to rethrow {@code failure}.
      */
-    static void explainLoadFailure(Path lib, IllegalArgumentException failure, Predicate<String> loadable) {
-        if (!isLinux() || linksTo(lib) != Gpu.VULKAN || loadable.test(Gpu.VULKAN.soname)) return;
+    static void explainLoadFailure(Path lib, IllegalArgumentException failure, Predicate<String> loadable, boolean windows) {
+        if (!checked(Gpu.VULKAN, windows) || linksTo(lib) != Gpu.VULKAN) return;
+        String loader = Gpu.VULKAN.library(windows);
+        if (loadable.test(loader)) return;
         UnsatisfiedLinkError e = new UnsatisfiedLinkError("Fornax could not load " + lib.getFileName() + ": it runs on "
-                + "Vulkan, and this machine has no Vulkan loader (" + Gpu.VULKAN.soname + ").\n\n" + install(Gpu.VULKAN));
+                + "Vulkan, and this machine has no Vulkan loader (" + loader + ").\n\n" + install(Gpu.VULKAN, windows));
         e.initCause(failure);
         throw e;
     }
 
     static void explainLoadFailure(Path lib, IllegalArgumentException failure) {
-        explainLoadFailure(lib, failure, GpuCheck::loadable);
+        explainLoadFailure(lib, failure, GpuCheck::loadable, isWindows());
+    }
+
+    /** Whether Fornax checks this runtime here: every one on Linux, Vulkan on Windows, none elsewhere (macOS has Metal). */
+    static boolean checked(Gpu gpu, boolean windows) {
+        return windows ? gpu.dll != null : isLinux();
     }
 
     /** After the library at {@code lib} loads: refuses (or, if allowed, warns) when it is a GPU build with no GPU. */
     static synchronized void requireGpu(Path lib) {
-        if (!isLinux()) return;
+        if (!isLinux() && !isWindows()) return;
         Gpu gpu = linksTo(lib);
-        if (gpu == Gpu.NONE || passed.contains(gpu)) return;
+        if (gpu == Gpu.NONE || !checked(gpu, isWindows()) || passed.contains(gpu)) return;
         decide(gpu, lib.getFileName().toString(), gpus(gpu), allowCpu(), message ->
                 System.getLogger(GpuCheck.class.getName()).log(System.Logger.Level.WARNING, message));
         passed.add(gpu);
@@ -124,8 +158,22 @@ final class GpuCheck {
                 + "\n\nTo run on the CPU anyway, set -D" + ALLOW_CPU + "=true (or FORNAX_ALLOW_CPU=true).");
     }
 
-    /** What to install, and how to check, for this runtime. */
+    /** What to install, and how to check, for this runtime on this system. */
     static String install(Gpu gpu) {
+        return install(gpu, isWindows());
+    }
+
+    static String install(Gpu gpu, boolean windows) {
+        if (windows && gpu == Gpu.VULKAN) {
+            return """
+                    Install your GPU maker's own driver, which includes Vulkan:
+                      AMD:     AMD Software (Adrenalin Edition), from amd.com
+                      NVIDIA:  the Game Ready or Studio driver, from nvidia.com
+                      Intel:   the Arc and Iris Xe graphics driver, from intel.com
+                    The basic display driver, or an old one from Windows Update, may have no Vulkan.
+                    Then check that your GPU is listed:  vulkaninfo --summary
+                    """ + guide();
+        }
         return switch (gpu) {
             case VULKAN -> """
                     Install your GPU's Vulkan driver:
@@ -181,7 +229,7 @@ final class GpuCheck {
     private static OptionalInt vulkanGpus() throws Throwable {
         if (System.getenv("GGML_VK_VISIBLE_DEVICES") != null) return OptionalInt.empty();
         try (Arena arena = Arena.ofConfined()) {
-            SymbolLookup vk = SymbolLookup.libraryLookup(Gpu.VULKAN.soname, arena);
+            SymbolLookup vk = SymbolLookup.libraryLookup(Gpu.VULKAN.library(isWindows()), arena);
             MethodHandle create = handle(vk, "vkCreateInstance", FunctionDescriptor.of(ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
             MethodHandle enumerate = handle(vk, "vkEnumeratePhysicalDevices", FunctionDescriptor.of(ValueLayout.JAVA_INT,
@@ -263,5 +311,9 @@ final class GpuCheck {
 
     private static boolean isLinux() {
         return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("linux");
+    }
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("windows");
     }
 }

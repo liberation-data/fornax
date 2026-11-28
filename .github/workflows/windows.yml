@@ -147,14 +147,31 @@ jobs:
 
       # Loads every engine's DLL through NativeLibrary, as an app would, and runs the binding tests that need no model, and
       # NativeLibraryTunablesTest (Windows sets the engines' variables with ucrtbase's _putenv_s, not setenv).
+      #
+      # The Vulkan build first, with no GPU: lavapipe is a CPU, not a GPU, so Fornax must refuse to run it on the CPU
+      # unnoticed (#134). Naming lavapipe with GGML_VK_VISIBLE_DEVICES, as ggml needs anyway, then lets it load.
       - name: Load the DLLs from Java
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true   # a failing gradlew or java fails the step
+          $core = { (Get-ChildItem fornax-core/build/libs/fornax-core-*.jar | Where-Object { $_.Name -notmatch 'sources|javadoc' } | Select-Object -First 1).FullName }
+          $natives = "-Dfornax.library.path=$PWD/build/native/windows-x86_64-${{ matrix.backend }}"
+          if ('${{ matrix.backend }}' -eq 'vulkan') {
+            ./gradlew --no-daemon :fornax-core:jar
+            $PSNativeCommandUseErrorActionPreference = $false
+            $refused = java --enable-native-access=ALL-UNNAMED $natives -cp (& $core) .github/scripts/LoadEveryEngine.java 2>&1 | Out-String
+            $PSNativeCommandUseErrorActionPreference = $true
+            if ($LASTEXITCODE -eq 0 -or $refused -notmatch 'Fornax found no GPU for') {
+              Write-Output $refused
+              throw 'the Vulkan build loaded with no GPU (only lavapipe, a CPU) instead of refusing'
+            }
+            Write-Output 'refused with no GPU, as it should:'
+            Write-Output ($refused -split "`n" | Select-String -Pattern 'Fornax found no GPU' | Select-Object -First 1)
+            $env:GGML_VK_VISIBLE_DEVICES = '0'   # lavapipe, named: ggml uses it, and Fornax lets ggml decide
+          }
           ./gradlew --no-daemon :fornax-core:jar :fornax-core:test --tests '*NativeLibraryTunablesTest' :fornax-acestep:test :fornax-yue2:test --tests '*BindingsTest' "-Pfornax.backend=${{ matrix.backend }}"
-          $core = (Get-ChildItem fornax-core/build/libs/fornax-core-*.jar | Where-Object { $_.Name -notmatch 'sources|javadoc' } | Select-Object -First 1).FullName
-          java --enable-native-access=ALL-UNNAMED "-Dfornax.library.path=$PWD/build/native/windows-x86_64-${{ matrix.backend }}" -cp $core .github/scripts/LoadEveryEngine.java
+          java --enable-native-access=ALL-UNNAMED $natives -cp (& $core) .github/scripts/LoadEveryEngine.java
 
       # A real model, not just a load: ggml-org's tinyllamas stories15M (19 MB), in process and in an isolated worker JVM
       # (#122), on the CPU or, for the Vulkan build, every layer on lavapipe. Cached: a pull request's runs share the copy its first run saved (caches saved on
