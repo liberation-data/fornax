@@ -158,7 +158,7 @@ The request keys it reads:
 | `json_schema` | none | a JSON Schema the reply must follow (see below) |
 | `enable_thinking` | `true` | `false` asks a thinking model to skip its reasoning, where its template allows that |
 | `reasoning_effort` | the template's | `low`, `medium` or `high`, for a model whose template takes it (gpt-oss) |
-| `chat_template_kwargs` | none | an object of variables for the chat template, as llama-server takes them |
+| `chat_template_kwargs` | none | an object of variables for the chat template, as llama-server takes them; an `enable_thinking` in it acts as the key above, which wins when both are given |
 | `temperature`, `top_p`, `min_p`, `top_k` | 0.7, 0.95, 0.05, 40 | sampling |
 | `max_tokens` | until done | |
 | `seed` | random | |
