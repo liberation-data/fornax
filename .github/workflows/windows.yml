@@ -125,7 +125,7 @@ jobs:
           cygpath -w /ucrt64/bin >> "$GITHUB_PATH"
           cat "$icd"
 
-      # Registered as an installed driver is: the Windows loader ignores VK_DRIVER_FILES in an elevated process, and the
+      # Registered as an installed driver, since the Windows loader ignores VK_DRIVER_FILES in an elevated process, and the
       # runner's are (its debug log showed it searching only HKLM\SOFTWARE\Khronos\Vulkan\Drivers).
       - name: Register lavapipe with the Vulkan loader
         if: matrix.backend == 'vulkan'
