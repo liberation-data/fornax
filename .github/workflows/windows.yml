@@ -94,6 +94,13 @@ jobs:
             if objdump -p "$dll" | grep -iE 'DLL Name: (libgcc|libstdc|libwinpthread|libgomp)'; then
               echo "::error::$(basename "$dll") needs a MinGW runtime DLL"; exit 1
             fi
+            # Nor any other DLL of MSYS2's (vulkan-1.dll aside: the GPU driver installs it): the Vulkan leg's Java steps
+            # have ucrt64/bin on PATH, so they would find one there and not fail.
+            for need in $(objdump -p "$dll" | sed -n 's/^\s*DLL Name: //p'); do
+              if [ "${need,,}" != vulkan-1.dll ] && [ -e "/ucrt64/bin/$need" ]; then
+                echo "::error::$(basename "$dll") needs $need from MSYS2"; exit 1
+              fi
+            done
             if objdump -p "$dll" | sed -n '/\[Ordinal\/Name Pointer\] Table/,/^$/p' | grep -E '\bggml_'; then   # not -q: an early exit would fail sed with SIGPIPE, and pipefail would read that as no match
               echo "::error::$(basename "$dll") exports ggml's symbols, which would clash with another engine's ggml"; exit 1
             fi
@@ -112,6 +119,7 @@ jobs:
           dll=$(cygpath -m /ucrt64/bin/vulkan_lvp.dll)   # D:/a/...: forward slashes, so nothing to escape in JSON
           sed "s|\"library_path\": *\"[^\"]*\"|\"library_path\": \"$dll\"|" "$icd" > /ucrt64/share/vulkan/icd.d/lvp_icd.fornax.json
           icd=/ucrt64/share/vulkan/icd.d/lvp_icd.fornax.json
+          grep -qF "\"library_path\": \"$dll\"" "$icd" || { echo "::error::lavapipe's manifest has no library_path to replace"; exit 1; }
           echo "LAVAPIPE_ICD=$(cygpath -w "$icd")" >> "$GITHUB_ENV"
           echo "LAVAPIPE_DLL=$dll" >> "$GITHUB_ENV"
           cygpath -w /ucrt64/bin >> "$GITHUB_PATH"
@@ -178,6 +186,10 @@ jobs:
           # Without a Vulkan device ggml would run on the CPU and this would prove nothing about the Vulkan build.
           if ('${{ matrix.backend }}' -eq 'vulkan' -and -not (Select-String -Path generate.log -Pattern 'llvmpipe' -Quiet)) {
             throw 'the Vulkan build did not run on lavapipe (no llvmpipe device in the log)'
+          }
+          # And ran the model there: llama.cpp logs "offloaded 7/7 layers to GPU" (the device is listed whatever gpuLayers is).
+          if ('${{ matrix.backend }}' -eq 'vulkan' -and -not (Select-String -Path generate.log -Pattern 'offloaded (\d+)/\1 layers to GPU' -Quiet)) {
+            throw 'the Vulkan build did not offload every layer to lavapipe'
           }
 
       - uses: actions/upload-artifact@v7
