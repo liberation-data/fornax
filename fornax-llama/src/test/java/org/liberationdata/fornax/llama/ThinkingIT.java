@@ -48,6 +48,20 @@ class ThinkingIT {
         }
     }
 
+    @Test
+    void chatTemplateKwargsReachTheTemplate() {
+        try (var m = new LlamaModel(gguf(), -1, 2048)) {
+            String ask = "{\"messages\": [{\"role\": \"user\", \"content\": \"Reply with exactly the word: fornax\"}], "
+                    + "\"temperature\": 0, \"max_tokens\": 256";
+            Object thinks = Json.parse(m.chatJson(ask + "}", null));
+            assertNotNull(Json.get(thinks, "message", "reasoning_content"), thinks.toString());   // Qwen3 reasons by default
+            Object off = Json.parse(m.chatJson(ask + ", \"chat_template_kwargs\": {\"enable_thinking\": false}}", null));
+            Object reasoning = Json.get(off, "message", "reasoning_content");
+            assertTrue(reasoning == null || reasoning.toString().isBlank(), off.toString());
+            assertTrue(Json.get(off, "message", "content").toString().toLowerCase().contains("fornax"), off.toString());
+        }
+    }
+
     private static void assertPlainAnswer(LlamaModel m) {
         var streamed = new StringBuilder();
         var r = m.chat(ASK, OFF, streamed::append);

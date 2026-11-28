@@ -69,6 +69,16 @@ class ChatRequestTest {
         assertNull(get(engine("{" + MSG + "}"), "enable_thinking"));
     }
 
+    @Test void templateVariablesAndReasoningEffortGoToTheTemplate() {
+        Object e = engine("{" + MSG + ", \"chat_template_kwargs\": {\"enable_thinking\": false, \"style\": \"terse\"}, \"reasoning_effort\": \"low\"}");
+        assertEquals("terse", get(e, "chat_template_kwargs", "style"));
+        assertEquals("low", get(e, "reasoning_effort"));
+        assertNull(get(engine("{" + MSG + "}"), "reasoning_effort"));
+        assertThrows(ApiError.class, () -> of("{" + MSG + ", \"reasoning_effort\": \"extreme\"}"));
+        assertThrows(ApiError.class, () -> of("{" + MSG + ", \"reasoning_effort\": 2}"));
+        assertThrows(ApiError.class, () -> of("{" + MSG + ", \"chat_template_kwargs\": [1]}"));
+    }
+
     @Test void streamingStopsAndImages() {
         var r = of("{" + MSG + ", \"stream\": true, \"stream_options\": {\"include_usage\": true}, \"stop\": \"\\n\\n\"}");
         assertTrue(r.stream());

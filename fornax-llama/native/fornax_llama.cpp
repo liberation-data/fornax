@@ -258,7 +258,9 @@ int template_prompt(fornax_llama * h, const char ** roles, const char ** content
     return 0;
 }
 
-// The template inputs of an OpenAI-style chat request: messages, tools, tool choice, thinking, a JSON schema.
+// The template inputs of an OpenAI-style chat request: messages, tools, tool choice, thinking, a JSON schema, and
+// variables for the template: chat_template_kwargs as llama-server takes them, and reasoning_effort (gpt-oss's
+// low, medium or high), which is one of them.
 common_chat_templates_inputs chat_inputs(const common_json & req) {
     common_chat_templates_inputs in;
     in.messages = common_chat_msgs_parse_oaicompat(req.at("messages"));
@@ -267,6 +269,14 @@ common_chat_templates_inputs chat_inputs(const common_json & req) {
         in.tool_choice = common_chat_tool_choice_parse_oaicompat(req.at("tool_choice").get<std::string>());
     in.parallel_tool_calls = req.value("parallel_tool_calls", true);
     in.enable_thinking     = req.value("enable_thinking", true);
+    if (req.contains("chat_template_kwargs") && req.at("chat_template_kwargs").is_object()) {
+        for (const auto & [k, v] : req.at("chat_template_kwargs").items()) {
+            in.chat_template_kwargs[k] = v.dump();
+            if (k == "enable_thinking" && v.is_boolean() && !req.contains("enable_thinking")) in.enable_thinking = v.get<bool>();
+        }
+    }
+    if (req.contains("reasoning_effort") && req.at("reasoning_effort").is_string())
+        in.chat_template_kwargs["reasoning_effort"] = req.at("reasoning_effort").dump();
     in.reasoning_format    = COMMON_REASONING_FORMAT_DEEPSEEK;  // thinking goes to reasoning_content
     if (req.contains("json_schema") && !req.at("json_schema").is_null()) in.json_schema = req.at("json_schema").dump();
     return in;
