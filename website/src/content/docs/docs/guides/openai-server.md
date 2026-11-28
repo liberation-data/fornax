@@ -71,7 +71,9 @@ tool-call format, with llama-server's templates and parsers. A request takes:
   `stream_options: {"include_usage": true}` adds the token counts in a last chunk
 - images, for a vision model (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`, `ocria-1`): `image_url` content parts with a base64
   `data:` URI of a PNG, JPEG, GIF or BMP, up to 67 megapixels (8192 x 8192) in all a request; the server doesn't fetch URLs
-- `chat_template_kwargs: {"enable_thinking": false}` turns a reasoning model's thinking off
+- `chat_template_kwargs: {"enable_thinking": false}` turns a reasoning model's thinking off; its other keys go to the
+  chat template as variables, as llama-server passes them
+- `reasoning_effort` (`low`, `medium` or `high`) sets how long a model whose template takes it (gpt-oss) reasons
 
 A reasoning model's thinking comes back in `reasoning_content`, apart from `content`. When streaming, the content
 arrives as it is generated; the thinking and the tool calls (each call with its `index`) come at the end, before the finish reason. A tool

@@ -126,7 +126,7 @@ class ParserFuzzTest {
     static final String[] KEYS = {"model", "messages", "role", "content", "type", "text", "image_url", "url", "tools",
             "function", "name", "tool_choice", "parallel_tool_calls", "response_format", "json_schema", "schema",
             "temperature", "top_p", "min_p", "top_k", "seed", "max_tokens", "max_completion_tokens", "enable_thinking",
-            "chat_template_kwargs", "stream", "stream_options", "include_usage", "stop", "n", "input", "encoding_format",
+            "chat_template_kwargs", "reasoning_effort", "stream", "stream_options", "include_usage", "stop", "n", "input", "encoding_format",
             "dimensions", "prompt", "size", "steps", "cfg_scale", "output_format", "voice", "speed"};
 
     /** A plausible request body, so mutations reach past the first check. */

@@ -14,8 +14,8 @@ import java.util.Set;
 /**
  * A {@code POST /v1/chat/completions} body, checked, and turned into the request {@code LlamaModel.chatJson} takes:
  * the same messages and tools (llama.cpp parses them as llama-server does), with OpenAI's {@code response_format},
- * {@code max_completion_tokens}, a {@code tool_choice} naming one function and {@code chat_template_kwargs} mapped to
- * what the engine calls them. {@code stop} sequences are applied by the server ({@link Stops}).
+ * {@code max_completion_tokens}, a {@code tool_choice} naming one function, {@code chat_template_kwargs} (passed to
+ * the template, and its {@code enable_thinking} mapped to what the engine calls it) and {@code reasoning_effort}. {@code stop} sequences are applied by the server ({@link Stops}).
  *
  * @param model        the model asked for
  * @param engineJson   the request for chatJson
@@ -28,6 +28,8 @@ record ChatRequest(String model, String engineJson, boolean stream, boolean incl
 
     /** Message content part types the engine reads. */
     private static final Set<String> PARTS = Set.of("text", "image_url");
+    /** OpenAI's reasoning_effort values; a template that takes it (gpt-oss: low, medium, high) gets it as a variable. */
+    private static final Set<String> EFFORTS = new java.util.TreeSet<>(Set.of("minimal", "low", "medium", "high"));
     /**
      * The most pixels a request's images may have in all (8192 x 8192): the engine decodes each to RGB before scaling it
      * down, and a small compressed image can say it is enormous.
@@ -83,6 +85,17 @@ record ChatRequest(String model, String engineJson, boolean stream, boolean incl
         Object thinking = body.get("enable_thinking");
         if (thinking == null) thinking = org.liberationdata.fornax.Json.get(body.get("chat_template_kwargs"), "enable_thinking");
         if (thinking instanceof Boolean b) req.put("enable_thinking", b);
+        Object kwargs = body.get("chat_template_kwargs");
+        if (kwargs != null) {
+            if (!(kwargs instanceof Map<?, ?>)) throw ApiError.badRequest("chat_template_kwargs must be an object", "chat_template_kwargs");
+            req.put("chat_template_kwargs", kwargs);
+        }
+        Object effort = body.get("reasoning_effort");
+        if (effort != null) {
+            if (!(effort instanceof String e) || !EFFORTS.contains(e))
+                throw ApiError.badRequest("reasoning_effort must be one of " + EFFORTS, "reasoning_effort");
+            req.put("reasoning_effort", effort);
+        }
 
         boolean stream = body.get("stream") instanceof Boolean b && b;
         boolean usage = Boolean.TRUE.equals(org.liberationdata.fornax.Json.get(body.get("stream_options"), "include_usage"));
