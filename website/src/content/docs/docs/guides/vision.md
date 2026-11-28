@@ -64,7 +64,7 @@ which `downloadCommand()` also gives you.
 | `QWEN3_VL_4B` | questions about images, documents and charts; grounding (boxes on a 0 to 1000 grid) | Apache-2.0 |
 | `PADDLEOCR_VL` | PaddleOCR-VL 1.6 (0.9B): reading documents. It takes task prompts, not questions (below) | Apache-2.0 |
 | `MEDGEMMA_4B` | MedGemma 1.5 4B: medical images and text. Using it to diagnose or treat patients may need a health regulator's authorization | Health AI Developer Foundations terms |
-| `OCRIA_1` | OCRia-1 4B: a document page to markdown, tables as HTML; [run it through `chatJson`](#ocria-1) | OCRia-1 license, not open source: [read it first](#ocria-1) |
+| `OCRIA_1` | OCRia-1 4B: a document page to markdown, tables as HTML; [run it with thinking off](#ocria-1) | OCRia-1 license, not open source: [read it first](#ocria-1) |
 | `QWEN3_4B` | Qwen3 4B Instruct: text only | Apache-2.0 |
 | `QWEN3_EMBEDDING_0_6B`, `QWEN3_RERANKER_0_6B` | embeddings and reranking, loaded with `Mode.EMBED` or `Mode.RERANK`; see [Embeddings and reranking](/docs/guides/embeddings/) | Apache-2.0 |
 

@@ -266,8 +266,8 @@ public final class LlamaModel implements AutoCloseable {
          * LlamaIndex OCRia-1 (4B, Q8_0): reads a document page to markdown, tables as HTML. Not open source: its license,
          * a modified OpenRAIL-M, allows only personal or research use to anyone whose organisation had more than US$2M
          * revenue last year or has raised more than US$2M, and bars use in a service that competes with LlamaParse or
-         * LlamaCloud. Run it as its model card does, through {@code chatJson}: its system prompt ({@code prompt.txt} in
-         * the repo), the page with no text, {@code "enable_thinking": false} and temperature 0. With thinking on it
+         * LlamaCloud. Run it as its model card does: its system prompt ({@code prompt.txt} in the repo), the page with no
+         * text, thinking off ({@link Options#withThinking}) and temperature 0. With thinking on it
          * writes the page twice, once inside the think block.
          */
         OCRIA_1("llamaindex/OCRia-1-GGUF", "OCRia-1-Q8_0.gguf", "mmproj-OCRia-1-f16.gguf"),
