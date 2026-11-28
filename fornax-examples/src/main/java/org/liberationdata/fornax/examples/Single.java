@@ -7,7 +7,6 @@ import org.liberationdata.fornax.llama.LlamaModel.Options;
 import org.liberationdata.fornax.sd.DiffusionModel;
 
 import javax.imageio.ImageIO;
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
