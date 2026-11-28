@@ -25,8 +25,8 @@ engine surprises you.
 ## "Fornax found no GPU"
 
 Fornax stops rather than run a GPU build on the CPU. Install your GPU's driver: [Installing GPU drivers](/docs/gpu-drivers/)
-has the steps for each distribution, and how to check with `vulkaninfo --summary`. To run on the CPU anyway, set
-`-Dfornax.allowCpu=true` (or `FORNAX_ALLOW_CPU=true`).
+has the steps for each distribution and for Windows, and how to check with `vulkaninfo --summary`. To run on the CPU
+anyway, set `-Dfornax.allowCpu=true` (or `FORNAX_ALLOW_CPU=true`).
 
 ## When a model's output looks wrong
 

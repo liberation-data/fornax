@@ -28,9 +28,10 @@ import java.util.Optional;
  *   <li>the platform loader (LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, system dirs)</li>
  * </ol>
  *
- * <p>On Linux, a library built for a GPU (Vulkan, HIP, CUDA) refuses to start on a machine where that GPU runtime
- * finds no GPU, since its engine would otherwise run on the CPU without a word, and says what to install. (Not one the
- * platform loader finds: Fornax doesn't know its file, so can't tell what it was built for.) Set
+ * <p>On Linux, a library built for a GPU (Vulkan, HIP, CUDA), and on Windows one built for Vulkan, refuses to start
+ * on a machine where that GPU runtime finds no GPU, since its engine would otherwise run on the CPU without a word,
+ * and says what to install. (Not one the platform loader finds: Fornax doesn't know its file, so can't tell what it
+ * was built for.) Set
  * {@code -Dfornax.allowCpu=true} (or {@code FORNAX_ALLOW_CPU=true}) to run on the CPU anyway. See {@link GpuCheck}.
  *
  * <p>Before the first library loads, Fornax sets the engines' tunables that it gives a default to, as environment
@@ -81,7 +82,7 @@ public final class NativeLibrary {
                 + "-Dfornax.library.path=<dir> or -Dfornax." + name + ".lib=<file>.";
     }
 
-    /** Opens the library file at {@code path}, and on Linux makes sure a GPU build has a GPU ({@link GpuCheck}). */
+    /** Opens the library file at {@code path}, and makes sure a GPU build has a GPU ({@link GpuCheck}). */
     private static NativeLibrary open(String name, Path path) {
         SymbolLookup lookup;
         try {

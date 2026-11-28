@@ -101,8 +101,8 @@ No Windows natives jar yet: `native/build.sh` builds the engines in MSYS2's UCRT
 ([#121](https://github.com/liberation-data/fornax/issues/121)).
 
 On Linux, the GPU's Vulkan driver must be installed (it usually is; if not, see
-[Installing GPU drivers](https://fornax4j.org/docs/gpu-drivers/)). With no GPU, Fornax stops rather than run on the CPU,
-unless `-Dfornax.allowCpu=true` (or `FORNAX_ALLOW_CPU=true`).
+[Installing GPU drivers](https://fornax4j.org/docs/gpu-drivers/)). With no GPU, Fornax stops rather than run on the CPU
+(on Linux, and for a Vulkan build on Windows), unless `-Dfornax.allowCpu=true` (or `FORNAX_ALLOW_CPU=true`).
 
 Maven: import the BOM, then add modules without versions. `fornax-natives` brings in the natives jar for the machine
 that builds (Maven activates its profiles by OS and arch):
