@@ -54,6 +54,12 @@ jobs:
       - name: Check install.sh
         run: shellcheck website/public/install.sh
 
+      # The format check (.editorconfig, and the spotless block in build.gradle): unused imports, tab indents, trailing
+      # whitespace and final newlines. First, so a formatting slip fails in seconds, by name. `build` runs it again as
+      # part of `check`, which costs nothing once it has passed. Fix with ./gradlew spotlessApply.
+      - name: Check formatting
+        run: ./gradlew --no-daemon spotlessCheck
+
       # Compiles every module, builds the jars, javadoc and the CLI's distributions, and runs the tests that need no
       # engine library and no model.
       - name: Build and test
