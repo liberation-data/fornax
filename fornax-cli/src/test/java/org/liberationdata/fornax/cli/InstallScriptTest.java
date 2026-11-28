@@ -216,6 +216,24 @@ class InstallScriptTest {
     }
 
     @Test
+    void takesABinDirEndingInSlashAsTheOneOnPath() throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Map<String, String> env = new HashMap<>(Map.of("FORNAX_BIN_DIR", bin + "/"));
+        env.put("PATH", bin + ":" + System.getenv("PATH"));
+        Run r = install(env);
+        assertEquals(0, r.code(), r.output());
+        assertTrue(r.output().contains("Run: fornax chat"), r.output());
+        assertTrue(r.output().contains("linked from " + bin.resolve("fornax") + "\n"), r.output());
+    }
+
+    @Test
+    void installsTheLatestWhenAskedForLatest() throws Exception {
+        Run r = install(Map.of("FORNAX_VERSION", "latest"));
+        assertEquals(0, r.code(), r.output());
+        assertTrue(r.output().contains("Installed fornax " + VERSION), r.output());
+    }
+
+    @Test
     void installsUnderXdgDataHome() throws Exception {
         Path xdg = tmp.resolve("xdg");
         Run r = install(Map.of("XDG_DATA_HOME", xdg.toString()));
@@ -324,6 +342,12 @@ class InstallScriptTest {
         List<String> args = Files.readAllLines(log);
         assertTrue(args.contains(repo + "download/v0.3.0/SHA256SUMS"), args.toString());
         assertTrue(args.contains("=https"), "curl may leave https: " + args);
+
+        Files.delete(log);
+        env.put("FORNAX_VERSION", "latest");
+        Run named = install(env);
+        assertEquals(1, named.code(), named.output());
+        assertTrue(Files.readAllLines(log).contains(repo + "latest/download/SHA256SUMS"), Files.readString(log));
     }
 
     /** A folder of links to every command on this PATH but those named, to be the whole PATH of a run. */
