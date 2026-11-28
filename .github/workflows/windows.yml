@@ -104,12 +104,23 @@ jobs:
       - name: Mesa's software Vulkan driver (lavapipe)
         if: matrix.backend == 'vulkan'
         run: |
-          pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-mesa
+          pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-mesa mingw-w64-ucrt-x86_64-vulkan-tools
           icd=$(ls /ucrt64/share/vulkan/icd.d/lvp_icd*.json | head -1)
           echo "lavapipe: $icd"
           echo "VK_DRIVER_FILES=$(cygpath -w "$icd")" >> "$GITHUB_ENV"
           echo "VK_ICD_FILENAMES=$(cygpath -w "$icd")" >> "$GITHUB_ENV"
           cygpath -w /ucrt64/bin >> "$GITHUB_PATH"
+          cat "$icd"
+          VK_DRIVER_FILES="$(cygpath -w "$icd")" VK_LOADER_DEBUG=error,warn,driver vulkaninfo --summary 2>&1 | tail -40 || true
+
+      # The same, from the pwsh steps' environment, which is where Java runs.
+      - name: Vulkan devices seen from pwsh
+        if: matrix.backend == 'vulkan'
+        shell: pwsh
+        run: |
+          $env:VK_LOADER_DEBUG = 'error,warn,driver'
+          Get-Command vulkan-1.dll -ErrorAction SilentlyContinue | Format-List Source
+          vulkaninfo --summary 2>&1 | Select-Object -Last 40
 
       - name: Set up Java
         uses: actions/setup-java@v6
