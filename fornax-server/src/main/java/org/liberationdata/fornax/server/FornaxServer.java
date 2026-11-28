@@ -497,12 +497,12 @@ public final class FornaxServer implements AutoCloseable {
             if ((long) w * h > MAX_IMAGE_PIXELS)
                 throw ApiError.badRequest("size can be at most " + MAX_IMAGE_PIXELS / (1 << 20) + " megapixels (2048x2048, or 4096x1024)", "size");
         }
-        long steps = body.get("steps") == null ? 20 : ChatRequest.whole(body.get("steps"), "steps", 1);
-        if (steps > MAX_STEPS) throw ApiError.badRequest("steps can be at most " + MAX_STEPS, "steps");
+        Long steps = body.get("steps") == null ? null : ChatRequest.whole(body.get("steps"), "steps", 1);
+        if (steps != null && steps > MAX_STEPS) throw ApiError.badRequest("steps can be at most " + MAX_STEPS, "steps");
         Object cfg = body.get("cfg_scale");
         if (cfg != null && !(cfg instanceof Number c && c.doubleValue() >= 0)) throw ApiError.badRequest("cfg_scale must be 0 or more", "cfg_scale");
         long seed = body.get("seed") == null ? ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE) : ChatRequest.whole(body.get("seed"), "seed", 0);
-        return new ImageJob(prompt, w, h, (int) steps, cfg == null ? null : ((Number) cfg).doubleValue(), seed, (int) n);
+        return new ImageJob(prompt, w, h, steps == null ? null : steps.intValue(), cfg == null ? null : ((Number) cfg).doubleValue(), seed, (int) n);
     }
 
     private static byte[] png(BufferedImage img) {

@@ -4,7 +4,6 @@ import org.liberationdata.fornax.HfCache;
 import org.liberationdata.fornax.sd.DiffusionModel;
 
 import javax.imageio.ImageIO;
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;

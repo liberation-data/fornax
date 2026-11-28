@@ -219,7 +219,7 @@ public final class StudioServer {
 
     /**
      * {"model": id, "messages": [{"role", "content"}], "maxTokens", "temperature", "seed", "think": false}
-     * think false adds Qwen3's /no_think switch to the last user message.
+     * think false asks the model to answer without reasoning (Options.withThinking), where its template can turn it off.
      */
     private void chat(HttpExchange ex) throws IOException {
         Map<String, Object> req = body(ex);
@@ -230,14 +230,9 @@ public final class StudioServer {
             messages.add(new LlamaModel.Message(Json.str(msg, "role", "user"), Json.str(msg, "content", "")));
         }
         if (messages.isEmpty()) throw new IllegalArgumentException("no messages");
-        if (!Json.bool(req, "think", true)) {
-            int last = messages.size() - 1;
-            if (messages.get(last).role().equals("user")) {
-                messages.set(last, LlamaModel.Message.user(messages.get(last).content() + " /no_think"));
-            }
-        }
         var options = new LlamaModel.Options((int) Json.num(req, "maxTokens", 1024), (float) Json.dbl(req, "temperature", 0.7),
-                (float) Json.dbl(req, "topP", 0.9), (float) Json.dbl(req, "minP", 0.05), (int) Json.num(req, "seed", -1));
+                (float) Json.dbl(req, "topP", 0.9), (float) Json.dbl(req, "minP", 0.05), (int) Json.num(req, "seed", -1),
+                Json.bool(req, "think", true));
 
         try (var sse = new Sse(ex)) {
             try (var lease = leaseSaying(sse, m, Engines.Chat.class)) {
@@ -501,7 +496,8 @@ public final class StudioServer {
 
     /**
      * {"model", "image" (a data: URL or base64 of a PNG or JPEG), "prompt", "schema" (a JSON Schema, optional),
-     * "maxTokens", "temperature"}: the preset's defaults for those left out. The reply streams as tokens; with a schema it
+     * "maxTokens", "temperature"}: the preset's defaults for those left out, and its "prompt" when none is given. A preset
+     * whose "thinking" default is false (OCRia-1) is asked with its template's thinking off. The reply streams as tokens; with a schema it
      * is constrained to it, and done carries it parsed as "json". An OCR model (PaddleOCR-VL) reads the image with its task
      * prompt ("OCR:" unless the prompt is one); with a schema, another vision model then fills it from the text read, as
      * Fornax's Invoice example does, and the stream says so with a "structuring" status between the two.
@@ -515,6 +511,7 @@ public final class StudioServer {
         if (picture == null) throw new IllegalArgumentException("no image");
         picture = fit(picture, INSPECT_MAX_SIDE);
         String prompt = Json.str(req, "prompt", "").trim();
+        if (prompt.isEmpty()) prompt = Json.str(d, "prompt", "");
         boolean ocr = Json.bool(d, "ocr", false);
         Object rawSchema = req.get("schema");
         Map<String, Object> schema = rawSchema instanceof Map<?, ?> given ? (Map<String, Object>) given
@@ -528,7 +525,9 @@ public final class StudioServer {
         Catalog.Model filler = null;
         if (ocr && schema != null) {
             filler = studio.catalog().models().stream()
-                    .filter(v -> v.kind() == Catalog.Kind.vision && v.available() && !Json.bool(v.defaults(), "ocr", false))
+                    // not OCRia-1 either: it transcribes pages rather than following an instruction
+                    .filter(v -> v.kind() == Catalog.Kind.vision && v.available() && !Json.bool(v.defaults(), "ocr", false)
+                            && !v.id().equals(Catalog.visionId(LlamaModel.Weights.OCRIA_1)))
                     .findFirst().orElseThrow(() -> new IllegalArgumentException(m.name()
                             + " reads text but doesn't fill a JSON schema well; download Qwen3-VL 4B to fill it from what it reads"));
         }
@@ -539,6 +538,7 @@ public final class StudioServer {
                         Json.obj("type", "image", "index", 0L), Json.obj("type", "text", "text", look)))),
                 "max_tokens", maxTokens, "temperature", temperature);
         if (schema != null && filler == null) ask.put("json_schema", schema);
+        if (!Json.bool(d, "thinking", true)) ask.put("enable_thinking", false);
         int width = picture.getWidth(), height = picture.getHeight();
 
         try (var sse = new Sse(ex)) {

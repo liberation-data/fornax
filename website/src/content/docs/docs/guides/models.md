@@ -230,16 +230,18 @@ models with the same files:
 | Kind | Sets |
 |---|---|
 | `CHAT` | `qwen3-0.6b`, `qwen3-4b` |
-| `VISION` | `qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b` |
-| `SPEECH` | `kokoro` |
+| `VISION` | `qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`, `ocria-1` |
+| `SPEECH` | `kokoro`, `zonos3-mini`, `voxcpm2` |
 | `TRANSCRIPTION` | `whisper-large-v3-turbo`, `whisper-base.en` |
-| `IMAGE` | `flux2-klein`, `qwen-image`, `qwen-image-edit` |
+| `IMAGE` | `flux2-klein`, `qwen-image`, `qwen-image-edit`, `z-image-turbo` |
 | `SONG` | `ace-step-turbo`, `ace-step` (turbo with the 4B lyric LM), `ace-step-xl-turbo`, `ace-step-xl`, `yue2` |
 | `VIDEO` | `ltx-2.5-distilled`, `ltx-2.5-dev` (gated) |
 
 `ModelCatalog.byName` also accepts Fornax Studio's ids, such as `image:flux2-klein`. A set's `license()` is filled in
-where the weights' license limits what you may do with them or with what they make: YuE2 is CC BY-NC 4.0, and MedGemma
-comes with Google's Health AI Developer Foundations terms.
+where the weights' license limits what you may do with them or with what they make: YuE2 is CC BY-NC 4.0, MedGemma
+comes with Google's Health AI Developer Foundations terms, and OCRia-1's license is not open source: only personal or
+research use for organisations over US$2M in revenue or funding, and none in a service that competes with LlamaParse
+or LlamaCloud.
 
 Your own models are model sets too:
 

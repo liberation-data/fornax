@@ -60,12 +60,12 @@ Package `org.liberationdata.fornax.llama`. See [Language models](/docs/guides/la
 | `new LlamaModel(Weights, Mode)`, `(gguf, Mode)`, `(Weights or gguf, gpuLayers, contextSize, Mode)` | a model loaded for `Mode.CHAT`, `EMBED` or `RERANK`; `mode()`. See [Embeddings and reranking](/docs/guides/embeddings/) |
 | `embed(texts[, embedOptions])`, `embed(text)`, `embedAsync(texts, embedOptions)` | embeddings (`float[][]`, L2-normalised by default); `embeddingSize()`. `embeddings(texts, embedOptions)`: the vectors with the tokens they took (`Embeddings`) |
 | `rerank(query, documents)`, `rerankAsync(query, documents)` | the documents' relevance scores, best first, as `List<Scored>` |
-| `LlamaModel.EmbedOptions` | `prefix`, `normalize`; `DEFAULT`, `query(task)` (Qwen3-Embedding's instruction format), `withPrefix`, `withNormalize` |
+| `LlamaModel.EmbedOptions` | `prefix`, `normalize`; `DEFAULT`, `query(task)` (Qwen3-Embedding's instruction format), `gemmaQuery(task)` and `gemmaDocument()` (EmbeddingGemma's prefixes), `withPrefix`, `withNormalize` |
 | `LlamaModel.Message` | `role`, `content` and `images`; `system(...)`, `user(...)`, `user(text, images...)`, `assistant(...)` |
 | `LlamaModel.Image` | packed RGB: `of(BufferedImage)`, `read(Path)`, `decode(bytes)` |
-| `LlamaModel.Weights` | the models Fornax knows by name: `QWEN3_4B`, `QWEN3_VL_4B`, `PADDLEOCR_VL`, `MEDGEMMA_4B`, `QWEN3_EMBEDDING_0_6B`, `QWEN3_RERANKER_0_6B`; `named(...)`, `vision()`, `model()`, `mmproj()`, `downloaded()`, `downloadCommand()` |
+| `LlamaModel.Weights` | the models Fornax knows by name: `QWEN3_4B`, `QWEN3_VL_4B`, `PADDLEOCR_VL`, `MEDGEMMA_4B`, `OCRIA_1`, `QWEN3_EMBEDDING_0_6B`, `EMBEDDINGGEMMA_2`, `QWEN3_RERANKER_0_6B`; `named(...)`, `vision()`, `model()`, `mmproj()`, `downloaded()`, `downloadCommand()` |
 | `Json` | just enough JSON to read `chatJson` replies: `parse`, `get(doc, path...)`, `quote` |
-| `LlamaModel.Options` | `maxTokens`, `temperature`, `topP`, `minP`, `seed`; `DEFAULT`, `withSeed`, `withMaxTokens`, `withTemperature` |
+| `LlamaModel.Options` | `maxTokens`, `temperature`, `topP`, `minP`, `seed`, `thinking`; `DEFAULT`, `withSeed`, `withMaxTokens`, `withTemperature`, `withThinking` |
 | `LlamaModel.Result` | `text`, `promptTokens`, `generatedTokens` |
 
 ## fornax-tts

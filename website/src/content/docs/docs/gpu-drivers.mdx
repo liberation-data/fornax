@@ -197,3 +197,9 @@ for NVIDIA. For ROCm, your user also needs to be in the `render` and `video` gro
 ## Windows
 
 There are no Windows natives to download yet: you build them yourself, experimentally, as [Platforms](/docs/platforms/#windows) describes.
+
+A Vulkan build on Windows needs your GPU maker's own driver, which includes Vulkan: AMD Software (Adrenalin Edition),
+NVIDIA's Game Ready or Studio driver, or Intel's Arc and Iris Xe graphics driver. The basic display driver, or an old
+one from Windows Update, may have none. Check with `vulkaninfo --summary`. As on Linux, with no GPU Fornax stops
+rather than run on the CPU ([above](#fornax-says-it-found-no-gpu)), and `-Dfornax.allowCpu=true` runs it anyway.
+Without the driver's Vulkan loader, `vulkan-1.dll`, the error says so.

@@ -2,6 +2,7 @@ package org.liberationdata.fornax.studio;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.liberationdata.fornax.llama.LlamaModel;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -89,6 +90,18 @@ class CatalogTest {
         assertEquals("yue2.cpp", yue2.engine());
         assertTrue(yue2.license().startsWith("CC BY-NC 4.0"));
         assertTrue(catalog.chatModels().isEmpty());
+    }
+
+    @Test void ocria1IsOfferedInInspectWithThinkingOffAndItsLicenseNotAsAChatModel() throws Exception {
+        file(LlamaModel.Weights.OCRIA_1.repo, "a", LlamaModel.Weights.OCRIA_1.modelFile, 4);
+        file(LlamaModel.Weights.OCRIA_1.repo, "a", LlamaModel.Weights.OCRIA_1.mmprojFile, 1);
+        var catalog = new Catalog(root);
+        assertTrue(catalog.chatModels().isEmpty());
+        var ocria = catalog.visionPresets().stream().filter(m -> m.id().equals("vision:ocria-1")).findFirst().orElseThrow();
+        assertEquals(false, ocria.defaults().get("thinking"));
+        assertEquals("Transcribe this page in markdown.", ocria.defaults().get("prompt"));
+        assertTrue(ocria.license().contains("not open source"));
+        assertEquals("vision:qwen3-vl-4b", catalog.visionPresets().getFirst().id());   // still the default
     }
 
     @Test void ltxWithoutItsAudioVaeIsAnotherModel() throws Exception {

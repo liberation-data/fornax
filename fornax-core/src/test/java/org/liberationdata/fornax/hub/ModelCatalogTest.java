@@ -23,7 +23,7 @@ class ModelCatalogTest {
     @Test void fornaxStudiosIdsAndTheClisNamesBothFindASet() {
         for (String studio : List.of("image:flux2-klein", "image:qwen-image-2512", "song:acestep-turbo", "song:acestep-turbo-lm4b",
                 "song:acestep-xl-turbo", "song:yue2-3b", "video:ltx-2.5-distilled", "video:ltx-2.5-dev", "vision:qwen3-vl-4b",
-                "vision:paddleocr-vl", "vision:medgemma-4b"))
+                "vision:paddleocr-vl", "vision:medgemma-4b", "vision:ocria-1"))
             assertTrue(ModelCatalog.byName(studio).isPresent(), studio);
         for (String cli : List.of("qwen3-0.6b", "qwen3-4b", "ace-step", "ace-step-xl", "yue2", "flux2-klein", "qwen-image", "qwen-image-edit"))
             assertTrue(ModelCatalog.byName(cli).isPresent(), cli);
@@ -51,9 +51,20 @@ class ModelCatalogTest {
         assertThrows(IllegalArgumentException.class, () -> silent.without("audio_vae", "", ""));
     }
 
+    @Test void imageSetsHaveTheStepsAndGuidanceTheyAreTunedFor() {
+        assertEquals(20, ModelCatalog.imageSteps(ModelCatalog.require("flux2-klein")));
+        assertEquals(4.0, ModelCatalog.imageCfg(ModelCatalog.require("flux2-klein")));
+        assertEquals(2.5, ModelCatalog.imageCfg(ModelCatalog.require("qwen-image-edit")));
+        assertEquals(8, ModelCatalog.imageSteps(ModelCatalog.require("image:z-image-turbo")));
+        assertEquals(1.0, ModelCatalog.imageCfg(ModelCatalog.require("z-image-turbo")));
+        assertEquals(List.of("diffusion_model", "vae", "llm"), roles("z-image-turbo"));
+    }
+
     @Test void licensesThatLimitUseAreSaid() {
         assertTrue(ModelCatalog.require("yue2").license().startsWith("CC BY-NC 4.0"));
         assertTrue(ModelCatalog.require("medgemma-4b").license().startsWith("Health AI Developer Foundations"));
+        assertTrue(ModelCatalog.require("ocria-1").license().contains("not open source"));
+        assertTrue(ModelCatalog.require("ocria-1").license().contains("LlamaParse"));
         assertNull(ModelCatalog.require("qwen3-4b").license());
         assertTrue(ModelCatalog.all().stream().filter(ModelSet::gated).allMatch(m -> m.kind() == Kind.VIDEO));
     }

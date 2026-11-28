@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.liberationdata.fornax.Audio;
 import org.liberationdata.fornax.hub.ModelCatalog;
+import org.liberationdata.fornax.llama.LlamaModel.Options;
 import org.liberationdata.fornax.whisper.WhisperModel.Alignment;
 
 import javax.imageio.ImageIO;
@@ -82,7 +83,7 @@ class CommandsTest {
     @Test
     void theWrongKindOfModelIsRefusedWithTheRightOnes() throws Exception {
         assertEquals(1, run("image", "qwen3-4b", "a fox", "--out", tmp.resolve("a.png").toString()));
-        assertEquals("fornax image: qwen3-4b is a chat model; image takes an image model: flux2-klein, qwen-image, qwen-image-edit\n",
+        assertEquals("fornax image: qwen3-4b is a chat model; image takes an image model: flux2-klein, qwen-image, qwen-image-edit, z-image-turbo\n",
                 err.toString());
         assertEquals(1, run("song", "flux2-klein", "folk", "--out", tmp.toString()));
         assertTrue(err.toString().contains("flux2-klein is an image model; song takes a song model: ace-step-turbo"), err.toString());
@@ -145,6 +146,10 @@ class CommandsTest {
         assertEquals(4.0, klein.cfg());
         assertTrue(klein.seed() >= 0);
         assertEquals(2.5, Image.job(args(Image.OPTIONS), ModelCatalog.require("qwen-image"), "a fox", null).cfg());
+        var z = Image.job(args(Image.OPTIONS), ModelCatalog.require("z-image-turbo"), "a fox", null);   // distilled
+        assertEquals(8, z.steps());
+        assertEquals(1.0, z.cfg());
+        assertEquals(20, klein.steps());
         var given = Image.job(args(Image.OPTIONS, "--width", "512", "--height=256", "--steps", "8", "--cfg", "1.5", "--seed", "42"),
                 ModelCatalog.require("flux2-klein"), "a fox", null);
         assertEquals(new Image.Job("a fox", 512, 256, 8, 1.5, 42), given);
@@ -168,6 +173,7 @@ class CommandsTest {
     @Test
     void pullSaysWhichCommandRunsTheModel() {
         assertEquals("Try it: fornax see qwen3-vl-4b picture.png", Pull.tryIt(ModelCatalog.require("qwen3-vl-4b")));
+        assertEquals("Try it: fornax see ocria-1 page.png", Pull.tryIt(ModelCatalog.require("ocria-1")));   // see turns its thinking off
         assertEquals("Try it: fornax speak --model kokoro \"Hello from Fornax\"", Pull.tryIt(ModelCatalog.require("kokoro")));
         assertEquals("Try it: fornax transcribe --model whisper-base.en speech.wav", Pull.tryIt(ModelCatalog.require("whisper-base.en")));
         assertEquals("Try it: fornax image flux2-klein \"a brick kiln at dusk\"", Pull.tryIt(ModelCatalog.require("flux2-klein")));
@@ -190,6 +196,18 @@ class CommandsTest {
         assertEquals("Describe this image.", See.question("qwen3-vl-4b"));
         assertEquals("Describe this image.", See.question(null));   // a reference or path
         assertEquals("OCR:", See.question("paddleocr-vl"));
+        assertEquals("Transcribe this page in markdown.", See.question("ocria-1"));
+        assertTrue(See.isOcria("ocria-1"));
+        assertFalse(See.isOcria(null));
+    }
+
+    @Test
+    void noThinkTurnsThinkingOffAndItIsOnOtherwise() {
+        assertTrue(Chat.options(Args.parse(List.of(), Chat.OPTIONS, Chat.FLAGS)).thinking());
+        assertFalse(Chat.options(Args.parse(List.of("--no-think"), Chat.OPTIONS, Chat.FLAGS)).thinking());
+        assertFalse(Chat.options(Args.parse(List.of("--no-think", "--think"), See.OPTIONS, See.FLAGS)).thinking());
+        assertFalse(See.options(Options.DEFAULT, "ocria-1").thinking());   // always off for it
+        assertTrue(See.options(Options.DEFAULT, "qwen3-vl-4b").thinking());
     }
 
     @Test

@@ -25,6 +25,31 @@ fornax image flux2-klein "a brick kiln at dusk"      # like chat, downloads the 
   [jbang-catalog.json](https://github.com/liberation-data/fornax/blob/main/jbang-catalog.json), and run
   `org.fornax4j:fornax-cli`, which JBang can also run by those coordinates: `jbang org.fornax4j:fornax-cli:0.3.0 chat qwen3-4b`
   (add `--java 22+ -R--enable-native-access=ALL-UNNAMED`, as the aliases do).
+- **With install.sh** (from Fornax 0.3.0), on Linux x86_64 or an Apple-silicon Mac, for a machine with no JBang, such
+  as a server. It downloads the `fornax-cli` zip for your platform from the
+  [GitHub release](https://github.com/liberation-data/fornax/releases), checks it against the release's `SHA256SUMS`,
+  unpacks it into `~/.local/share/fornax` and links `~/.local/bin/fornax` to it. It needs no root and edits no shell
+  startup file: if `~/.local/bin` isn't on your `PATH`, it prints the line to add. Read it first, then run it:
+
+  ```sh
+  curl -fsSLO https://fornax4j.org/install.sh
+  less install.sh
+  sh install.sh
+  ```
+
+  Or in one line, if you trust it unread:
+
+  ```sh
+  curl -fsSL https://fornax4j.org/install.sh | sh
+  ```
+
+  `fornax` runs on Java 22 or newer (`FORNAX_JAVA`, `JAVA_HOME`, or `java` on `PATH`). The script installs no Java:
+  it checks for one, and if there is none it says how to get one (`sdk install java` with
+  [SDKMAN](https://sdkman.io), `jbang jdk install 25`, or your package manager). On Linux the engines need the Vulkan
+  loader and your GPU's Vulkan driver ([Installing GPU drivers](/docs/gpu-drivers/)). Run it again to update;
+  `FORNAX_VERSION=0.3.0` installs that release, and `FORNAX_HOME` and `FORNAX_BIN_DIR` move the two folders
+  (`XDG_DATA_HOME`, if set, moves the first to `$XDG_DATA_HOME/fornax`). To uninstall, delete those two:
+  `~/.local/share/fornax` and `~/.local/bin/fornax`.
 - **With Fornax Studio** (coming in the next Fornax Studio release): choose **Install fornax command** from Studio's menu.
   Studio writes a `fornax` launcher into a folder on your `PATH` (`~/.local/bin` on Linux; `/usr/local/bin`, or
   `~/.local/bin`, on macOS). That `fornax` runs on Studio's own Java and engines, so it needs nothing else installed.
@@ -94,7 +119,8 @@ path to a `.gguf` file. `chat` and `test` download a model that isn't in the cac
 progress line as `fornax pull`, and refuse one of another kind before downloading anything.
 
 A reasoning model, such as Qwen3, thinks aloud in `<think>…</think>` before it answers. `fornax chat` hides that, and
-shows only the answer; `--think` shows the reasoning too. Some models (Qwen3 Thinking, DeepSeek-R1 distills) are
+shows only the answer; `--think` shows the reasoning too, and `--no-think` asks the model not to reason at all,
+where its chat template can turn that off (Qwen3.5, Qwen3's hybrids). Some models (Qwen3 Thinking, DeepSeek-R1 distills) are
 trained with the `<think>` in the prompt and only close the block. `fornax chat` holds the first couple of hundred
 characters of a reply until it can tell, or longer while the reply opens the way reasoning does ("Okay, the user…").
 If the reasoning runs past that, you see it, but the `</think>` is still hidden. Once a reply opens inside, an
@@ -129,8 +155,9 @@ that isn't in the cache yet before loading it, with the same progress line as `f
 kind is refused before anything is downloaded, with the ones that fit: `fornax image qwen3-4b` says qwen3-4b is a
 chat model and names the image models.
 
-- **image** takes an image alias (`flux2-klein`, `qwen-image`, `qwen-image-edit`) and draws 1024x1024 in 20 steps,
-  at the guidance the model is tuned for (4.0 for FLUX.2 [klein], 2.5 for Qwen-Image). Width and height are
+- **image** takes an image alias (`flux2-klein`, `qwen-image`, `qwen-image-edit`, `z-image-turbo`) and draws
+  1024x1024 in 20 steps (8 for Z-Image Turbo), at the guidance the model is tuned for (4.0 for FLUX.2 [klein], 2.5
+  for Qwen-Image, 1.0 for Z-Image Turbo). Width and height are
   multiples of 16. `qwen-image-edit` edits the image given with `--ref`, at that image's size unless told otherwise.
   The seed is random unless given, and printed, so a good image can be made again.
 - **song** takes a song alias and a description of the style: genre, instruments, voice, mood. `--lyrics` reads the
@@ -139,16 +166,19 @@ chat model and names the image models.
   `ace-step-xl-turbo` make an instrumental. 30 seconds unless `--seconds` says otherwise. YuE2's weights are
   CC BY-NC 4.0: no commercial use of them or of what they make.
 - **speak** uses `kokoro` and its first voice, `af_heart`, unless `--model` and `--voice` say otherwise; without text
-  it reads stdin. A TTS model that isn't in the catalogue loads by reference or path with its `--mmproj`:
+  it reads stdin. `zonos3-mini` has British and Irish English voices among its 27 (`--list-voices`); `voxcpm2` has
+  none, and takes a description of one in parentheses before the text: `fornax speak --model voxcpm2 "(A warm
+  Australian woman)G'day."`. A TTS model that isn't in the catalogue loads by reference or path with its `--mmproj`:
   `fornax speak --model ggml-org/tiny-voca-GGUF:tiny-voca-F32.gguf --mmproj ggml-org/tiny-voca-GGUF:mmproj-tiny-voca-F32.gguf "Hi"`.
 - **transcribe** reads a WAV at any rate (convert other formats first: `ffmpeg -i in.mp3 in.wav`) and prints the
   text, or with `--words` each word's start and end in seconds and the word, tab-separated. `whisper-base.en` hears
   English only; `whisper-large-v3-turbo` hears 99 languages (`--language` names one, else it is detected).
   `--model` also takes `org/name:file.bin` or a path to a whisper.cpp model.
-- **see** takes a vision alias (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`), or a GGUF by reference or path with
+- **see** takes a vision alias (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`, `ocria-1`), or a GGUF by reference or path with
   its `--mmproj`, an image (PNG, JPEG, BMP or GIF) and a question, and streams the answer as `chat` does, with
   `chat`'s options. Without a question it asks "Describe this image.", or for `paddleocr-vl` "OCR:", which reads
-  the image's text out.
+  the image's text out. For `ocria-1` it asks "Transcribe this page in markdown.", and turns its thinking off, which
+  OCRia-1 needs.
 
 `image`, `song` and `speak` write to `--out`: a file, which is written over, or a folder (an existing one, or a
 name ending in `/`). Otherwise they write `image.png`, `song.wav` or `speech.wav` in the current folder, numbered

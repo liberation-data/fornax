@@ -117,7 +117,7 @@ final class Pull {
     static String tryIt(ModelSet m) {
         return switch (m.kind()) {
             case CHAT -> "Try it: fornax chat " + m.id();
-            case VISION -> "Try it: fornax see " + m.id() + " picture.png";
+            case VISION -> "Try it: fornax see " + m.id() + (See.isOcria(m.id()) ? " page.png" : " picture.png");
             case SPEECH -> "Try it: fornax speak --model " + m.id() + " \"Hello from Fornax\"";
             case TRANSCRIPTION -> "Try it: fornax transcribe --model " + m.id() + " speech.wav";
             case IMAGE -> "Try it: fornax image " + m.id() + (Image.needsRef(m) ? " --ref picture.png \"make it night\"" : " \"a brick kiln at dusk\"");

@@ -145,9 +145,12 @@ A CUDA build is possible but hasn't been tested yet; reports are welcome.
 ## Windows
 
 There's no Windows natives jar yet, but `native/build.sh` builds the engines as DLLs in [MSYS2](https://www.msys2.org/)'s
-UCRT64 shell (experimental: CI builds the CPU and Vulkan backends, and loads the CPU build from Java). Load them with
+UCRT64 shell (experimental: CI builds the CPU and Vulkan backends, loads both from Java, and generates text with a
+small model on each, in process and in an isolated worker JVM; with no GPU on the runners, the Vulkan build runs on
+Mesa's software Vulkan driver, lavapipe, named with `GGML_VK_VISIBLE_DEVICES=0`: lavapipe is a CPU, so without that
+Fornax refuses it, as it would any Vulkan build with no GPU). Load them with
 `-Dfornax.library.path=build/native/windows-x86_64-<backend>`. Published natives follow in
-[#83](https://github.com/liberation-data/fornax/issues/83).
+[#121](https://github.com/liberation-data/fornax/issues/121).
 
 Set `git config --global core.autocrlf false` before cloning, in Git for Windows and in MSYS2's git (which clones
 the engines): with Windows line endings, Fornax's patches to the engines don't apply. Then, in the UCRT64 shell:

@@ -74,4 +74,14 @@ class Vision {
                 List.of(Image.read(Path.of("invoice.png"))), null);
         // --8<-- [end:chat-json]
     }
+
+    void ocria() throws java.io.IOException {
+        // --8<-- [start:ocria]
+        try (var ocr = new LlamaModel(LlamaModel.Weights.OCRIA_1)) {
+            var page = List.of(Message.system(java.nio.file.Files.readString(Path.of("prompt.txt"))),   // from the model's repo
+                               Message.user("", Image.read(Path.of("page.png"))));                     // the page, no text
+            String markdown = ocr.chat(page, Options.DEFAULT.withTemperature(0).withMaxTokens(4096).withThinking(false)).text();
+        }
+        // --8<-- [end:ocria]
+    }
 }

@@ -2,6 +2,8 @@ package org.liberationdata.fornax.jitllm;
 
 import org.junit.jupiter.api.Test;
 import org.liberationdata.fornax.Json;
+import org.liberationdata.fornax.llama.LlamaModel.Message;
+import org.liberationdata.fornax.llama.LlamaModel.Options;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -127,5 +129,12 @@ class ChatJsonTest {
         for (String p : pieces) c.accept(p);
         c.finish();
         return String.join("", out);
+    }
+
+    /** Options' thinking false turns reasoning off, as enable_thinking false does; true leaves the model's default. */
+    @Test void optionsCarryThinking() {
+        List<Message> hi = List.of(Message.user("hi"));
+        assertEquals(Boolean.FALSE, ChatJson.Request.of(hi, Options.DEFAULT.withThinking(false)).thinking());
+        assertNull(ChatJson.Request.of(hi, Options.DEFAULT).thinking());
     }
 }

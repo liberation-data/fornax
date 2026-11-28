@@ -241,9 +241,10 @@ surprises you.
 ## llama.cpp embeddings and reranking (fornax-llama, Mode.EMBED and Mode.RERANK)
 
 - **Set up as llama-embedding does.** A pooled handle has `embeddings` on, the GGUF's own pooling type (Qwen3-Embedding:
-  last; Qwen3-Reranker: rank), one unified KV cache, and `n_batch = n_ubatch = n_ctx`: pooling needs every token of a
-  sequence in one ubatch, so the context size is also the longest input. Inputs go in as separate sequences, up to
-  256 (`llama_max_parallel_sequences()`) a batch, and the cache is cleared before each batch.
+  last; EmbeddingGemma 2: mean; Qwen3-Reranker: rank), one unified KV cache, and `n_batch = n_ubatch = n_ctx`:
+  pooling needs every token of a sequence in one ubatch, so the context size is also the longest input. Inputs go in
+  as separate sequences, up to 256 (`llama_max_parallel_sequences()`) a batch, and the cache is cleared before each
+  batch.
 - **`n_seq_max` must not exceed `n_batch`.** llama.cpp sizes the output buffer for `max(n_outputs, n_seq_max)` and
   asserts that fits `n_outputs_max` (which defaults to `n_batch`); a 64-token context with 256 sequences aborted the
   JVM. The shim caps `n_seq_max` at the batch.

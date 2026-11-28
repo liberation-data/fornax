@@ -1,0 +1,34 @@
+# The house style, for editors: UTF-8, LF, four spaces, a final newline and no trailing whitespace. Lines run up to
+# about 120 characters (CONTRIBUTING.md), and longer where that reads better, so no line length is set here.
+# `./gradlew spotlessCheck` (in CI) checks what a tool can; `./gradlew spotlessApply` fixes it.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+# A trailing double space is a line break in Markdown.
+[*.md]
+trim_trailing_whitespace = false
+
+# A blank context line in a patch is a single space (native/patches/).
+[*.{patch,diff}]
+trim_trailing_whitespace = false
+
+[{Makefile,*.mk}]
+indent_style = tab
+
+# The Gradle wrapper's batch script is CRLF, as Gradle writes it.
+[*.bat]
+end_of_line = crlf
+
+# What each scene's mp3 says, compared byte for byte by videos/build/build.mjs: a final newline would re-voice it.
+[videos/explainer/narration/*.txt]
+insert_final_newline = false

@@ -27,6 +27,11 @@ public final class ModelCatalog {
     public static final String MEDGEMMA_LICENSE =
             "Health AI Developer Foundations terms: diagnosing or treating patients with it may need a health regulator's authorization";
 
+    /** OCRia-1's license (Attachment A): not open source, and closed to larger organisations and to competing services. */
+    public static final String OCRIA_LICENSE = "OCRia-1 license, a modified OpenRAIL-M (not open source): only personal or research use "
+            + "if your organisation had more than US$2M revenue last year or has raised more than US$2M, and no use in a service "
+            + "that competes with LlamaParse or LlamaCloud";
+
     private static final String ACE = "Serveurperso/ACE-Step-1.5-GGUF", YUE2 = "Serveurperso/YuE2-GGUF", LTX = "Lightricks/LTX-2.5";
     private static final String QWEN_VL_FILE = "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors";
     private static final Part QWEN_VL = Part.anyOf("llm",
@@ -51,6 +56,17 @@ public final class ModelCatalog {
                 + ALL.stream().map(ModelSet::id).collect(Collectors.joining(", "))));
     }
 
+    /**
+     * The guidance scale an image set is tuned for, where a request doesn't say: Qwen-Image 2.5, FLUX.2 [klein] 4.0,
+     * Z-Image Turbo 1.0 (it is distilled to run without guidance).
+     */
+    public static double imageCfg(ModelSet m) { return distilled(m) ? 1.0 : m.id().startsWith("qwen") ? 2.5 : 4.0; }
+
+    /** The steps an image set takes, where a request doesn't say: 20, or 8 for distilled Z-Image Turbo. */
+    public static int imageSteps(ModelSet m) { return distilled(m) ? 8 : 20; }
+
+    private static boolean distilled(ModelSet m) { return m.id().equals("z-image-turbo"); }
+
     private static List<ModelSet> build() {
         List<ModelSet> l = new ArrayList<>();
 
@@ -73,11 +89,23 @@ public final class ModelCatalog {
                 Part.of("gguf", "unsloth/medgemma-1.5-4b-it-GGUF", "medgemma-1.5-4b-it-Q4_K_M.gguf"),
                 Part.of("mmproj", "unsloth/medgemma-1.5-4b-it-GGUF", "mmproj-F16.gguf"))
                 .withLicense(MEDGEMMA_LICENSE).withAliases("vision:medgemma-4b"));
+        l.add(ModelSet.of("ocria-1", Kind.VISION, "OCRia-1 4B", "llama.cpp",
+                Part.of("gguf", "llamaindex/OCRia-1-GGUF", "OCRia-1-Q8_0.gguf"),
+                Part.of("mmproj", "llamaindex/OCRia-1-GGUF", "mmproj-OCRia-1-f16.gguf"))
+                .withLicense(OCRIA_LICENSE).withAliases("vision:ocria-1"));
 
         // speech (llama.cpp text to speech): TtsModel.Weights.KOKORO, the default voice model
         l.add(ModelSet.of("kokoro", Kind.SPEECH, "Kokoro 82M", "llama.cpp",
                 Part.of("gguf", "ggml-org/Kokoro-82M-GGUF", "Kokoro-82M-F32.gguf"),
                 Part.of("mmproj", "ggml-org/Kokoro-82M-GGUF", "mmproj-Kokoro-82M-F16.gguf")));
+        // ZONOS3-Mini (TtsModel.Weights.ZONOS3): 27 voices, the British and Irish English ones among them; 44.1 kHz
+        l.add(ModelSet.of("zonos3-mini", Kind.SPEECH, "ZONOS3-Mini", "llama.cpp",
+                Part.of("gguf", "ggml-org/ZONOS3-Mini-GGUF", "ZONOS3-Mini-Q8_0.gguf"),
+                Part.of("mmproj", "ggml-org/ZONOS3-Mini-GGUF", "mmproj-ZONOS3-Mini-F32.gguf")));
+        // VoxCPM2 (TtsModel.Weights.VOXCPM2): no fixed voices; a description in parentheses before the text designs one
+        l.add(ModelSet.of("voxcpm2", Kind.SPEECH, "VoxCPM2 2B", "llama.cpp",
+                Part.of("gguf", "ggml-org/VoxCPM2-GGUF", "VoxCPM2-Q8_0.gguf"),
+                Part.of("mmproj", "ggml-org/VoxCPM2-GGUF", "mmproj-VoxCPM2-BF16.gguf")));
 
         // speech to text (whisper.cpp): WhisperModel.Weights
         l.add(ModelSet.of("whisper-large-v3-turbo", Kind.TRANSCRIPTION, "Whisper large-v3-turbo (5-bit)", "whisper.cpp",
@@ -98,6 +126,12 @@ public final class ModelCatalog {
         l.add(ModelSet.of("qwen-image-edit", Kind.IMAGE, "Qwen-Image-Edit 2511", "stable-diffusion.cpp",
                 Part.of("diffusion_model", "Comfy-Org/Qwen-Image-Edit_ComfyUI", "split_files/diffusion_models/qwen_image_edit_2511_bf16.safetensors"),
                 QWEN_IMAGE_VAE, QWEN_VL));
+        // Z-Image Turbo: distilled, 8 steps at CFG 1; the FLUX.1 VAE, and the Qwen3 4B text encoder klein uses too
+        l.add(ModelSet.of("z-image-turbo", Kind.IMAGE, "Z-Image Turbo", "stable-diffusion.cpp",
+                Part.of("diffusion_model", "Comfy-Org/z_image_turbo", "split_files/diffusion_models/z_image_turbo_bf16.safetensors"),
+                Part.of("vae", "Comfy-Org/z_image_turbo", "split_files/vae/ae.safetensors"),
+                Part.of("llm", "Comfy-Org/z_image_turbo", "split_files/text_encoders/qwen_3_4b.safetensors"))
+                .withAliases("image:z-image-turbo"));
 
         // songs (acestep.cpp, yue2.cpp). "ace-step" is the CLI's: turbo with the 4B lyric LM.
         Part aceEncoder = Part.of("text_encoder", ACE, "Qwen3-Embedding-0.6B-Q8_0.gguf");

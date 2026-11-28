@@ -69,7 +69,7 @@ tool-call format, with llama-server's templates and parsers. A request takes:
 - `stop`: a string or a list; the reply ends before the first one, and the model stops there
 - `stream: true`: server-sent events in OpenAI's chunk format, ending with `data: [DONE]`;
   `stream_options: {"include_usage": true}` adds the token counts in a last chunk
-- images, for a vision model (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`): `image_url` content parts with a base64
+- images, for a vision model (`qwen3-vl-4b`, `paddleocr-vl`, `medgemma-4b`, `ocria-1`): `image_url` content parts with a base64
   `data:` URI of a PNG, JPEG, GIF or BMP, up to 67 megapixels (8192 x 8192) in all a request; the server doesn't fetch URLs
 - `chat_template_kwargs: {"enable_thinking": false}` turns a reasoning model's thinking off
 
@@ -103,16 +103,17 @@ r = client.images.generate(model="flux2-klein", prompt="a brick kiln at dusk", s
 open("kiln.png", "wb").write(base64.b64decode(r.data[0].b64_json))
 ```
 
-`model` is an image alias (`flux2-klein`, `qwen-image`); `size` is `WIDTHxHEIGHT` in multiples of 16, up to 4096 a side and 4
+`model` is an image alias (`flux2-klein`, `qwen-image`, `z-image-turbo`); `size` is `WIDTHxHEIGHT` in multiples of 16, up to 4096 a side and 4
 megapixels (2048x2048, or 4096x1024; default 1024x1024); `n` makes up to 8, with seeds counting up from `seed`.
-Beyond OpenAI's: `seed`, `steps` (default 20, at most 100)
-and `cfg_scale` (4.0 for flux2-klein, 2.5 for the Qwen-Image models). Images come back as `b64_json` PNGs; the
+Beyond OpenAI's: `seed`, `steps` (default 20, 8 for z-image-turbo; at most 100)
+and `cfg_scale` (4.0 for flux2-klein, 2.5 for the Qwen-Image models, 1.0 for z-image-turbo). Images come back as `b64_json` PNGs; the
 server keeps no files, so `response_format: "url"` is refused.
 
 ### Speech and transcription
 
 `/v1/audio/speech` speaks `input` (up to 4096 characters, as OpenAI's) with `kokoro` unless `model` names another speech alias. `voice` is one of the
 model's voices (`fornax speak --list-voices`); OpenAI's voice names (`alloy`, `nova`, ...) get the model's default.
+`voxcpm2` has no voices: describe one in parentheses at the start of `input` (`"(A warm Australian woman)G'day."`).
 The reply is a WAV, so ask for `response_format: "wav"` (an OpenAI client asking for MP3 gets an error).
 
 `/v1/audio/transcriptions` takes a WAV `file` (multipart, as the clients send it; convert other formats first,

@@ -35,9 +35,12 @@ echo "==> copying the working tree to $HOST:$DIR"
 # exit status is kept, so the reports come back even when a test fails.
 status=0
 args=$( (( $# )) && printf '%q ' "$@" || true )  # quoted for the remote shell; none at all when there are none
-# A shared Mac runs one heavy job at a time: where heavy-lock is installed, the build and the tests queue behind it
-# (FORNAX_MAC_LOCK_WAIT seconds at most, else forever; heavy-lock exits 125 when the wait runs out).
-lock='if [ -x "$HOME/.local/bin/heavy-lock" ]; then exec env HEAVY_LOCK_WAIT="${1:-}" "$HOME/.local/bin/heavy-lock" fornax-mac-test -- "${@:2}"; else exec "${@:2}"; fi'
+# A shared Mac runs one GPU job at a time: where heavy-lock is installed, the build and the tests queue behind it as a
+# --gpu job (the tests run models on Metal; the native build, incremental after the first run, comes along) of about
+# 20 GB at peak, models included, as the Mac's memory is the GPU's; when too little is free then to keep heavy-lock's
+# reserve beside that, it runs alone. FORNAX_MAC_LOCK_WAIT seconds at most, else forever; heavy-lock exits 125 when
+# the wait runs out.
+lock='if [ -x "$HOME/.local/bin/heavy-lock" ]; then exec env HEAVY_LOCK_WAIT="${1:-}" "$HOME/.local/bin/heavy-lock" --gpu --mem 20 fornax-mac-test -- "${@:2}"; else exec "${@:2}"; fi'
 ssh "$HOST" "cd $RDIR && bash -c $(printf '%q' "$lock") locked ${FORNAX_MAC_LOCK_WAIT:-''} bash -s -- $args" <<'REMOTE' || status=$?
 set -uo pipefail
 [ -s "$HOME/.sdkman/bin/sdkman-init.sh" ] && { set +u; source "$HOME/.sdkman/bin/sdkman-init.sh"; set -u; }

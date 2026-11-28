@@ -37,10 +37,13 @@ final class ChatJson {
             if (maxTokens < 1) throw badRequest("max_tokens must be at least 1");
         }
 
-        /** maxTokens 0 (or less) generates until the model stops or the context fills, as LlamaModel does. */
+        /**
+         * maxTokens 0 (or less) generates until the model stops or the context fills, as LlamaModel does; thinking
+         * false turns reasoning off where the model's template can, as {@code enable_thinking: false} does.
+         */
         static Request of(List<Message> messages, Options o) {
             return new Request(messages, o.maxTokens() > 0 ? o.maxTokens() : Integer.MAX_VALUE, o.temperature(), o.topP(),
-                    o.seed(), List.of(), null);
+                    o.seed(), List.of(), o.thinking() ? null : Boolean.FALSE);
         }
     }
 

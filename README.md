@@ -52,7 +52,7 @@ Fornax binds native inference engines with Java's Foreign Function & Memory API 
 
 | Module | Engine | Models |
 |---|---|---|
-| `fornax-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (with `mtmd` for images) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...); vision language models (Qwen3-VL, PaddleOCR-VL, MedGemma, ...); embedding and reranker models (Qwen3-Embedding, Qwen3-Reranker) |
+| `fornax-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (with `mtmd` for images) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...); vision language models (Qwen3-VL, PaddleOCR-VL, MedGemma, ...); embedding and reranker models (Qwen3-Embedding, EmbeddingGemma 2, Qwen3-Reranker) |
 | `fornax-jitllm` | [jitllm](https://github.com/beehive-lab/jitllm) (Java, on the GPU through [TornadoVM](https://github.com/beehive-lab/TornadoVM)) | GGUF language and embedding models (Llama, Qwen, Gemma, Mistral, Granite, ...): an alternative to `fornax-llama` for text |
 | `fornax-tts` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`mtmd`) | text to speech: Kokoro, ZONOS3, LFM3-Audio, Chatterbox, VoxCPM2, ... |
 | `fornax-sd` | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) | FLUX.1/FLUX.2, Qwen-Image and Qwen-Image-Edit, SD 1.x/2.x/XL/3, Wan, LTX |
@@ -129,11 +129,11 @@ The natives jars:
 | `fornax-natives-macos-aarch64-metal` | macOS 13.3+ on Apple silicon | Metal |
 
 No Windows natives jar yet: `native/build.sh` builds the engines in MSYS2's UCRT64 shell, experimentally
-([#83](https://github.com/liberation-data/fornax/issues/83)).
+([#121](https://github.com/liberation-data/fornax/issues/121)).
 
 On Linux, the GPU's Vulkan driver must be installed (it usually is; if not, see
-[Installing GPU drivers](https://fornax4j.org/docs/gpu-drivers/)). With no GPU, Fornax stops rather than run on the CPU,
-unless `-Dfornax.allowCpu=true` (or `FORNAX_ALLOW_CPU=true`).
+[Installing GPU drivers](https://fornax4j.org/docs/gpu-drivers/)). With no GPU, Fornax stops rather than run on the CPU
+(on Linux, and for a Vulkan build on Windows), unless `-Dfornax.allowCpu=true` (or `FORNAX_ALLOW_CPU=true`).
 
 Maven: import the BOM, then add modules without versions. `fornax-natives` brings in the natives jar for the machine
 that builds (Maven activates its profiles by OS and arch):
@@ -343,7 +343,8 @@ compute timeout and lose the device. Fornax decodes ACE-Step audio in 512-frame 
 ## Models
 
 Fetch a model with `fornax pull <alias>`. To get the `fornax` command, install Fornax Studio and choose
-**Install fornax command** from its menu (coming in the next Fornax Studio release), or build it from source (see
+**Install fornax command** from its menu (coming in the next Fornax Studio release), run
+`jbang fornax@fornax4j` or [install.sh](https://fornax4j.org/install.sh) (from 0.3.0), or build it from source (see
 [The fornax command](#the-fornax-command)).
 
 ```sh
@@ -353,7 +354,8 @@ fornax list                 # every alias, what is downloaded, and other GGUF mo
 ```
 
 The aliases are Fornax's model catalogue (`ModelCatalog`): `qwen3-0.6b`, `qwen3-4b`, `qwen3-vl-4b`, `paddleocr-vl`,
-`medgemma-4b`, `kokoro`, `whisper-large-v3-turbo`, `whisper-base.en`, `flux2-klein`, `qwen-image`, `qwen-image-edit`,
+`medgemma-4b`, `ocria-1`, `kokoro`, `zonos3-mini`, `voxcpm2`, `whisper-large-v3-turbo`, `whisper-base.en`, `flux2-klein`,
+`qwen-image`, `qwen-image-edit`, `z-image-turbo`,
 `ace-step-turbo`, `ace-step`, `ace-step-xl-turbo`, `ace-step-xl`, `yue2`, `ltx-2.5-distilled` and `ltx-2.5-dev`.
 `fornax pull` also takes a repo (`fornax pull unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M`, or file names and globs).
 
@@ -408,12 +410,16 @@ fornax info                                       # Java, native libraries, cach
 
 Every command that runs a model downloads it first if it isn't in the cache yet, as `fornax pull` would. `image`, `song`
 and `speak` write to `--out` (else `image.png`, `song.wav` or `speech.wav` here, numbered rather than overwrite one).
-A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--think` shows them. A gated repo
+A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--think` shows them, `--no-think` skips
+the reasoning where the model's template allows. A gated repo
 (LTX-2.5) needs its terms accepted on huggingface.co and `HF_TOKEN` (or `hf auth login`); the error says so.
 
 **Installing it.** Fornax Studio installs `fornax` onto your `PATH` from its menu, **Install fornax command**, using
 Studio's own Java and engines (coming in the next Fornax Studio release). On a machine without a desktop, such as a
-server, build it from source: it needs JDK 25 to build and Java 22 or newer to run (`JAVA_HOME`, or `java` on
+server, `curl -fsSL https://fornax4j.org/install.sh | sh` (from 0.3.0; read it first with `curl -fsSLO` and `less`)
+installs the release's `fornax-cli` zip for Linux x86_64 or an Apple-silicon Mac into `~/.local`, checked against its
+`SHA256SUMS`, on a Java 22 or newer you already have; see [The fornax command](https://fornax4j.org/docs/guides/cli/).
+Or build it from source: it needs JDK 25 to build and Java 22 or newer to run (`JAVA_HOME`, or `java` on
 `PATH`).
 
 ```sh
@@ -429,7 +435,8 @@ at other native libraries. The launcher, `bin/fornax`, takes its Java, its jars 
 [The fornax command](https://fornax4j.org/docs/guides/cli/).
 
 Check each model's license before you use what it makes. Some are non-commercial: YuE2's weights are
-CC BY-NC 4.0, for example.
+CC BY-NC 4.0, for example. OCRia-1's license isn't open source: past US$2M in revenue or funding, only personal or
+research use.
 
 ## The OpenAI-compatible server
 
@@ -490,7 +497,7 @@ trying models: a JDK-only HTTP server on localhost (`com.sun.net.httpserver`, re
 that lists what in the Hugging Face cache Fornax can run, downloads Fornax's model sets into it (`FornaxHub`), keeps
 models in a `ModelPool`, and serves chat (with a tool-calling demo through `chatJson`), images, songs (ACE-Step and
 YuE2), video clips with sound (LTX-2.5, whose .mp4 needs ffmpeg) and questions about an image for a vision model
-(Qwen3-VL, PaddleOCR-VL, MedGemma), as text or held to a JSON schema. The app starts it; to run it on its own:
+(Qwen3-VL, PaddleOCR-VL, MedGemma, OCRia-1), as text or held to a JSON schema. The app starts it; to run it on its own:
 
 ```sh
 ./gradlew studioServer                    # http://127.0.0.1:5191; -Pport=, -Pbudget=<GB>, -Pstub=image,song,video

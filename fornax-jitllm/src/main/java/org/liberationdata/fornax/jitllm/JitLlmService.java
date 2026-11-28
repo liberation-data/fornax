@@ -65,7 +65,7 @@ public final class JitLlmService implements WorkerService {
         Wire.Out out = new Wire.Out().integer(messages.size());
         for (Message m : messages) out.string(m.role()).string(m.content());
         return out.integer(o.maxTokens()).floatValue(o.temperature()).floatValue(o.topP()).floatValue(o.minP())
-                .integer(o.seed()).bool(stream).toBytes();
+                .integer(o.seed()).bool(o.thinking()).bool(stream).toBytes();
     }
 
     static byte[] chatJsonArgs(String request, boolean stream) {
@@ -117,14 +117,14 @@ public final class JitLlmService implements WorkerService {
         return out;
     }
 
-    private static List<Message> messages(Wire.In in) {
+    static List<Message> messages(Wire.In in) {
         int n = in.integer();
         List<Message> out = new ArrayList<>(n);
         for (int i = 0; i < n; i++) out.add(new Message(in.string(), in.string()));
         return out;
     }
 
-    private static Options options(Wire.In in) {
-        return new Options(in.integer(), in.floatValue(), in.floatValue(), in.floatValue(), in.integer());
+    static Options options(Wire.In in) {
+        return new Options(in.integer(), in.floatValue(), in.floatValue(), in.floatValue(), in.integer(), in.bool());
     }
 }

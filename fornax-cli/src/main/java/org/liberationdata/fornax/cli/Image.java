@@ -34,8 +34,8 @@ final class Image {
                                    a folder, or a name ending in /, puts image.png in it)
               --width N            default 1024, or the --ref image's; a multiple of 16
               --height N           default 1024, or the --ref image's; a multiple of 16
-              --steps N            default 20
-              --cfg X              guidance scale (default 4.0 for flux2-klein, 2.5 for the Qwen-Image models)
+              --steps N            default 20 (8 for z-image-turbo)
+              --cfg X              guidance scale (default 4.0 for flux2-klein, 2.5 for the Qwen-Image models, 1.0 for z-image-turbo)
               --seed N             default random; the seed is printed, to make the same image again
               --ref FILE           an image to edit (qwen-image-edit needs one)""".formatted(Models.ids(Kind.IMAGE));
 
@@ -83,7 +83,7 @@ final class Image {
     static Job job(Args a, ModelSet m, String prompt, BufferedImage ref) {
         int width = side(a, "width", ref == null ? 1024 : ref.getWidth() / 16 * 16);
         int height = side(a, "height", ref == null ? 1024 : ref.getHeight() / 16 * 16);
-        int steps = a.intOption("steps", 20);
+        int steps = a.intOption("steps", m == null ? 20 : steps(m));
         if (steps < 1) throw new UsageException("--steps must be at least 1");
         float cfg = a.floatOption("cfg", m == null ? 4.0f : (float) cfg(m));
         if (!(cfg >= 0)) throw new UsageException("--cfg must be 0 or more");
@@ -97,8 +97,11 @@ final class Image {
         return v;
     }
 
-    /** The guidance scale Fornax's examples use with the model. */
-    static double cfg(ModelSet m) { return m.id().startsWith("qwen") ? 2.5 : 4.0; }
+    /** The guidance scale the model is tuned for ({@link ModelCatalog#imageCfg}). */
+    static double cfg(ModelSet m) { return ModelCatalog.imageCfg(m); }
+
+    /** The steps the model takes ({@link ModelCatalog#imageSteps}). */
+    static int steps(ModelSet m) { return ModelCatalog.imageSteps(m); }
 
     /** Whether the model edits an image rather than drawing one from nothing. */
     static boolean needsRef(ModelSet m) { return m.id().equals("qwen-image-edit"); }

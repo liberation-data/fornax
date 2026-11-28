@@ -55,6 +55,7 @@ class LanguageModels {
         Options exact = Options.DEFAULT.withTemperature(0).withMaxTokens(1024);   // greedy, for repeatable answers
         Options again = Options.DEFAULT.withSeed(42);                           // sampled, but the same each run
         Options custom = new Options(256, 0.8f, 0.95f, 0.05f, 7);              // every field at once
+        Options direct = Options.DEFAULT.withThinking(false);                   // no reasoning first
         // --8<-- [end:options]
     }
 

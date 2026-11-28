@@ -8,6 +8,35 @@ import com.vanniktech.maven.publish.SourcesJar
 plugins {
     // Maven Central through the Central Portal (see .github/workflows/release.yml)
     id 'com.vanniktech.maven.publish' version '0.37.0' apply false
+    // The format check (#116): ./gradlew spotlessCheck, run in CI; ./gradlew spotlessApply fixes what it finds
+    id 'com.diffplug.spotless' version '8.11.0'
+}
+
+// The format check keeps to what the code already does everywhere, rather than restyling it: no unused imports, no tab
+// indents, no trailing whitespace, and a final newline (.editorconfig says the same to editors). A full formatter such as
+// palantir-java-format would rewrap most of the codebase, which runs long lines and one-line methods on purpose.
+allprojects {
+    apply plugin: 'com.diffplug.spotless'
+    repositories { mavenCentral() }   // the formatter's own jars, and every module's dependencies
+    spotless {
+        java {
+            target project == rootProject ? ['.github/**/*.java', 'scripts/**/*.java'] : ['src/**/*.java']
+            removeUnusedImports()
+            leadingTabsToSpaces(4)
+            trimTrailingWhitespace()
+            endWithNewline()
+        }
+        if (project == rootProject) {
+            format 'misc', {
+                target '*.gradle', '*/*.gradle', 'gradle.properties', '.github/**/*.yml', '**/*.sh', '.editorconfig'
+                // engines-src/ (native/build.sh's engine checkouts) and .claude/ (agent worktrees) are untracked here
+                targetExclude '**/build/**', '**/node_modules/**', 'native/**/src/**', 'engines-src/**', '.claude/**'
+                leadingTabsToSpaces(4)
+                trimTrailingWhitespace()
+                endWithNewline()
+            }
+        }
+    }
 }
 
 def osName = System.getProperty('os.name').toLowerCase()
@@ -20,8 +49,6 @@ def pomOnly = ['fornax-bom', 'fornax-natives']
 
 configure(subprojects.findAll { !(it.name in pomOnly) }) {
     apply plugin: 'java-library'
-
-    repositories { mavenCentral() }
 
     java {
         toolchain { languageVersion = JavaLanguageVersion.of(25) }
@@ -334,10 +361,15 @@ project(':fornax-cli') {
         systemProperty 'fornax.library.path', nativeDir.absolutePath
         standardInput = System.in
     }
-    // The launcher as an installer renders it, run against the installed distribution (see LauncherTest)
+    // The launcher as an installer renders it, run against the installed distribution (see LauncherTest), and
+    // install.sh run against the distribution's zip (see InstallScriptTest)
     tasks.named('test') {
-        dependsOn 'installDist'
+        dependsOn 'installDist', 'distZip'
         systemProperty 'fornax.cli.install', layout.buildDirectory.dir('install/fornax-cli').get().asFile.absolutePath
+        systemProperty 'fornax.cli.distZip', tasks.named('distZip', Zip).get().archiveFile.get().asFile.absolutePath
+        systemProperty 'fornax.cli.version', project.version.toString()
+        systemProperty 'fornax.install.script', rootProject.file('website/public/install.sh').absolutePath
+        inputs.file(rootProject.file('website/public/install.sh'))
         systemProperty 'fornax.jbang.catalog', rootProject.file('jbang-catalog.json').absolutePath
         inputs.file(rootProject.file('jbang-catalog.json'))
     }

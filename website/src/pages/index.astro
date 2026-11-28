@@ -276,6 +276,16 @@ const theme = 'vitesse-dark';
             /* The nav above the splash that follows it, so its GitHub menu, which drops over the splash, takes the clicks. */
             .fire > .nav { z-index: 2; }
             @media (max-width: 800px) { .fire::before { background-image: linear-gradient(rgba(23, 10, 4, 0.5), rgba(23, 10, 4, 0.68)), var(--photo-small); } }
+            /* The hero's fire, alive: a seamless loop of the splash's flames (rendered with Fornax's LTX-2.5, the photo
+               pinned as its first and last frame) over the still photo, under the same wash. It fades in once it plays,
+               so until then (and for phones, reduced motion and Save-Data, which never load it) the photo shows. */
+            .hero > .hero-fire, .hero > .wash { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+            .hero > .hero-fire, .hero > .wash { opacity: 0; transition: opacity 0.8s ease; }
+            .hero > .hero-fire { width: 100%; height: 100%; object-fit: cover; object-position: center 45%; }
+            /* The wash shows only with the video: the photo under it is already washed (by ::before), so a second wash
+               would darken the still that phones, reduced motion and Save-Data get. */
+            .hero > .hero-fire.on, .hero > .hero-fire.on + .wash { opacity: 1; }
+            .hero > .wash { background: linear-gradient(rgba(23, 10, 4, 0.42), rgba(23, 10, 4, 0.62)); }
 
             .hero { min-height: 760px; display: flex; flex-direction: column; }
             .nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; width: 100%; padding: 24px 32px; }
@@ -359,16 +369,12 @@ const theme = 'vitesse-dark';
             .card p { margin: 0; font-size: 17px; line-height: 1.6; color: var(--muted); }
 
             .dark { background: var(--abyss); color: #f2e4d8; padding: 96px 32px; }
-            /* Faint fire behind the dark section: six frames of the fornax's flames (rendered with Fornax's LTX-2.5 from the
-               hero photo) under a deep wash. Scrolling steps through them, so the fire crackles as you move, and drifts
-               slower than the page (a gentle parallax). Phones and reduced motion get one still frame. */
+            /* Faint fire behind the dark section: a still of the fornax's flames (rendered with Fornax's LTX-2.5 from the
+               hero photo) under a deep wash, drifting slower than the page (a gentle parallax). Phones and reduced motion
+               get it unmoved. */
             .dark { position: relative; isolation: isolate; overflow: hidden; }
             .dark .flames { position: absolute; inset: 0; z-index: -2; pointer-events: none; }
-            .dark .flames img { position: absolute; left: 0; top: -12%; width: 100%; height: 124%; object-fit: cover; object-position: center 60%; opacity: 0; transition: opacity 0.16s linear; will-change: opacity, transform; }
-            .dark .flames img.on { opacity: 1; }
-            /* Still (the script's own query): only the first frame shows, so the rest, out of the layout, are never fetched;
-               lazy, they would be, being in view under it. */
-            @media (prefers-reduced-motion: reduce), (max-width: 800px) { .dark .flames img:not(:first-child) { display: none; } }
+            .dark .flames img { position: absolute; left: 0; top: -12%; width: 100%; height: 124%; object-fit: cover; object-position: center 60%; will-change: transform; }
             .dark::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(rgba(23, 13, 8, 0.9) 0%, rgba(23, 13, 8, 0.8) 40%, rgba(23, 13, 8, 0.58) 100%); }
             .dark .eyebrow { color: var(--accent); }
             .dark h2 { color: #fff; }
@@ -566,6 +572,21 @@ const theme = 'vitesse-dark';
             footer nav span { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #8e7464; }
             footer a { color: #f2e4d8; text-decoration: none; }
             footer a:hover { color: #fff; text-decoration: underline; }
+            /* The elements strip: Liberation Data's projects as the four elements of Embabel Worlds, this site's lit. The same strip is on the other Liberation Data sites (drivine.org): keep them in step, apart from colours and which element is lit. */
+            footer .elements { margin-top: 44px; padding-top: 28px; border-top: 1px solid rgba(242, 228, 216, 0.12); display: flex; flex-wrap: wrap; gap: 20px 40px; align-items: center; justify-content: space-between; }
+            footer .elements p { margin: 0; font-size: 14px; color: #977c6c; }
+            footer .elements p a { color: #cdb6a5; text-decoration: underline; text-underline-offset: 3px; }
+            footer .elements p a:hover, footer .elements p a:focus-visible { color: #fff; }
+            footer .elements ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 14px 32px; }
+            footer .elements li a, footer .elements li > span { display: flex; align-items: center; gap: 10px; color: #977c6c; text-decoration: none; }
+            footer .elements svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+            footer .elements b { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+            footer .elements small { display: block; font-size: 14px; color: #cdb6a5; }
+            footer .elements li a:hover, footer .elements li a:hover small, footer .elements li a:focus-visible, footer .elements li a:focus-visible small { color: #fff; text-decoration: none; }
+            footer .elements li.here a { color: var(--accent); }
+            footer .elements li.here small { color: #f2e4d8; }
+            footer .elements li.soon svg { opacity: 0.55; }
+            footer .elements li.soon small { color: #977c6c; font-style: italic; }
 
             @media (max-width: 600px) {
                 .intro, .backing, .explainer, .why, .dark, .engines, .results, .studio, .how, .start-section, .roadmap, footer { padding-left: 16px; padding-right: 16px; }
@@ -595,6 +616,8 @@ const theme = 'vitesse-dark';
     </head>
     <body style={photoVars}>
         <header class="fire hero">
+            <video class="hero-fire" muted loop playsinline preload="none" aria-hidden="true" tabindex="-1" disablepictureinpicture></video>
+            <div class="wash" aria-hidden="true"></div>
             <nav class="nav wrap" aria-label="Main">
                 <a href="/" class="brand"><img src={logoSmall.src} alt="" width="34" height="34" /><span>fornax<span class="j">4j</span></span></a>
                 <div class="nav-links">
@@ -703,7 +726,7 @@ const theme = 'vitesse-dark';
             </section>
 
             <section class="dark" id="code">
-                <div class="flames" aria-hidden="true">{[0, 1, 2, 3, 4, 5].map((k) => <img src={`/fire/f${k}.webp`} alt="" loading="lazy" decoding="async" class={k === 0 ? 'on' : undefined} />)}</div>
+                <div class="flames" aria-hidden="true"><img src="/fire/f0.webp" alt="" loading="lazy" decoding="async" /></div>
                 <div class="wrap split">
                     <div class="text">
                         <p class="eyebrow">Plain Java API</p>
@@ -1116,6 +1139,15 @@ const theme = 'vitesse-dark';
                     <div><span>Liberation Data</span><a href="https://github.com/liberation-data">GitHub</a><a href="https://drivine.org">Drivine</a></div>
                 </nav>
             </div>
+            <div class="wrap elements">
+                <p><a href="https://github.com/liberation-data">Liberation Data</a> is proud to provide four elements of <a href="https://worlds.embabel.com">Embabel Worlds</a></p>
+                <ul>
+                    <li class="here"><a href="https://fornax4j.org" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5c.6 3.4 4.8 5.6 4.8 10.6a4.8 4.8 0 0 1-9.6 0c0-2.3 1-3.8 2.2-5 .2 1.6.9 2.6 1.9 3.1-.6-3.2-.1-6.2.7-8.7Z"/><path d="M12 21.5a2.4 2.4 0 0 1-2.4-2.4c0-1.6 1.4-2.4 2.4-3.9 1 1.5 2.4 2.3 2.4 3.9a2.4 2.4 0 0 1-2.4 2.4Z"/></svg><span><b>Fire</b><small>Fornax</small></span></a></li>
+                    <li><a href="https://drivine.org"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 9c1.6 0 2.4-1.5 3.9-1.5S8.7 9 10.3 9s2.4-1.5 3.8-1.5S16.5 9 18 9s2.4-1.5 3.5-1.5"/><path d="M2.5 13.5c1.6 0 2.4-1.5 3.9-1.5s2.3 1.5 3.9 1.5 2.4-1.5 3.8-1.5 2.4 1.5 3.9 1.5 2.4-1.5 3.5-1.5"/><path d="M2.5 18c1.6 0 2.4-1.5 3.9-1.5S8.7 18 10.3 18s2.4-1.5 3.8-1.5S16.5 18 18 18s2.4-1.5 3.5-1.5"/></svg><span><b>Water</b><small>Drivine</small></span></a></li>
+                    <li><a href="https://liberation-data.com/desk/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5h11.5a2.7 2.7 0 1 0-2.7-2.7"/><path d="M3 12.5h16a2.7 2.7 0 1 1-2.7 2.7"/><path d="M3 16.5h7.5a2.2 2.2 0 1 1-2.2 2.2"/></svg><span><b>Air</b><small>Desk</small></span></a></li>
+                    <li class="soon"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 19.5 9 9l3.2 5.1L15 10l6.5 9.5Z"/><path d="m7.2 12 1.8 1.4 1.4-1.2"/></svg><span><b>Earth</b><small>Coming soon</small></span></span></li>
+                </ul>
+            </div>
         </footer>
 
         <script>
@@ -1132,35 +1164,52 @@ const theme = 'vitesse-dark';
             }
         </script>
         <script>
-            // The dark section's fire: scrolling steps through its frames (a crackle every ~40 px) and drifts it slower
-            // than the page. Left on its first frame for reduced motion and on phones.
+            // The dark section's fire drifts slower than the page (a gentle parallax); unmoved for reduced motion and on
+            // phones.
             {
-                const flames = document.querySelector<HTMLElement>('.dark .flames');
+                const flames = document.querySelector<HTMLElement>('.dark .flames img');
                 const still = matchMedia('(prefers-reduced-motion: reduce), (max-width: 800px)');
                 if (flames) {
-                    const frames = [...flames.querySelectorAll('img')];
-                    let shown = 0, queued = false;
-                    const show = (k: number) => { if (k !== shown) { frames[shown].classList.remove('on'); frames[k].classList.add('on'); shown = k; } };
+                    let queued = false;
                     const update = () => {
                         queued = false;
-                        // Turned still since (a narrower window, reduced motion switched on): back to the first frame, unmoved.
-                        if (still.matches) { show(0); for (const f of frames) f.style.transform = ''; return; }
-                        const box = flames.getBoundingClientRect();
+                        if (still.matches) { flames.style.transform = ''; return; }
+                        const box = flames.parentElement!.getBoundingClientRect();
                         if (box.bottom < 0 || box.top > innerHeight) return;
-                        show(Math.floor(scrollY / 40) % frames.length);
-                        const drift = (box.top + box.height / 2 - innerHeight / 2) * -0.2;
-                        for (const f of frames) f.style.transform = `translateY(${drift.toFixed(1)}px)`;
+                        flames.style.transform = `translateY(${((box.top + box.height / 2 - innerHeight / 2) * -0.2).toFixed(1)}px)`;
                     };
                     const queue = () => { if (!queued) { queued = true; requestAnimationFrame(update); } };
                     addEventListener('scroll', queue, { passive: true });
                     addEventListener('resize', queue);
-                    // All six frames load once the section is within a screen of view, so it crackles from the first
-                    // scroll there; a visitor who never gets that far (or sees the still frame) never fetches them.
-                    let near = false;
-                    const warm = () => { if (near && !still.matches) for (const f of frames) f.loading = 'eager'; };
-                    new IntersectionObserver((entries) => { near = entries.some((it) => it.isIntersecting); warm(); }, { rootMargin: '100% 0px' }).observe(flames);
-                    still.addEventListener('change', () => { warm(); queue(); });
+                    still.addEventListener('change', queue);
                     update();
+                }
+            }
+            // The hero's fire: the loop loads only where it will play (not on phones, with reduced motion or Save-Data),
+            // plays while the hero is in view, and fades in over the still photo once it's playing.
+            {
+                const video = document.querySelector<HTMLVideoElement>('.hero > .hero-fire');
+                const still = matchMedia('(prefers-reduced-motion: reduce), (max-width: 800px)');
+                const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData === true;
+                if (video && !saveData) {
+                    let inView = false, loaded = false;
+                    const sync = () => {
+                        if (still.matches || !inView) { video.pause(); return; }
+                        if (!loaded) {
+                            loaded = true;
+                            for (const [src, type] of [['/video/hero-fire.webm', 'video/webm'], ['/video/hero-fire.mp4', 'video/mp4']]) {
+                                const source = document.createElement('source');
+                                source.src = src;
+                                source.type = type;
+                                video.append(source);
+                            }
+                            video.load();
+                        }
+                        video.play().catch(() => {});   // autoplay refused (a browser setting): the photo stays
+                    };
+                    video.addEventListener('playing', () => video.classList.add('on'));
+                    new IntersectionObserver((entries) => { inView = entries.some((it) => it.isIntersecting); sync(); }).observe(video);
+                    still.addEventListener('change', () => { if (still.matches) video.classList.remove('on'); sync(); });
                 }
             }
         </script>

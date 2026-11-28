@@ -1,6 +1,6 @@
 ---
 title: "Embeddings and reranking"
-description: Embed text and rerank documents from Java with Qwen3-Embedding and Qwen3-Reranker through llama.cpp, and search your own documents in memory, with no vector database.
+description: Embed text and rerank documents from Java with Qwen3-Embedding, EmbeddingGemma 2 and Qwen3-Reranker through llama.cpp, and search your own documents in memory, with no vector database.
 ---
 
 An embedding model turns a text into a vector, so that texts about the same thing get vectors that point the same way.
@@ -62,6 +62,47 @@ try (var emb = new LlamaModel(Weights.QWEN3_EMBEDDING_0_6B, Mode.EMBED)) {
 `embeddingSize()` is the vector length. `embeddings(texts, options)` returns the vectors with the tokens the texts
 took (the prefix and the tokenizer's end-of-text included), for usage accounting. `embedAsync(texts, options)` runs
 `embed` on the model's own thread, and `cancel()` stops a long `embed` between batches with a `CancellationException`.
+
+### EmbeddingGemma 2
+
+Google's EmbeddingGemma 2 is a second embedder: 768-dimension vectors (Qwen3-Embedding's are 1024), 100+ languages
+and code, from a smaller model.
+
+```sh
+hf download unsloth/embeddinggemma-2-GGUF embeddinggemma-2-Q8_0.gguf
+```
+
+<!-- snippet: Embeddings#gemma -->
+```java
+try (var emb = new LlamaModel(Weights.EMBEDDINGGEMMA_2, Mode.EMBED)) {
+    List<String> docs = List.of(
+            "A pottery fornax fires stoneware at around 1200 to 1300 degrees Celsius.",
+            "Nashville is the capital of Tennessee and the home of country music.");
+    float[][] d = emb.embed(docs, EmbedOptions.gemmaDocument());      // 768 floats each, length 1
+    float[] q = emb.embed(List.of("How hot does a fornax get?"), EmbedOptions.gemmaQuery("search result"))[0];
+    var best = Vectors.topK(q, d, 1).get(0);
+}
+```
+
+- **Queries and documents both take a prefix.** EmbeddingGemma was trained with `task: <task> | query: <query>` for
+  queries and `title: <title> | text: <document>` for documents. `EmbedOptions.gemmaQuery("search result")` and
+  `EmbedOptions.gemmaDocument()` (`title: none`) write them; a document with a real title is better embedded as
+  `"title: " + title + " | text: " + content` with no prefix. Other tasks are `question answering`, `fact checking`
+  and `code retrieval`, and for texts compared with each other, `classification`, `clustering` or
+  `sentence similarity` on every text.
+- **Shorter vectors.** Its vectors can be cut to their first 512, 256 or 128 numbers to save space (they were trained
+  for it), with a little loss of quality down to 256. Normalise them again after cutting
+  (`Vectors.normalize(Arrays.copyOf(v, 256))`), and cut queries and documents to the same length.
+- **Not in float16.** Google warns that the model's numbers overflow float16, so use the Q8_0 (or BF16) GGUF, not the
+  F16 one. The Q8_0 gives finite vectors that match `llama-embedding`'s on Vulkan.
+- **Text only.** The repo's `mmproj` files are for embedding images, video and audio in the same space, which Fornax
+  doesn't do yet.
+
+On Fornax's own docs (375 passages of about 800 characters, 16 questions whose answering page is known), the two
+embedders find the right page about equally well. EmbeddingGemma 2 put it in the top five for all 16 questions and
+first for 11 (mean reciprocal rank 0.83); Qwen3-Embedding 0.6B put it in the top five for 15 and first for 11
+(0.82). EmbeddingGemma 2 was faster: 4.3 against 6.9 seconds for the 375 passages on a Radeon 8060S (Vulkan). To run
+it yourself, see `scripts/RetrievalEval.java`.
 
 ## Rerank
 

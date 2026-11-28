@@ -263,10 +263,27 @@ public final class LlamaModel implements AutoCloseable {
          */
         MEDGEMMA_4B("unsloth/medgemma-1.5-4b-it-GGUF", "medgemma-1.5-4b-it-Q4_K_M.gguf", "mmproj-F16.gguf"),
         /**
+         * LlamaIndex OCRia-1 (4B, Q8_0): reads a document page to markdown, tables as HTML. Not open source: its license,
+         * a modified OpenRAIL-M, allows only personal or research use to anyone whose organisation had more than US$2M
+         * revenue last year or has raised more than US$2M, and bars use in a service that competes with LlamaParse or
+         * LlamaCloud. Run it as its model card does: its system prompt ({@code prompt.txt} in the repo), the page with no
+         * text, thinking off ({@link Options#withThinking}) and temperature 0. With thinking on it
+         * writes the page twice, once inside the think block.
+         */
+        OCRIA_1("llamaindex/OCRia-1-GGUF", "OCRia-1-Q8_0.gguf", "mmproj-OCRia-1-f16.gguf"),
+        /**
          * Qwen3-Embedding 0.6B (Q8_0): 1024-dimension text embeddings, 100+ languages; load it in {@link Mode#EMBED}.
          * Queries take an instruction ({@link EmbedOptions#query}); documents don't. Apache-2.0.
          */
         QWEN3_EMBEDDING_0_6B("Qwen/Qwen3-Embedding-0.6B-GGUF", "Qwen3-Embedding-0.6B-Q8_0.gguf", null),
+        /**
+         * Google EmbeddingGemma 2 (Q8_0, text only): 768-dimension text embeddings, 100+ languages and code, mean
+         * pooled; load it in {@link Mode#EMBED}. It was trained with a prefix on queries and on documents:
+         * {@link EmbedOptions#gemmaQuery} and {@link EmbedOptions#gemmaDocument}. Its vectors can be cut to their first
+         * 512, 256 or 128 numbers (Matryoshka) to save space, normalised again after cutting. The repo's mmproj, for
+         * image, video and audio embeddings, isn't used. Apache-2.0.
+         */
+        EMBEDDINGGEMMA_2("unsloth/embeddinggemma-2-GGUF", "embeddinggemma-2-Q8_0.gguf", null),
         /** Qwen3-Reranker 0.6B (Q8_0): scores how well a document answers a query; load it in {@link Mode#RERANK}. Apache-2.0. */
         QWEN3_RERANKER_0_6B("ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF", "qwen3-reranker-0.6b-q8_0.gguf", null);
 
@@ -299,12 +316,25 @@ public final class LlamaModel implements AutoCloseable {
         }
     }
 
-    /** temperature <= 0 means greedy. seed -1 means random. maxTokens <= 0 means until end-of-turn or context full. */
-    public record Options(int maxTokens, float temperature, float topP, float minP, int seed) {
-        public static final Options DEFAULT = new Options(512, 0.7f, 0.9f, 0.05f, -1);
-        public Options withSeed(int s) { return new Options(maxTokens, temperature, topP, minP, s); }
-        public Options withMaxTokens(int n) { return new Options(n, temperature, topP, minP, seed); }
-        public Options withTemperature(float t) { return new Options(maxTokens, t, topP, minP, seed); }
+    /**
+     * temperature <= 0 means greedy. seed -1 means random. maxTokens <= 0 means until end-of-turn or context full.
+     *
+     * <p>{@code thinking} false asks a model whose chat template can turn its reasoning off (Qwen3.5, Qwen3's hybrids,
+     * OCRia-1) to answer without it, as {@code "enable_thinking": false} does in a {@link #chatJson} request. Such a chat
+     * is formatted with the model's own (Jinja) template, as {@code chatJson} formats it, and its text is the reply
+     * alone. A model with no such switch ignores it. true, the default, leaves the template as it is.
+     */
+    public record Options(int maxTokens, float temperature, float topP, float minP, int seed, boolean thinking) {
+        public static final Options DEFAULT = new Options(512, 0.7f, 0.9f, 0.05f, -1, true);
+        /** Thinking left to the template, as {@link #DEFAULT} has it. */
+        public Options(int maxTokens, float temperature, float topP, float minP, int seed) {
+            this(maxTokens, temperature, topP, minP, seed, true);
+        }
+        public Options withSeed(int s) { return new Options(maxTokens, temperature, topP, minP, s, thinking); }
+        public Options withMaxTokens(int n) { return new Options(n, temperature, topP, minP, seed, thinking); }
+        public Options withTemperature(float t) { return new Options(maxTokens, t, topP, minP, seed, thinking); }
+        /** false: answer without reasoning, where the model's template can turn it off. */
+        public Options withThinking(boolean on) { return new Options(maxTokens, temperature, topP, minP, seed, on); }
     }
 
     public record Result(String text, int promptTokens, int generatedTokens) {}
@@ -313,7 +343,10 @@ public final class LlamaModel implements AutoCloseable {
     public enum Mode {
         /** Text generation: chat, chatJson, extract, complete (and images, with an mmproj). */
         CHAT,
-        /** Embeddings: {@link #embed}, with the pooling type the GGUF sets (Qwen3-Embedding: the last token). */
+        /**
+         * Embeddings: {@link #embed}, with the pooling type the GGUF sets (Qwen3-Embedding: the last token;
+         * EmbeddingGemma 2: the mean).
+         */
         EMBED,
         /** Reranking: {@link #rerank}, for a reranker GGUF (rank pooling, with a classifier head). */
         RERANK
@@ -338,6 +371,20 @@ public final class LlamaModel implements AutoCloseable {
          * query")}. Embed the documents with {@link #DEFAULT}: in Qwen3-Embedding they take no instruction.
          */
         public static EmbedOptions query(String task) { return new EmbedOptions("Instruct: " + task + "\nQuery:", true); }
+
+        /**
+         * For a query, EmbeddingGemma's format: {@code "task: " + task + " | query: "} before it. The task is one of the
+         * model's own: {@code "search result"} for search, or {@code "question answering"}, {@code "fact checking"},
+         * {@code "code retrieval"}; for texts compared with each other rather than with documents,
+         * {@code "classification"}, {@code "clustering"} or {@code "sentence similarity"}, on every text.
+         */
+        public static EmbedOptions gemmaQuery(String task) { return new EmbedOptions("task: " + task + " | query: ", true); }
+
+        /**
+         * For a document with no title, EmbeddingGemma's format: {@code "title: none | text: "} before it. A document
+         * with a title is better embedded as {@code "title: " + title + " | text: " + content}, with no prefix.
+         */
+        public static EmbedOptions gemmaDocument() { return new EmbedOptions("title: none | text: ", true); }
 
         public EmbedOptions withPrefix(String p) { return new EmbedOptions(p, normalize); }
         public EmbedOptions withNormalize(boolean n) { return new EmbedOptions(prefix, n); }
@@ -670,7 +717,10 @@ public final class LlamaModel implements AutoCloseable {
     /** How many requests run at once: more than 1 for a model loaded with slots, which batches them. */
     public int slots() { return slots; }
 
-    /** The length of one embedding (1024 for Qwen3-Embedding 0.6B). Only for a model loaded in {@link Mode#EMBED}. */
+    /**
+     * The length of one embedding (1024 for Qwen3-Embedding 0.6B, 768 for EmbeddingGemma 2). Only for a model loaded in
+     * {@link Mode#EMBED}.
+     */
     public int embeddingSize() {
         requireMode(Mode.EMBED, "embed");
         return embeddingSize;
@@ -762,6 +812,12 @@ public final class LlamaModel implements AutoCloseable {
 
     Result chatOn(Call call, List<Message> messages, Options o, Consumer<String> onPiece) {
         requireMode(Mode.CHAT, "chat");
+        if (!o.thinking()) {
+            // only a Jinja template takes enable_thinking: chatJson's path, in process, batched or in a worker alike
+            List<Image> images = new ArrayList<>();
+            String request = ChatRequests.chat(messages, o, images);
+            return ChatRequests.result(chatJsonOn(call, request, images, onPiece));
+        }
         if (remote != null)
             return LlamaService.decodeResult(remote(call, "chat", LlamaService.chatArgs(messages, o, onPiece != null), onPiece));
         if (batcher != null) {
