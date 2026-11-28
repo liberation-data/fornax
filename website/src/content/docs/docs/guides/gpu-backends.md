@@ -30,9 +30,9 @@ add `-Pfornax.backend=hip` (or `cuda`, `metal`, `cpu`) to a Gradle command, or c
 | Backend | GPUs | State |
 |---|---|---|
 | [Vulkan](#vulkan) | AMD, Intel, NVIDIA | the backend Fornax is developed and tested on |
-| [HIP (ROCm)](#hip-rocm) | AMD | passes the test suite on the Radeon 8060S (one rerank score drifts: [#80](https://github.com/liberation-data/fornax/issues/80)); runs LTX video faster than Vulkan |
+| [HIP (ROCm)](#hip-rocm) | AMD | passes the test suite nightly on the Radeon 8060S; runs LTX video faster than Vulkan |
 | [CUDA](#cuda) | NVIDIA | builds from the same script; not tested yet |
-| [Metal](#metal) | Macs | passes the test suite on an M2 Max; songs and video not run yet |
+| [Metal](#metal) | Macs | passes the test suite nightly on an M2 Max; songs and video not run yet |
 | [CPU](#cpu) | none | for checking a setup; slow |
 
 Start with Vulkan unless you have a reason not to. Reports and fixes for the untested backends are welcome.
