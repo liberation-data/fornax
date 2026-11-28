@@ -276,6 +276,13 @@ const theme = 'vitesse-dark';
             /* The nav above the splash that follows it, so its GitHub menu, which drops over the splash, takes the clicks. */
             .fire > .nav { z-index: 2; }
             @media (max-width: 800px) { .fire::before { background-image: linear-gradient(rgba(23, 10, 4, 0.5), rgba(23, 10, 4, 0.68)), var(--photo-small); } }
+            /* The hero's fire, alive: a seamless loop of the splash's flames (rendered with Fornax's LTX-2.5, the photo
+               pinned as its first and last frame) over the still photo, under the same wash. It fades in once it plays,
+               so until then (and for phones, reduced motion and Save-Data, which never load it) the photo shows. */
+            .hero > .hero-fire, .hero > .wash { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+            .hero > .hero-fire { width: 100%; height: 100%; object-fit: cover; object-position: center 45%; opacity: 0; transition: opacity 0.8s ease; }
+            .hero > .hero-fire.on { opacity: 1; }
+            .hero > .wash { background: linear-gradient(rgba(23, 10, 4, 0.42), rgba(23, 10, 4, 0.62)); }
 
             .hero { min-height: 760px; display: flex; flex-direction: column; }
             .nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; width: 100%; padding: 24px 32px; }
@@ -359,16 +366,12 @@ const theme = 'vitesse-dark';
             .card p { margin: 0; font-size: 17px; line-height: 1.6; color: var(--muted); }
 
             .dark { background: var(--abyss); color: #f2e4d8; padding: 96px 32px; }
-            /* Faint fire behind the dark section: six frames of the fornax's flames (rendered with Fornax's LTX-2.5 from the
-               hero photo) under a deep wash. Scrolling steps through them, so the fire crackles as you move, and drifts
-               slower than the page (a gentle parallax). Phones and reduced motion get one still frame. */
+            /* Faint fire behind the dark section: a still of the fornax's flames (rendered with Fornax's LTX-2.5 from the
+               hero photo) under a deep wash, drifting slower than the page (a gentle parallax). Phones and reduced motion
+               get it unmoved. */
             .dark { position: relative; isolation: isolate; overflow: hidden; }
             .dark .flames { position: absolute; inset: 0; z-index: -2; pointer-events: none; }
-            .dark .flames img { position: absolute; left: 0; top: -12%; width: 100%; height: 124%; object-fit: cover; object-position: center 60%; opacity: 0; transition: opacity 0.16s linear; will-change: opacity, transform; }
-            .dark .flames img.on { opacity: 1; }
-            /* Still (the script's own query): only the first frame shows, so the rest, out of the layout, are never fetched;
-               lazy, they would be, being in view under it. */
-            @media (prefers-reduced-motion: reduce), (max-width: 800px) { .dark .flames img:not(:first-child) { display: none; } }
+            .dark .flames img { position: absolute; left: 0; top: -12%; width: 100%; height: 124%; object-fit: cover; object-position: center 60%; will-change: transform; }
             .dark::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(rgba(23, 13, 8, 0.9) 0%, rgba(23, 13, 8, 0.8) 40%, rgba(23, 13, 8, 0.58) 100%); }
             .dark .eyebrow { color: var(--accent); }
             .dark h2 { color: #fff; }
@@ -595,6 +598,8 @@ const theme = 'vitesse-dark';
     </head>
     <body style={photoVars}>
         <header class="fire hero">
+            <video class="hero-fire" muted loop playsinline preload="none" aria-hidden="true" tabindex="-1" disablepictureinpicture></video>
+            <div class="wash" aria-hidden="true"></div>
             <nav class="nav wrap" aria-label="Main">
                 <a href="/" class="brand"><img src={logoSmall.src} alt="" width="34" height="34" /><span>fornax<span class="j">4j</span></span></a>
                 <div class="nav-links">
@@ -703,7 +708,7 @@ const theme = 'vitesse-dark';
             </section>
 
             <section class="dark" id="code">
-                <div class="flames" aria-hidden="true">{[0, 1, 2, 3, 4, 5].map((k) => <img src={`/fire/f${k}.webp`} alt="" loading="lazy" decoding="async" class={k === 0 ? 'on' : undefined} />)}</div>
+                <div class="flames" aria-hidden="true"><img src="/fire/f0.webp" alt="" loading="lazy" decoding="async" /></div>
                 <div class="wrap split">
                     <div class="text">
                         <p class="eyebrow">Plain Java API</p>
@@ -1132,35 +1137,52 @@ const theme = 'vitesse-dark';
             }
         </script>
         <script>
-            // The dark section's fire: scrolling steps through its frames (a crackle every ~40 px) and drifts it slower
-            // than the page. Left on its first frame for reduced motion and on phones.
+            // The dark section's fire drifts slower than the page (a gentle parallax); unmoved for reduced motion and on
+            // phones.
             {
-                const flames = document.querySelector<HTMLElement>('.dark .flames');
+                const flames = document.querySelector<HTMLElement>('.dark .flames img');
                 const still = matchMedia('(prefers-reduced-motion: reduce), (max-width: 800px)');
                 if (flames) {
-                    const frames = [...flames.querySelectorAll('img')];
-                    let shown = 0, queued = false;
-                    const show = (k: number) => { if (k !== shown) { frames[shown].classList.remove('on'); frames[k].classList.add('on'); shown = k; } };
+                    let queued = false;
                     const update = () => {
                         queued = false;
-                        // Turned still since (a narrower window, reduced motion switched on): back to the first frame, unmoved.
-                        if (still.matches) { show(0); for (const f of frames) f.style.transform = ''; return; }
-                        const box = flames.getBoundingClientRect();
+                        if (still.matches) { flames.style.transform = ''; return; }
+                        const box = flames.parentElement!.getBoundingClientRect();
                         if (box.bottom < 0 || box.top > innerHeight) return;
-                        show(Math.floor(scrollY / 40) % frames.length);
-                        const drift = (box.top + box.height / 2 - innerHeight / 2) * -0.2;
-                        for (const f of frames) f.style.transform = `translateY(${drift.toFixed(1)}px)`;
+                        flames.style.transform = `translateY(${((box.top + box.height / 2 - innerHeight / 2) * -0.2).toFixed(1)}px)`;
                     };
                     const queue = () => { if (!queued) { queued = true; requestAnimationFrame(update); } };
                     addEventListener('scroll', queue, { passive: true });
                     addEventListener('resize', queue);
-                    // All six frames load once the section is within a screen of view, so it crackles from the first
-                    // scroll there; a visitor who never gets that far (or sees the still frame) never fetches them.
-                    let near = false;
-                    const warm = () => { if (near && !still.matches) for (const f of frames) f.loading = 'eager'; };
-                    new IntersectionObserver((entries) => { near = entries.some((it) => it.isIntersecting); warm(); }, { rootMargin: '100% 0px' }).observe(flames);
-                    still.addEventListener('change', () => { warm(); queue(); });
+                    still.addEventListener('change', queue);
                     update();
+                }
+            }
+            // The hero's fire: the loop loads only where it will play (not on phones, with reduced motion or Save-Data),
+            // plays while the hero is in view, and fades in over the still photo once it's playing.
+            {
+                const video = document.querySelector<HTMLVideoElement>('.hero > .hero-fire');
+                const still = matchMedia('(prefers-reduced-motion: reduce), (max-width: 800px)');
+                const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData === true;
+                if (video && !saveData) {
+                    let inView = false, loaded = false;
+                    const sync = () => {
+                        if (still.matches || !inView) { video.pause(); return; }
+                        if (!loaded) {
+                            loaded = true;
+                            for (const [src, type] of [['/video/hero-fire.webm', 'video/webm'], ['/video/hero-fire.mp4', 'video/mp4']]) {
+                                const source = document.createElement('source');
+                                source.src = src;
+                                source.type = type;
+                                video.append(source);
+                            }
+                            video.load();
+                        }
+                        video.play().catch(() => {});   // autoplay refused (a browser setting): the photo stays
+                    };
+                    video.addEventListener('playing', () => video.classList.add('on'));
+                    new IntersectionObserver((entries) => { inView = entries.some((it) => it.isIntersecting); sync(); }).observe(video);
+                    still.addEventListener('change', () => { if (still.matches) video.classList.remove('on'); sync(); });
                 }
             }
         </script>
