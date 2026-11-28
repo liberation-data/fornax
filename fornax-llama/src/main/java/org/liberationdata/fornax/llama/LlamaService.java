@@ -192,6 +192,8 @@ public final class LlamaService implements WorkerService {
         return messages;
     }
 
+    // Options.thinking isn't sent: a chat with it off goes to the worker as chatJson (LlamaModel.chatOn), and
+    // complete has no template to turn it off in.
     private static Wire.Out options(Wire.Out out, Options o) {
         return out.integer(o.maxTokens()).floatValue(o.temperature()).floatValue(o.topP()).floatValue(o.minP()).integer(o.seed());
     }

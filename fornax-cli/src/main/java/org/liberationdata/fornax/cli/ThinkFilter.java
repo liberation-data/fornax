@@ -25,7 +25,7 @@ final class ThinkFilter implements Consumer<String> {
             "(?i)\\s*(okay|alright|hmm+|let me|let's|i need|we need|we are|the user)\\b");
 
     private final Consumer<String> out;
-    private final boolean show;
+    private final boolean show, plain;
     private final StringBuilder pending = new StringBuilder(), reply = new StringBuilder();
     private boolean inside, trimNext, unsure = true, sawTag, openedInside;
 
@@ -33,9 +33,18 @@ final class ThinkFilter implements Consumer<String> {
     ThinkFilter(Consumer<String> out, boolean show) { this(out, show, false); }
 
     /** @param startsInside the reply starts inside a think block whose {@code <think>} was in the prompt */
-    ThinkFilter(Consumer<String> out, boolean show, boolean startsInside) {
+    ThinkFilter(Consumer<String> out, boolean show, boolean startsInside) { this(out, show, startsInside, false); }
+
+    /**
+     * For a reply asked for without reasoning (--no-think): there is nothing to hide, so it streams as it comes, an
+     * opening that sounds like reasoning or a literal {@code </think>} included.
+     */
+    static ThinkFilter plain(Consumer<String> out) { return new ThinkFilter(out, true, false, true); }
+
+    private ThinkFilter(Consumer<String> out, boolean show, boolean startsInside, boolean plain) {
         this.out = out;
         this.show = show;
+        this.plain = plain;
         if (startsInside) {
             inside = sawTag = openedInside = true;
             unsure = false;
@@ -44,6 +53,11 @@ final class ThinkFilter implements Consumer<String> {
     }
 
     @Override public void accept(String piece) {
+        if (plain) {
+            out.accept(piece);
+            reply.append(piece);
+            return;
+        }
         pending.append(piece);
         drain(false);
     }

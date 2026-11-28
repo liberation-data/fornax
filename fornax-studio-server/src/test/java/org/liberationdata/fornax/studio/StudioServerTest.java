@@ -43,7 +43,7 @@ class StudioServerTest {
                 "vae/ltx-2.5-audio-vae-bf16.safetensors", "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors")) {
             put(cache, "Lightricks/LTX-2.5", f);
         }
-        for (var w : List.of(LlamaModel.Weights.QWEN3_VL_4B, LlamaModel.Weights.PADDLEOCR_VL)) {
+        for (var w : List.of(LlamaModel.Weights.QWEN3_VL_4B, LlamaModel.Weights.PADDLEOCR_VL, LlamaModel.Weights.OCRIA_1)) {
             put(cache, w.repo, w.modelFile);
             put(cache, w.repo, w.mmprojFile);
         }
@@ -116,7 +116,7 @@ class StudioServerTest {
         assertEquals("loading", Json.object(s.substring(s.indexOf("data: ") + 6, s.indexOf("\n\n"))).get("state"));
         assertTrue(s.contains("event: token"));
         var done = event(s, "done");
-        assertEquals("(stub) You said: hello there /no_think", done.get("text"));
+        assertEquals("(stub) You said: hello there (thinking off)", done.get("text"));
         assertTrue(((Number) done.get("generatedTokens")).intValue() > 0);
     }
 
@@ -300,6 +300,17 @@ class StudioServerTest {
         assertTrue(done.get("text").toString().contains("1280×640"), done.get("text").toString());
         assertNull(done.get("json"));
         assertTrue(((Number) done.get("generatedTokens")).intValue() > 0);
+    }
+
+    @Test void ocria1IsAskedWithThinkingOffAndItsOwnPromptWhenNoneIsGiven() throws Exception {
+        assertTrue(model("vision:ocria-1").get("license").toString().contains("LlamaParse"));
+        var done = event(call("POST", "/api/inspect", "{\"model\": \"vision:ocria-1\", \"image\": \"" + pngDataUrl(64, 48) + "\"}").body(),
+                "done");
+        assertTrue(done.get("text").toString().endsWith("thinking off."), done.toString());
+        // a model without the default is asked as before
+        var qwen = event(call("POST", "/api/inspect", "{\"model\": \"vision:qwen3-vl-4b\", \"prompt\": \"What?\", \"image\": \""
+                + pngDataUrl(64, 48) + "\"}").body(), "done");
+        assertFalse(qwen.get("text").toString().contains("thinking off"), qwen.toString());
     }
 
     @Test void inspectWithASchemaGivesItsJson() throws Exception {

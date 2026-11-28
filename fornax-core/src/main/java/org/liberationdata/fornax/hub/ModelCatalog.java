@@ -81,7 +81,7 @@ public final class ModelCatalog {
         l.add(ModelSet.of("ocria-1", Kind.VISION, "OCRia-1 4B", "llama.cpp",
                 Part.of("gguf", "llamaindex/OCRia-1-GGUF", "OCRia-1-Q8_0.gguf"),
                 Part.of("mmproj", "llamaindex/OCRia-1-GGUF", "mmproj-OCRia-1-f16.gguf"))
-                .withLicense(OCRIA_LICENSE));
+                .withLicense(OCRIA_LICENSE).withAliases("vision:ocria-1"));
 
         // speech (llama.cpp text to speech): TtsModel.Weights.KOKORO, the default voice model
         l.add(ModelSet.of("kokoro", Kind.SPEECH, "Kokoro 82M", "llama.cpp",

@@ -378,7 +378,8 @@ fornax info                                       # Java, native libraries, cach
 
 Every command that runs a model downloads it first if it isn't in the cache yet, as `fornax pull` would. `image`, `song`
 and `speak` write to `--out` (else `image.png`, `song.wav` or `speech.wav` here, numbered rather than overwrite one).
-A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--think` shows them. A gated repo
+A reasoning model's `<think>` blocks (Qwen3's) are hidden in `fornax chat`; `--think` shows them, `--no-think` skips
+the reasoning where the model's template allows. A gated repo
 (LTX-2.5) needs its terms accepted on huggingface.co and `HF_TOKEN` (or `hf auth login`); the error says so.
 
 **Installing it.** Fornax Studio installs `fornax` onto your `PATH` from its menu, **Install fornax command**, using
@@ -464,7 +465,7 @@ trying models: a JDK-only HTTP server on localhost (`com.sun.net.httpserver`, re
 that lists what in the Hugging Face cache Fornax can run, downloads Fornax's model sets into it (`FornaxHub`), keeps
 models in a `ModelPool`, and serves chat (with a tool-calling demo through `chatJson`), images, songs (ACE-Step and
 YuE2), video clips with sound (LTX-2.5, whose .mp4 needs ffmpeg) and questions about an image for a vision model
-(Qwen3-VL, PaddleOCR-VL, MedGemma), as text or held to a JSON schema. The app starts it; to run it on its own:
+(Qwen3-VL, PaddleOCR-VL, MedGemma, OCRia-1), as text or held to a JSON schema. The app starts it; to run it on its own:
 
 ```sh
 ./gradlew studioServer                    # http://127.0.0.1:5191; -Pport=, -Pbudget=<GB>, -Pstub=image,song,video

@@ -89,6 +89,34 @@ class ImageTest {
     }
 
     @Test
+    void thinkingIsOnUnlessTurnedOffAndOnlyAnOffSwitchIsSent() {
+        assertTrue(Options.DEFAULT.thinking());
+        assertTrue(new Options(10, 0, 0.9f, 0.05f, 1).thinking());   // the five-value constructor, as before the switch
+        Options off = Options.DEFAULT.withThinking(false).withSeed(3).withMaxTokens(9).withTemperature(0);
+        assertFalse(off.thinking());   // the other withers keep it
+        assertNull(Json.get(Json.parse(ChatRequests.chat(List.of(Message.user("Hi")), Options.DEFAULT, new ArrayList<>())),
+                "enable_thinking"));
+        Object req = Json.parse(ChatRequests.chat(List.of(Message.system("Be brief."), Message.user("Hi")), off, new ArrayList<>()));
+        assertEquals(false, Json.get(req, "enable_thinking"));
+        assertEquals(9L, Json.get(req, "max_tokens"));
+        assertEquals(3L, Json.get(req, "seed"));
+        assertEquals(0L, Json.get(req, "top_k"));
+        assertEquals("Be brief.", Json.get(req, "messages", 0, "content"));
+        Object extract = Json.parse(ChatRequests.extract(List.of(Message.user("Total?")), "{\"type\": \"object\"}", off,
+                new ArrayList<>()));
+        assertEquals(false, Json.get(extract, "enable_thinking"));
+    }
+
+    @Test
+    void aChatJsonResponseBecomesAResult() {
+        var r = ChatRequests.result("""
+                {"message": {"role": "assistant", "content": "Hello.", "reasoning_content": "hmm"},
+                 "finish_reason": "stop", "usage": {"prompt_tokens": 12, "completion_tokens": 3}}""");
+        assertEquals(new LlamaModel.Result("Hello.", 12, 3), r);
+        assertEquals("", ChatRequests.result("{\"message\": {\"role\": \"assistant\", \"content\": null, \"tool_calls\": []}}").text());
+    }
+
+    @Test
     void weightsByName() {
         assertEquals(LlamaModel.Weights.QWEN3_VL_4B, LlamaModel.Weights.named("qwen3-vl-4b"));
         assertEquals(LlamaModel.Weights.PADDLEOCR_VL, LlamaModel.Weights.named("paddleocr-vl"));

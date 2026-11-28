@@ -64,7 +64,7 @@ which `downloadCommand()` also gives you.
 | `QWEN3_VL_4B` | questions about images, documents and charts; grounding (boxes on a 0 to 1000 grid) | Apache-2.0 |
 | `PADDLEOCR_VL` | PaddleOCR-VL 1.6 (0.9B): reading documents. It takes task prompts, not questions (below) | Apache-2.0 |
 | `MEDGEMMA_4B` | MedGemma 1.5 4B: medical images and text. Using it to diagnose or treat patients may need a health regulator's authorization | Health AI Developer Foundations terms |
-| `OCRIA_1` | OCRia-1 4B: a document page to markdown, tables as HTML; [run it through `chatJson`](#ocria-1) | OCRia-1 license, not open source: [read it first](#ocria-1) |
+| `OCRIA_1` | OCRia-1 4B: a document page to markdown, tables as HTML; [run it with thinking off](#ocria-1) | OCRia-1 license, not open source: [read it first](#ocria-1) |
 | `QWEN3_4B` | Qwen3 4B Instruct: text only | Apache-2.0 |
 | `QWEN3_EMBEDDING_0_6B`, `QWEN3_RERANKER_0_6B` | embeddings and reranking, loaded with `Mode.EMBED` or `Mode.RERANK`; see [Embeddings and reranking](/docs/guides/embeddings/) | Apache-2.0 |
 
@@ -148,22 +148,16 @@ the weights:
 hf download llamaindex/OCRia-1-GGUF OCRia-1-Q8_0.gguf mmproj-OCRia-1-f16.gguf prompt.txt
 ```
 
-Turning thinking off takes a `chatJson` request, or `chat_template_kwargs: {"enable_thinking": false}` on the
-[OpenAI-compatible server](/docs/guides/openai-server/): `chat`, `fornax see` and Fornax Studio can't ask for it yet. With
-thinking on, the model writes the page inside its think block and then again after it, so the reply takes twice as
-long and can run out of tokens.
+Turn thinking off with `Options.withThinking(false)`: with it on, the model writes the page inside its think block
+and then again after it, so the reply takes twice as long and can run out of tokens. `fornax see ocria-1` and Fornax
+Studio's Inspect window turn it off for you.
 
 <!-- snippet: Vision#ocria -->
 ```java
 try (var ocr = new LlamaModel(LlamaModel.Weights.OCRIA_1)) {
-    String reply = ocr.chatJson("""
-            {"messages": [{"role": "system", "content": %s},
-                          {"role": "user", "content": [{"type": "image", "index": 0}]}],
-             "enable_thinking": false, "temperature": 0, "max_tokens": 4096}"""
-                    .formatted(org.liberationdata.fornax.llama.Json.quote(systemPrompt)),   // prompt.txt
-            List.of(Image.read(Path.of("page.png"))), null);
-    Object markdown = org.liberationdata.fornax.llama.Json.get(
-            org.liberationdata.fornax.llama.Json.parse(reply), "message", "content");
+    var page = List.of(Message.system(java.nio.file.Files.readString(Path.of("prompt.txt"))),   // from the model's repo
+                       Message.user("", Image.read(Path.of("page.png"))));                     // the page, no text
+    String markdown = ocr.chat(page, Options.DEFAULT.withTemperature(0).withMaxTokens(4096).withThinking(false)).text();
 }
 ```
 

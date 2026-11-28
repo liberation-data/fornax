@@ -117,10 +117,7 @@ final class Pull {
     static String tryIt(ModelSet m) {
         return switch (m.kind()) {
             case CHAT -> "Try it: fornax chat " + m.id();
-            // OCRia-1 needs thinking off, which fornax see can't ask for yet: with it on, the model writes the page twice.
-            case VISION -> m.id().equals("ocria-1")
-                    ? "Run it from Java with fornax-llama's chatJson, thinking off: https://fornax4j.org/docs/guides/vision/#ocria-1"
-                    : "Try it: fornax see " + m.id() + " picture.png";
+            case VISION -> "Try it: fornax see " + m.id() + (See.isOcria(m.id()) ? " page.png" : " picture.png");
             case SPEECH -> "Try it: fornax speak --model " + m.id() + " \"Hello from Fornax\"";
             case TRANSCRIPTION -> "Try it: fornax transcribe --model " + m.id() + " speech.wav";
             case IMAGE -> "Try it: fornax image " + m.id() + (Image.needsRef(m) ? " --ref picture.png \"make it night\"" : " \"a brick kiln at dusk\"");

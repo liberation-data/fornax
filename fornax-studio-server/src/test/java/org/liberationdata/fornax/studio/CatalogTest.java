@@ -92,13 +92,16 @@ class CatalogTest {
         assertTrue(catalog.chatModels().isEmpty());
     }
 
-    @Test void ocria1IsNeitherAChatModelNorOfferedInInspect() throws Exception {
-        // It needs thinking off, which neither Chat nor Inspect can ask for yet (#145).
+    @Test void ocria1IsOfferedInInspectWithThinkingOffAndItsLicenseNotAsAChatModel() throws Exception {
         file(LlamaModel.Weights.OCRIA_1.repo, "a", LlamaModel.Weights.OCRIA_1.modelFile, 4);
         file(LlamaModel.Weights.OCRIA_1.repo, "a", LlamaModel.Weights.OCRIA_1.mmprojFile, 1);
         var catalog = new Catalog(root);
         assertTrue(catalog.chatModels().isEmpty());
-        assertTrue(catalog.visionPresets().stream().noneMatch(m -> m.id().contains("ocria")));
+        var ocria = catalog.visionPresets().stream().filter(m -> m.id().equals("vision:ocria-1")).findFirst().orElseThrow();
+        assertEquals(false, ocria.defaults().get("thinking"));
+        assertEquals("Transcribe this page in markdown.", ocria.defaults().get("prompt"));
+        assertTrue(ocria.license().contains("not open source"));
+        assertEquals("vision:qwen3-vl-4b", catalog.visionPresets().getFirst().id());   // still the default
     }
 
     @Test void ltxWithoutItsAudioVaeIsAnotherModel() throws Exception {
