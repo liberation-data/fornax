@@ -280,8 +280,11 @@ const theme = 'vitesse-dark';
                pinned as its first and last frame) over the still photo, under the same wash. It fades in once it plays,
                so until then (and for phones, reduced motion and Save-Data, which never load it) the photo shows. */
             .hero > .hero-fire, .hero > .wash { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
-            .hero > .hero-fire { width: 100%; height: 100%; object-fit: cover; object-position: center 45%; opacity: 0; transition: opacity 0.8s ease; }
-            .hero > .hero-fire.on { opacity: 1; }
+            .hero > .hero-fire, .hero > .wash { opacity: 0; transition: opacity 0.8s ease; }
+            .hero > .hero-fire { width: 100%; height: 100%; object-fit: cover; object-position: center 45%; }
+            /* The wash shows only with the video: the photo under it is already washed (by ::before), so a second wash
+               would darken the still that phones, reduced motion and Save-Data get. */
+            .hero > .hero-fire.on, .hero > .hero-fire.on + .wash { opacity: 1; }
             .hero > .wash { background: linear-gradient(rgba(23, 10, 4, 0.42), rgba(23, 10, 4, 0.62)); }
 
             .hero { min-height: 760px; display: flex; flex-direction: column; }
