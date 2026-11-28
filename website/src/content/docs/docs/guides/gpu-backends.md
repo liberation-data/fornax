@@ -30,9 +30,9 @@ add `-Pfornax.backend=hip` (or `cuda`, `metal`, `cpu`) to a Gradle command, or c
 | Backend | GPUs | State |
 |---|---|---|
 | [Vulkan](#vulkan) | AMD, Intel, NVIDIA | the backend Fornax is developed and tested on |
-| [HIP (ROCm)](#hip-rocm) | AMD | passes the test suite on the Radeon 8060S (one rerank score drifts: [#80](https://github.com/liberation-data/fornax/issues/80)); runs LTX video faster than Vulkan |
+| [HIP (ROCm)](#hip-rocm) | AMD | passes the test suite nightly on the Radeon 8060S; runs LTX video faster than Vulkan |
 | [CUDA](#cuda) | NVIDIA | builds from the same script; not tested yet |
-| [Metal](#metal) | Macs | passes the test suite on an M2 Max; songs and video not run yet |
+| [Metal](#metal) | Macs | passes the test suite nightly on an M2 Max; songs and video not run yet |
 | [CPU](#cpu) | none | for checking a setup; slow |
 
 Start with Vulkan unless you have a reason not to. Reports and fixes for the untested backends are welcome.
@@ -79,9 +79,9 @@ HIP_ARCH=gfx1100 native/build.sh hip
 ./gradlew video -Pfornax.backend=hip --args='clip.mp4 "a potter at a wheel"'
 ```
 
-The test suite passes on HIP on the 8060S (ROCm 7, `gfx1151`), with the models downloaded for embeddings,
-reranking and Demucs, except one reranking check: scoring documents one at a time drifts from scoring them together
-by 0.064 against a 0.05 tolerance, though the ranking holds
+The test suite passes on HIP on the 8060S (ROCm 7, `gfx1151`) every night, with the models downloaded for
+embeddings, reranking and Demucs. A borderline rerank score (near 0.5) moves by up to about 0.06 between scoring a
+document alone and in a batch, on HIP as in llama.cpp's own `llama-embedding`; decided scores and the ranking hold
 ([#80](https://github.com/liberation-data/fornax/issues/80)).
 
 What Fornax has learned on HIP so far, with LTX-2.5 video on the 8060S:
@@ -117,10 +117,10 @@ native/build.sh metal
 
 The libraries are `.dylib`s, in `build/native/macos-arm64-metal/` on Apple silicon.
 
-Fornax's test suite passes on Metal on an Apple M2 Max with 32 GB (macOS 27.2), with every layer on the GPU: chat,
-vision, embeddings and reranking, speech, transcription, stem separation, FLUX.2 [klein] images and upscaling, isolated
-workers and Dispatch. A borderline reranker score differs from Vulkan's by about 0.05, as kernels do; the ranking is
-the same. Songs (ACE-Step, YuE2) and video haven't been run on a Mac yet.
+Fornax's test suite passes on Metal on an Apple M2 Max with 32 GB (macOS 27.2) every night, with every layer on the
+GPU: chat, vision, embeddings and reranking, speech, transcription, stem separation, FLUX.2 [klein] images and
+upscaling, isolated workers and Dispatch. A borderline reranker score differs from Vulkan's by about 0.05, as kernels
+do; the ranking is the same. Songs (ACE-Step, YuE2) and video haven't been run on a Mac yet.
 Intel Macs aren't supported. To run the tests on a Mac from a Linux checkout, see `scripts/test-on-mac.sh` (or
 `./gradlew testOnMac -Pfornax.macHost=<host>`).
 

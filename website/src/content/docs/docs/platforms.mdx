@@ -12,7 +12,7 @@ and you're done. ROCm and CUDA mean building the engines once for your GPU.
 |---|---|---|---|
 | [Linux, Vulkan](#linux-amd-intel-or-nvidia-with-vulkan) | AMD, Intel, NVIDIA | published | tested nightly |
 | [Linux, ROCm](#linux-amd-with-rocm) | AMD | build them yourself | tested nightly |
-| [macOS, Metal](#macos-with-metal) | Apple silicon | published | tested |
+| [macOS, Metal](#macos-with-metal) | Apple silicon | published | tested nightly |
 | [NVIDIA, CUDA](#nvidia-with-cuda) | NVIDIA | build them yourself | not tested yet |
 | [Windows](#windows) | | build them yourself (experimental) | not tested on a GPU yet |
 
@@ -50,7 +50,7 @@ The quickest path, and the one to pick unless you need ROCm or CUDA. Linux x86-6
 
 ROCm (HIP) is faster than Vulkan for video on AMD, and has no compute timeout for long jobs. Its libraries are built
 for your GPU's architecture and link the ROCm you installed, so you build Fornax's engines once on your machine. It
-passes the test suite on a Radeon 8060S (one rerank score drifts, [#80](https://github.com/liberation-data/fornax/issues/80)).
+passes the test suite on a Radeon 8060S every night.
 
 <Steps>
 
@@ -104,8 +104,8 @@ passes the test suite on a Radeon 8060S (one rerank score drifts, [#80](https://
 
 ## macOS, with Metal
 
-macOS 13.3 or newer, on Apple silicon (Intel Macs aren't supported). Nothing to install: Metal is part of macOS. Fornax passes its test
-suite on an Apple M2 Max.
+macOS 13.3 or newer, on Apple silicon (Intel Macs aren't supported). Nothing to install: Metal is part of macOS. Fornax runs its test
+suite on an Apple M2 Max every night.
 
 <Steps>
 
