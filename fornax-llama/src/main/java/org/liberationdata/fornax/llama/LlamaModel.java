@@ -276,6 +276,14 @@ public final class LlamaModel implements AutoCloseable {
          * Queries take an instruction ({@link EmbedOptions#query}); documents don't. Apache-2.0.
          */
         QWEN3_EMBEDDING_0_6B("Qwen/Qwen3-Embedding-0.6B-GGUF", "Qwen3-Embedding-0.6B-Q8_0.gguf", null),
+        /**
+         * Google EmbeddingGemma 2 (Q8_0, text only): 768-dimension text embeddings, 100+ languages and code, mean
+         * pooled; load it in {@link Mode#EMBED}. It was trained with a prefix on queries and on documents:
+         * {@link EmbedOptions#gemmaQuery} and {@link EmbedOptions#gemmaDocument}. Its vectors can be cut to their first
+         * 512, 256 or 128 numbers (Matryoshka) to save space, normalised again after cutting. The repo's mmproj, for
+         * image, video and audio embeddings, isn't used. Apache-2.0.
+         */
+        EMBEDDINGGEMMA_2("unsloth/embeddinggemma-2-GGUF", "embeddinggemma-2-Q8_0.gguf", null),
         /** Qwen3-Reranker 0.6B (Q8_0): scores how well a document answers a query; load it in {@link Mode#RERANK}. Apache-2.0. */
         QWEN3_RERANKER_0_6B("ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF", "qwen3-reranker-0.6b-q8_0.gguf", null);
 
@@ -335,7 +343,10 @@ public final class LlamaModel implements AutoCloseable {
     public enum Mode {
         /** Text generation: chat, chatJson, extract, complete (and images, with an mmproj). */
         CHAT,
-        /** Embeddings: {@link #embed}, with the pooling type the GGUF sets (Qwen3-Embedding: the last token). */
+        /**
+         * Embeddings: {@link #embed}, with the pooling type the GGUF sets (Qwen3-Embedding: the last token;
+         * EmbeddingGemma 2: the mean).
+         */
         EMBED,
         /** Reranking: {@link #rerank}, for a reranker GGUF (rank pooling, with a classifier head). */
         RERANK
@@ -360,6 +371,20 @@ public final class LlamaModel implements AutoCloseable {
          * query")}. Embed the documents with {@link #DEFAULT}: in Qwen3-Embedding they take no instruction.
          */
         public static EmbedOptions query(String task) { return new EmbedOptions("Instruct: " + task + "\nQuery:", true); }
+
+        /**
+         * For a query, EmbeddingGemma's format: {@code "task: " + task + " | query: "} before it. The task is one of the
+         * model's own: {@code "search result"} for search, or {@code "question answering"}, {@code "fact checking"},
+         * {@code "code retrieval"}; for texts compared with each other rather than with documents,
+         * {@code "classification"}, {@code "clustering"} or {@code "sentence similarity"}, on every text.
+         */
+        public static EmbedOptions gemmaQuery(String task) { return new EmbedOptions("task: " + task + " | query: ", true); }
+
+        /**
+         * For a document with no title, EmbeddingGemma's format: {@code "title: none | text: "} before it. A document
+         * with a title is better embedded as {@code "title: " + title + " | text: " + content}, with no prefix.
+         */
+        public static EmbedOptions gemmaDocument() { return new EmbedOptions("title: none | text: ", true); }
 
         public EmbedOptions withPrefix(String p) { return new EmbedOptions(p, normalize); }
         public EmbedOptions withNormalize(boolean n) { return new EmbedOptions(prefix, n); }
@@ -692,7 +717,10 @@ public final class LlamaModel implements AutoCloseable {
     /** How many requests run at once: more than 1 for a model loaded with slots, which batches them. */
     public int slots() { return slots; }
 
-    /** The length of one embedding (1024 for Qwen3-Embedding 0.6B). Only for a model loaded in {@link Mode#EMBED}. */
+    /**
+     * The length of one embedding (1024 for Qwen3-Embedding 0.6B, 768 for EmbeddingGemma 2). Only for a model loaded in
+     * {@link Mode#EMBED}.
+     */
     public int embeddingSize() {
         requireMode(Mode.EMBED, "embed");
         return embeddingSize;

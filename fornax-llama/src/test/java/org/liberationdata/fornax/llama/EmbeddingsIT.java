@@ -45,8 +45,11 @@ class EmbeddingsIT {
 
     record Reference(String text, float[] embedding) {}
 
-    static List<Reference> reference() throws IOException {
-        var in = EmbeddingsIT.class.getResourceAsStream("/embeddings/qwen3-embedding-0.6b.txt");
+    static List<Reference> reference() throws IOException { return reference("qwen3-embedding-0.6b"); }
+
+    /** A fixture scripts/embedding-reference.sh wrote, by model name. */
+    static List<Reference> reference(String name) throws IOException {
+        var in = EmbeddingsIT.class.getResourceAsStream("/embeddings/" + name + ".txt");
         assertNotNull(in, "missing fixture");
         List<Reference> out = new ArrayList<>();
         try (var r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {

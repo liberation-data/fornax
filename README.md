@@ -52,7 +52,7 @@ Fornax binds native inference engines with Java's Foreign Function & Memory API 
 
 | Module | Engine | Models |
 |---|---|---|
-| `fornax-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (with `mtmd` for images) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...); vision language models (Qwen3-VL, PaddleOCR-VL, MedGemma, ...); embedding and reranker models (Qwen3-Embedding, Qwen3-Reranker) |
+| `fornax-llama` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (with `mtmd` for images) | any GGUF language model (Qwen, Llama, Gemma, Mistral, ...); vision language models (Qwen3-VL, PaddleOCR-VL, MedGemma, ...); embedding and reranker models (Qwen3-Embedding, EmbeddingGemma 2, Qwen3-Reranker) |
 | `fornax-tts` | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`mtmd`) | text to speech: Kokoro, ZONOS3, LFM3-Audio, Chatterbox, VoxCPM2, ... |
 | `fornax-sd` | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) | FLUX.1/FLUX.2, Qwen-Image and Qwen-Image-Edit, SD 1.x/2.x/XL/3, Wan, LTX |
 | `fornax-acestep` | [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) | ACE-Step 1.5 songs (vocals, lyrics, up to several minutes) |

@@ -122,6 +122,7 @@ class ImageTest {
         assertEquals(LlamaModel.Weights.PADDLEOCR_VL, LlamaModel.Weights.named("paddleocr-vl"));
         assertEquals(LlamaModel.Weights.QWEN3_EMBEDDING_0_6B, LlamaModel.Weights.named("qwen3-embedding-0.6b"));
         assertEquals(LlamaModel.Weights.QWEN3_RERANKER_0_6B, LlamaModel.Weights.named("Qwen3-Reranker-0.6B"));
+        assertEquals(LlamaModel.Weights.EMBEDDINGGEMMA_2, LlamaModel.Weights.named("embeddinggemma-2"));
         assertFalse(LlamaModel.Weights.QWEN3_EMBEDDING_0_6B.vision());
         assertTrue(LlamaModel.Weights.MEDGEMMA_4B.vision());
         assertEquals(LlamaModel.Weights.OCRIA_1, LlamaModel.Weights.named("ocria-1"));
