@@ -170,7 +170,7 @@ try (var ocr = new LlamaModel(LlamaModel.Weights.OCRIA_1)) {
 On the Radeon 8060S with Vulkan, it read the synthetic 1000×1300 invoice exactly, line items as an HTML table, in
 about 24 s (2,347 prompt tokens with the system prompt and the image, 518 generated). Its model card asks for a
 32k context for large pages. `new LlamaModel(Weights)` gives 8192 tokens, so for those use
-`new LlamaModel(gguf, mmproj, -1, 32768)`.
+`new LlamaModel(LlamaModel.Weights.OCRIA_1, -1, 32768)`.
 
 ## Raw completion with images
 
