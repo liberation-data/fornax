@@ -192,7 +192,13 @@ final class Catalog {
                         Json.obj("width", 1024L, "height", 1024L, "steps", 20L, "cfg", 2.5),
                         part("diffusion_model", "Comfy-Org/Qwen-Image_ComfyUI", "split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors"),
                         part("vae", "Comfy-Org/Qwen-Image_ComfyUI", "split_files/vae/qwen_image_vae.safetensors"),
-                        anyPart("llm", "Comfy-Org/Qwen-Image_ComfyUI", qwenVl, "Comfy-Org/HunyuanVideo_1.5_repackaged", qwenVl)));
+                        anyPart("llm", "Comfy-Org/Qwen-Image_ComfyUI", qwenVl, "Comfy-Org/HunyuanVideo_1.5_repackaged", qwenVl)),
+                // distilled: 8 steps, no guidance
+                preset("image:z-image-turbo", Kind.image, "Z-Image Turbo", "stable-diffusion.cpp",
+                        Json.obj("width", 1024L, "height", 1024L, "steps", 8L, "cfg", 1.0),
+                        part("diffusion_model", "Comfy-Org/z_image_turbo", "split_files/diffusion_models/z_image_turbo_bf16.safetensors"),
+                        part("vae", "Comfy-Org/z_image_turbo", "split_files/vae/ae.safetensors"),
+                        part("llm", "Comfy-Org/z_image_turbo", "split_files/text_encoders/qwen_3_4b.safetensors")));
     }
 
     List<Model> songPresets() {

@@ -206,12 +206,13 @@ final class PooledEngines implements Engines {
     @Override public List<BufferedImage> images(String model, ImageJob job) {
         Found f = find(model, Use.IMAGE, true);
         if (f.set().id().equals("qwen-image-edit"))
-            throw ApiError.badRequest("qwen-image-edit edits an image, which /v1/images/generations doesn't take; use qwen-image or flux2-klein", "model");
-        double cfg = job.cfg() != null ? job.cfg() : f.set().id().startsWith("qwen") ? 2.5 : 4.0;
+            throw ApiError.badRequest("qwen-image-edit edits an image, which /v1/images/generations doesn't take; use qwen-image, flux2-klein or z-image-turbo", "model");
+        double cfg = job.cfg() != null ? job.cfg() : ModelCatalog.imageCfg(f.set());
+        int steps = job.steps() != null ? job.steps() : ModelCatalog.imageSteps(f.set());
         try (ModelPool.Lease<DiffusionModel> lease = lease(f)) {
             List<BufferedImage> out = new ArrayList<>();
             for (int i = 0; i < job.n(); i++)
-                out.addAll(lease.model().generate(new DiffusionModel.Request(job.prompt(), job.width(), job.height(), job.steps(),
+                out.addAll(lease.model().generate(new DiffusionModel.Request(job.prompt(), job.width(), job.height(), steps,
                         cfg, job.seed() + i)));
             return out;
         }

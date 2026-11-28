@@ -83,7 +83,7 @@ class CommandsTest {
     @Test
     void theWrongKindOfModelIsRefusedWithTheRightOnes() throws Exception {
         assertEquals(1, run("image", "qwen3-4b", "a fox", "--out", tmp.resolve("a.png").toString()));
-        assertEquals("fornax image: qwen3-4b is a chat model; image takes an image model: flux2-klein, qwen-image, qwen-image-edit\n",
+        assertEquals("fornax image: qwen3-4b is a chat model; image takes an image model: flux2-klein, qwen-image, qwen-image-edit, z-image-turbo\n",
                 err.toString());
         assertEquals(1, run("song", "flux2-klein", "folk", "--out", tmp.toString()));
         assertTrue(err.toString().contains("flux2-klein is an image model; song takes a song model: ace-step-turbo"), err.toString());
@@ -146,6 +146,10 @@ class CommandsTest {
         assertEquals(4.0, klein.cfg());
         assertTrue(klein.seed() >= 0);
         assertEquals(2.5, Image.job(args(Image.OPTIONS), ModelCatalog.require("qwen-image"), "a fox", null).cfg());
+        var z = Image.job(args(Image.OPTIONS), ModelCatalog.require("z-image-turbo"), "a fox", null);   // distilled
+        assertEquals(8, z.steps());
+        assertEquals(1.0, z.cfg());
+        assertEquals(20, klein.steps());
         var given = Image.job(args(Image.OPTIONS, "--width", "512", "--height=256", "--steps", "8", "--cfg", "1.5", "--seed", "42"),
                 ModelCatalog.require("flux2-klein"), "a fox", null);
         assertEquals(new Image.Job("a fox", 512, 256, 8, 1.5, 42), given);

@@ -51,6 +51,15 @@ class ModelCatalogTest {
         assertThrows(IllegalArgumentException.class, () -> silent.without("audio_vae", "", ""));
     }
 
+    @Test void imageSetsHaveTheStepsAndGuidanceTheyAreTunedFor() {
+        assertEquals(20, ModelCatalog.imageSteps(ModelCatalog.require("flux2-klein")));
+        assertEquals(4.0, ModelCatalog.imageCfg(ModelCatalog.require("flux2-klein")));
+        assertEquals(2.5, ModelCatalog.imageCfg(ModelCatalog.require("qwen-image-edit")));
+        assertEquals(8, ModelCatalog.imageSteps(ModelCatalog.require("image:z-image-turbo")));
+        assertEquals(1.0, ModelCatalog.imageCfg(ModelCatalog.require("z-image-turbo")));
+        assertEquals(List.of("diffusion_model", "vae", "llm"), roles("z-image-turbo"));
+    }
+
     @Test void licensesThatLimitUseAreSaid() {
         assertTrue(ModelCatalog.require("yue2").license().startsWith("CC BY-NC 4.0"));
         assertTrue(ModelCatalog.require("medgemma-4b").license().startsWith("Health AI Developer Foundations"));

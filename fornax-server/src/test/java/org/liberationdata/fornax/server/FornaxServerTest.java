@@ -386,6 +386,9 @@ class FornaxServerTest {
         assertEquals(512, img.getWidth());
         assertEquals(256, img.getHeight());
         assertEquals("ImageJob[prompt=a kiln, width=512, height=256, steps=4, cfg=null, seed=5, n=2]", engines.requests.get(0));
+        // steps left out are the model's to choose (ModelCatalog.imageSteps), as cfg is
+        assertEquals(200, post("/v1/images/generations", "{\"model\": \"flux2-klein\", \"prompt\": \"p\", \"size\": \"64x64\"}").statusCode());
+        assertTrue(engines.requests.get(engines.requests.size() - 1).contains("steps=null, cfg=null"), engines.requests.toString());
         assertEquals(400, post("/v1/images/generations", "{\"prompt\": \"a kiln\"}").statusCode(), "no default image model");
         for (String bad : List.of("{\"model\": \"m\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"500x500\"}",
                 "{\"model\": \"m\", \"prompt\": \"p\", \"size\": \"big\"}", "{\"model\": \"m\", \"prompt\": \"p\", \"n\": 9}",

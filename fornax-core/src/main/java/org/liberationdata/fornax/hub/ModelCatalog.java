@@ -56,6 +56,17 @@ public final class ModelCatalog {
                 + ALL.stream().map(ModelSet::id).collect(Collectors.joining(", "))));
     }
 
+    /**
+     * The guidance scale an image set is tuned for, where a request doesn't say: Qwen-Image 2.5, FLUX.2 [klein] 4.0,
+     * Z-Image Turbo 1.0 (it is distilled to run without guidance).
+     */
+    public static double imageCfg(ModelSet m) { return distilled(m) ? 1.0 : m.id().startsWith("qwen") ? 2.5 : 4.0; }
+
+    /** The steps an image set takes, where a request doesn't say: 20, or 8 for distilled Z-Image Turbo. */
+    public static int imageSteps(ModelSet m) { return distilled(m) ? 8 : 20; }
+
+    private static boolean distilled(ModelSet m) { return m.id().equals("z-image-turbo"); }
+
     private static List<ModelSet> build() {
         List<ModelSet> l = new ArrayList<>();
 
@@ -115,6 +126,12 @@ public final class ModelCatalog {
         l.add(ModelSet.of("qwen-image-edit", Kind.IMAGE, "Qwen-Image-Edit 2511", "stable-diffusion.cpp",
                 Part.of("diffusion_model", "Comfy-Org/Qwen-Image-Edit_ComfyUI", "split_files/diffusion_models/qwen_image_edit_2511_bf16.safetensors"),
                 QWEN_IMAGE_VAE, QWEN_VL));
+        // Z-Image Turbo: distilled, 8 steps at CFG 1; the FLUX.1 VAE, and the Qwen3 4B text encoder klein uses too
+        l.add(ModelSet.of("z-image-turbo", Kind.IMAGE, "Z-Image Turbo", "stable-diffusion.cpp",
+                Part.of("diffusion_model", "Comfy-Org/z_image_turbo", "split_files/diffusion_models/z_image_turbo_bf16.safetensors"),
+                Part.of("vae", "Comfy-Org/z_image_turbo", "split_files/vae/ae.safetensors"),
+                Part.of("llm", "Comfy-Org/z_image_turbo", "split_files/text_encoders/qwen_3_4b.safetensors"))
+                .withAliases("image:z-image-turbo"));
 
         // songs (acestep.cpp, yue2.cpp). "ace-step" is the CLI's: turbo with the 4B lyric LM.
         Part aceEncoder = Part.of("text_encoder", ACE, "Qwen3-Embedding-0.6B-Q8_0.gguf");
