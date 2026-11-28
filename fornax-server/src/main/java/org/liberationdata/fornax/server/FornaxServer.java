@@ -787,7 +787,11 @@ public final class FornaxServer implements AutoCloseable {
             return this;
         }
 
-        /** Context size in tokens for language and embedding models (default 8192; 0 for the model's own). */
+        /**
+         * Context size in tokens for language and embedding models (default 8192; 0 for the model's own). With
+         * {@link LanguageEngine#JITLLM}, an embedding model's context is at most 2048 tokens, as jitllm reserves it
+         * all when the model loads.
+         */
         public Builder contextSize(int tokens) {
             if (tokens < 0) throw new IllegalArgumentException("contextSize must be 0 or more, not " + tokens);
             this.contextSize = tokens;

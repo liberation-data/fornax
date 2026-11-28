@@ -444,8 +444,9 @@ final class PooledEngines implements Engines {
     private AutoCloseable load(Found f) {
         if (jitllm && (f.use() == Use.CHAT || f.use() == Use.EMBED)) {
             try {
-                return new JitLlmModel(f.file("gguf").toString(), contextSize,
-                        f.use() == Use.EMBED ? JitLlmModel.Mode.EMBED : JitLlmModel.Mode.CHAT);
+                return f.use() == Use.EMBED
+                        ? new JitLlmModel(f.file("gguf").toString(), jitllmEmbeddingContext(contextSize), JitLlmModel.Mode.EMBED)
+                        : new JitLlmModel(f.file("gguf").toString(), contextSize, JitLlmModel.Mode.CHAT);
             } catch (IllegalStateException e) {
                 // a file jitllm has no model for (a vision GGUF named by path or reference): the request's to fix
                 if (String.valueOf(e.getMessage()).contains("(rc=7)")) throw ApiError.badRequest(f.id() + ": " + withoutCode(e), "model");
@@ -463,6 +464,18 @@ final class PooledEngines implements Engines {
             case SPEECH -> new TtsModel(f.file("gguf").toString(), f.file("mmproj").toString());
             case TRANSCRIPTION -> new WhisperModel(f.file("model").toString(), alignment(f.file("model")), true);
         };
+    }
+
+    /**
+     * The context a jitllm embedding model is loaded with: llama.cpp's embedding default (2048 tokens), or contextSize
+     * if that is smaller. llama.cpp's embedding context starts at 512 tokens and grows up to contextSize when a text
+     * needs it; jitllm reserves the KV cache for the whole context when the model loads, and can't grow it without
+     * reloading the model, so a fixed context the size of llama.cpp's default stands in for that. 0 (the model's
+     * own, 32768 tokens for Qwen3-Embedding) would reserve the most, so it gets the default too.
+     */
+    static int jitllmEmbeddingContext(int contextSize) {
+        int d = LlamaModel.defaultContext(LlamaModel.Mode.EMBED);
+        return contextSize > 0 ? Math.min(contextSize, d) : d;
     }
 
     /** The DTW alignment heads for one of whisper.cpp's own files, else none (as fornax transcribe does). */
